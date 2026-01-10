@@ -2,20 +2,46 @@
 // SAFS Variables
 // =============================================================================
 
-// Colors
-$primary-color: #258cfb;
+// -----------------------------------------------------------------------------
+// OSPI Color Palette
+// Extracted from https://ospi.k12.wa.us/
+// -----------------------------------------------------------------------------
+$ospi-gold: #EAA000;        // Navbar, accents
+$ospi-blue: #0967B6;        // Primary actions, links
+$ospi-cream: #F7F5EB;       // Page backgrounds
+$ospi-charcoal: #333333;    // Dark backgrounds, headings
+$ospi-gray-text: #40403D;   // Body text
+$ospi-teal: #244A5F;        // Secondary headings
+$ospi-sage: #8CB5AB;        // Reporting/output accents
+$ospi-footer-dark: #292929; // Footer background
+
+// -----------------------------------------------------------------------------
+// Semantic Color Mappings
+// -----------------------------------------------------------------------------
+$primary-color: $ospi-blue;     // Actions, buttons, links
+$secondary-color: $ospi-gold;   // Accents, navbar
+$body-bg: $ospi-cream;
+$text-color: $ospi-gray-text;
 $white: white;
 
+// -----------------------------------------------------------------------------
 // Typography
+// -----------------------------------------------------------------------------
 $font-size-base: 14px;
 $font-size-md: 16px;
 
+// -----------------------------------------------------------------------------
 // Breakpoints
+// -----------------------------------------------------------------------------
 $breakpoint-md: 768px;
 
+// -----------------------------------------------------------------------------
 // Spacing
+// -----------------------------------------------------------------------------
 $body-margin-bottom: 60px;
 
-// Focus ring
+// -----------------------------------------------------------------------------
+// Focus Ring (Accessibility)
+// -----------------------------------------------------------------------------
 $focus-ring-width: 0.1rem;
 $focus-ring-spread: 0.25rem;

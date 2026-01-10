@@ -1,8 +1,22 @@
 // =============================================================================
-// SAFS Main Stylesheet
+// SAFS Main Stylesheet - OSPI Branded Theme
 // =============================================================================
 
 @use 'variables' as *;
+
+// -----------------------------------------------------------------------------
+// CSS Custom Properties (for runtime theming)
+// -----------------------------------------------------------------------------
+:root {
+  --ospi-gold: #{$ospi-gold};
+  --ospi-blue: #{$ospi-blue};
+  --ospi-cream: #{$ospi-cream};
+  --ospi-charcoal: #{$ospi-charcoal};
+  --ospi-gray-text: #{$ospi-gray-text};
+  --ospi-teal: #{$ospi-teal};
+  --ospi-sage: #{$ospi-sage};
+  --ospi-footer-dark: #{$ospi-footer-dark};
+}
 
 // -----------------------------------------------------------------------------
 // Base Styles
@@ -21,6 +35,23 @@ html {
 
 body {
   margin-bottom: $body-margin-bottom;
+  background-color: var(--ospi-cream);
+  color: var(--ospi-gray-text);
+}
+
+// Links
+a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item) {
+  color: var(--ospi-blue);
+
+  &:hover,
+  &:focus {
+    color: darken($ospi-blue, 15%);
+  }
+}
+
+// Headings
+h1, h2, h3, h4, h5, h6 {
+  color: var(--ospi-charcoal);
 }
 
 // -----------------------------------------------------------------------------
@@ -32,6 +63,201 @@ body {
 .form-control:focus,
 .form-check-input:focus {
   box-shadow: 0 0 0 $focus-ring-width $white, 0 0 0 $focus-ring-spread $primary-color;
+}
+
+// -----------------------------------------------------------------------------
+// OSPI Navbar Theme
+// -----------------------------------------------------------------------------
+.navbar-ospi {
+  background-color: var(--ospi-gold) !important;
+
+  .navbar-brand {
+    color: var(--ospi-charcoal) !important;
+    font-weight: 600;
+
+    &:hover,
+    &:focus {
+      color: var(--ospi-teal) !important;
+    }
+  }
+
+  .nav-link {
+    color: var(--ospi-charcoal) !important;
+
+    &:hover,
+    &:focus {
+      color: var(--ospi-teal) !important;
+    }
+
+    &.dropdown-toggle::after {
+      border-top-color: var(--ospi-charcoal);
+    }
+  }
+
+  .navbar-toggler {
+    border-color: var(--ospi-charcoal);
+
+    .navbar-toggler-icon {
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='%23333333' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+    }
+  }
+
+  .dropdown-menu {
+    border-color: var(--ospi-gold);
+    border-top: 3px solid var(--ospi-gold);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// OSPI Button Variants
+// -----------------------------------------------------------------------------
+.btn-ospi-primary {
+  background-color: var(--ospi-blue);
+  border-color: var(--ospi-blue);
+  color: white;
+
+  &:hover,
+  &:focus {
+    background-color: darken($ospi-blue, 10%);
+    border-color: darken($ospi-blue, 10%);
+    color: white;
+  }
+
+  &:active {
+    background-color: darken($ospi-blue, 15%);
+    border-color: darken($ospi-blue, 15%);
+  }
+}
+
+.btn-ospi-outline {
+  background-color: transparent;
+  border-color: var(--ospi-blue);
+  color: var(--ospi-blue);
+
+  &:hover,
+  &:focus {
+    background-color: var(--ospi-blue);
+    border-color: var(--ospi-blue);
+    color: white;
+  }
+}
+
+.btn-ospi-gold {
+  background-color: var(--ospi-gold);
+  border-color: var(--ospi-gold);
+  color: var(--ospi-charcoal);
+
+  &:hover,
+  &:focus {
+    background-color: darken($ospi-gold, 10%);
+    border-color: darken($ospi-gold, 10%);
+    color: var(--ospi-charcoal);
+  }
+
+  &:active {
+    background-color: darken($ospi-gold, 15%);
+    border-color: darken($ospi-gold, 15%);
+  }
+}
+
+.btn-ospi-teal {
+  background-color: var(--ospi-teal);
+  border-color: var(--ospi-teal);
+  color: white;
+
+  &:hover,
+  &:focus {
+    background-color: darken($ospi-teal, 10%);
+    border-color: darken($ospi-teal, 10%);
+    color: white;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Card Section Themes
+// -----------------------------------------------------------------------------
+
+// Data Collection - Blue theme
+.card-section-collection {
+  border-color: var(--ospi-blue) !important;
+
+  .card-header {
+    background-color: var(--ospi-blue) !important;
+    color: white !important;
+    border-bottom-color: var(--ospi-blue) !important;
+  }
+}
+
+// Calculation - Gold accent theme
+.card-section-calculation {
+  border-color: var(--ospi-gold) !important;
+
+  .card-header {
+    background-color: var(--ospi-gold) !important;
+    color: var(--ospi-charcoal) !important;
+    border-bottom-color: var(--ospi-gold) !important;
+  }
+}
+
+// Reporting - Teal theme
+.card-section-reporting {
+  border-color: var(--ospi-teal) !important;
+
+  .card-header {
+    background-color: var(--ospi-teal) !important;
+    color: white !important;
+    border-bottom-color: var(--ospi-teal) !important;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// OSPI Footer Theme
+// -----------------------------------------------------------------------------
+.footer-ospi {
+  background-color: var(--ospi-footer-dark) !important;
+  color: var(--ospi-cream) !important;
+  border-top: 3px solid var(--ospi-gold) !important;
+
+  a {
+    color: var(--ospi-sage);
+
+    &:hover,
+    &:focus {
+      color: var(--ospi-gold);
+    }
+  }
+
+  .text-muted {
+    color: rgba(247, 245, 235, 0.7) !important;
+  }
+
+  .badge {
+    background-color: var(--ospi-gold) !important;
+    color: var(--ospi-charcoal) !important;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// OSPI Role Badge Colors (for RoleSwitcher)
+// -----------------------------------------------------------------------------
+.role-badge-district {
+  background-color: var(--ospi-blue) !important;
+  color: white !important;
+}
+
+.role-badge-esd {
+  background-color: var(--ospi-sage) !important;
+  color: var(--ospi-charcoal) !important;
+}
+
+.role-badge-ospi {
+  background-color: var(--ospi-gold) !important;
+  color: var(--ospi-charcoal) !important;
+}
+
+.role-badge-default {
+  background-color: #6c757d !important;
+  color: white !important;
 }
 
 // -----------------------------------------------------------------------------
@@ -66,4 +292,31 @@ body {
 // Toggle label styling when checked
 #showInstructionsToggle:checked + label {
   color: var(--bs-success);
+}
+
+// -----------------------------------------------------------------------------
+// Utility Classes
+// -----------------------------------------------------------------------------
+.text-ospi-blue {
+  color: var(--ospi-blue) !important;
+}
+
+.text-ospi-gold {
+  color: var(--ospi-gold) !important;
+}
+
+.text-ospi-teal {
+  color: var(--ospi-teal) !important;
+}
+
+.bg-ospi-cream {
+  background-color: var(--ospi-cream) !important;
+}
+
+.bg-ospi-charcoal {
+  background-color: var(--ospi-charcoal) !important;
+}
+
+.border-ospi-gold {
+  border-color: var(--ospi-gold) !important;
 }
