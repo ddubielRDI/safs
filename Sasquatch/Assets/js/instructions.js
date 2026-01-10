@@ -59,6 +59,43 @@
         return pill;
     }
 
+    // Position pill within viewport bounds
+    function positionPill(pill, element) {
+        const buffer = 10; // px from viewport edge
+        const viewportWidth = window.innerWidth;
+
+        // Position above element
+        pill.style.top = '-2.5rem';
+
+        // Pre-check: if element is near right edge, default to right-align
+        const elementRect = element.getBoundingClientRect();
+        const estimatedPillWidth = 280; // max-width + padding estimate
+
+        if (elementRect.left + estimatedPillWidth > viewportWidth - buffer) {
+            pill.style.left = 'auto';
+            pill.style.right = '0';
+        } else {
+            pill.style.left = '0';
+            pill.style.right = 'auto';
+        }
+
+        // Verify after render and adjust if needed
+        requestAnimationFrame(() => {
+            const pillRect = pill.getBoundingClientRect();
+
+            // Fix right overflow
+            if (pillRect.right > viewportWidth - buffer) {
+                pill.style.left = 'auto';
+                pill.style.right = '0';
+            }
+            // Fix left overflow (from very long pills)
+            else if (pillRect.left < buffer) {
+                pill.style.left = '0';
+                pill.style.right = 'auto';
+            }
+        });
+    }
+
     // Add instruction styles to page
     function addStyles() {
         if (document.getElementById('instruction-styles')) return;
@@ -133,9 +170,8 @@
             const pill = createPill(step);
             element.appendChild(pill);
 
-            // Position above the element
-            pill.style.top = '-2.5rem';
-            pill.style.left = '0';
+            // Position above the element, respecting viewport bounds
+            positionPill(pill, element);
         });
     }
 
@@ -145,6 +181,21 @@
             pill.remove();
         });
     }
+
+    // Reposition pills on window resize
+    let resizeTimeout;
+    function handleResize() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            document.querySelectorAll('.instruction-pill').forEach(pill => {
+                const element = pill.parentElement;
+                if (element) {
+                    positionPill(pill, element);
+                }
+            });
+        }, 100);
+    }
+    window.addEventListener('resize', handleResize);
 
     // Initialize on DOM ready
     function init() {

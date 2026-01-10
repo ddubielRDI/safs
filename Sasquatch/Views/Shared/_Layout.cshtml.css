@@ -11,6 +11,15 @@ a {
   color: #0077cc;
 }
 
+.navbar-dark .nav-link {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.navbar-dark .nav-link:hover,
+.navbar-dark .nav-link:focus {
+  color: rgba(255, 255, 255, 1);
+}
+
 .btn-primary {
   color: #fff;
   background-color: #1b6ec2;
