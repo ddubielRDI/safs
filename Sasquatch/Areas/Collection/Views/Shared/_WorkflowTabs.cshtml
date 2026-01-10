@@ -1,0 +1,190 @@
+@model Sasquatch.Collection.ViewModels.WorkflowTabViewModel
+@*
+    Workflow Tab Navigation Component
+    Displays horizontal tabs for each workflow based on user role.
+    Active tab is highlighted based on current controller.
+*@
+
+<div class="workflow-tabs-container mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex align-items-center">
+            <span class="text-muted small me-2">Data Collection Workflows:</span>
+        </div>
+        <div class="role-indicator">
+            <span class="badge @GetRoleBadgeClass(Model.UserRole)">
+                <i class="bi @GetRoleIcon(Model.UserRole) me-1"></i>@GetRoleDisplayName(Model.UserRole)
+            </span>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs nav-tabs-workflow" role="tablist">
+        @foreach (var tab in Model.VisibleTabs.Where(t => !t.IsAdminTab))
+        {
+            var isActive = Model.IsActive(tab.Id);
+            <li class="nav-item" role="presentation">
+                <a class="nav-link @(isActive ? "active" : "")"
+                   asp-area="Collection"
+                   asp-controller="@tab.Controller"
+                   asp-action="@tab.Action"
+                   role="tab"
+                   aria-selected="@(isActive ? "true" : "false")"
+                   title="@tab.Description">
+                    <i class="bi @tab.Icon me-1"></i>
+                    <span class="tab-short-name d-none d-lg-none">@tab.ShortName</span>
+                    <span class="tab-full-name d-lg-inline">@tab.DisplayName</span>
+                    @if (tab.IsStub)
+                    {
+                        <span class="badge bg-secondary ms-1 badge-stub" title="Coming Soon">
+                            <i class="bi bi-hourglass-split"></i>
+                        </span>
+                    }
+                    @if (tab.PendingCount > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-1">@tab.PendingCount</span>
+                    }
+                </a>
+            </li>
+        }
+
+        @* Admin tabs (only visible to OSPI) *@
+        @if (Model.VisibleTabs.Any(t => t.IsAdminTab))
+        {
+            <li class="nav-item ms-auto" role="presentation">
+                <span class="nav-link disabled text-muted px-2">|</span>
+            </li>
+            @foreach (var tab in Model.VisibleTabs.Where(t => t.IsAdminTab))
+            {
+                var isActive = Model.IsActive(tab.Id);
+                <li class="nav-item" role="presentation">
+                    <a class="nav-link @(isActive ? "active" : "") admin-tab"
+                       asp-area="Collection"
+                       asp-controller="@tab.Controller"
+                       asp-action="@tab.Action"
+                       role="tab"
+                       aria-selected="@(isActive ? "true" : "false")"
+                       title="@tab.Description">
+                        <i class="bi @tab.Icon me-1"></i>
+                        <span class="d-none d-md-inline">@tab.DisplayName</span>
+                    </a>
+                </li>
+            }
+        }
+    </ul>
+</div>
+
+@functions {
+    string GetRoleBadgeClass(string role) => role switch
+    {
+        "District" => "bg-primary",
+        "ESD" => "bg-info text-dark",
+        "OSPI" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    string GetRoleIcon(string role) => role switch
+    {
+        "District" => "bi-building",
+        "ESD" => "bi-diagram-3",
+        "OSPI" => "bi-shield-lock",
+        _ => "bi-person"
+    };
+
+    string GetRoleDisplayName(string role) => role switch
+    {
+        "District" => "District User",
+        "ESD" => "ESD Reviewer",
+        "OSPI" => "OSPI Admin",
+        _ => role
+    };
+}
+
+<style>
+    .workflow-tabs-container {
+        background: linear-gradient(to bottom, #f8f9fa, #fff);
+        padding: 1rem 1rem 0 1rem;
+        border-radius: 0.5rem 0.5rem 0 0;
+        border: 1px solid #dee2e6;
+        border-bottom: none;
+    }
+
+    .nav-tabs-workflow {
+        border-bottom: none;
+    }
+
+    .nav-tabs-workflow .nav-link {
+        border: 1px solid transparent;
+        border-bottom: none;
+        margin-bottom: -1px;
+        background: #f8f9fa;
+        color: #495057;
+        transition: all 0.15s ease-in-out;
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .nav-tabs-workflow .nav-link:hover:not(.active) {
+        border-color: #e9ecef #e9ecef transparent;
+        background: #fff;
+        color: #0d6efd;
+    }
+
+    .nav-tabs-workflow .nav-link.active {
+        background: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+        color: #0d6efd;
+        font-weight: 500;
+    }
+
+    .nav-tabs-workflow .nav-link.admin-tab {
+        background: #fff3cd;
+        border-color: #ffecb5;
+    }
+
+    .nav-tabs-workflow .nav-link.admin-tab:hover:not(.active) {
+        background: #fff;
+        border-color: #ffc107;
+    }
+
+    .nav-tabs-workflow .nav-link.admin-tab.active {
+        background: #fff;
+        border-color: #ffc107 #ffc107 #fff;
+        color: #856404;
+    }
+
+    .badge-stub {
+        font-size: 0.65rem;
+        padding: 0.15rem 0.35rem;
+    }
+
+    .role-indicator {
+        font-size: 0.85rem;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 991.98px) {
+        .nav-tabs-workflow .nav-link {
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8rem;
+        }
+
+        .tab-full-name {
+            display: none !important;
+        }
+
+        .tab-short-name {
+            display: inline !important;
+        }
+    }
+
+    @@media (max-width: 767.98px) {
+        .nav-tabs-workflow {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .nav-tabs-workflow .nav-item {
+            flex-shrink: 0;
+        }
+    }
+</style>

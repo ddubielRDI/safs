@@ -72,31 +72,23 @@
                         </li>
                     </ul>
                     <ul class="navbar-nav">
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-shield-lock me-1"></i>OSPI Admin
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" asp-area="Collection" asp-controller="Admin" asp-action="Index">
-                                    <i class="bi bi-speedometer2 me-2"></i>Dashboard
-                                </a></li>
-                                <li><a class="dropdown-item" asp-area="Collection" asp-controller="Admin" asp-action="Locks">
-                                    <i class="bi bi-lock me-2"></i>Lock Controls
-                                </a></li>
-                                <li><a class="dropdown-item" asp-area="Collection" asp-controller="Admin" asp-action="AuditLog">
-                                    <i class="bi bi-journal-text me-2"></i>Audit Log
-                                </a></li>
-                            </ul>
-                        </li>
+                        @* Role Switcher - shown for demo purposes *@
+                        @await Component.InvokeAsync("RoleSwitcher")
+
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                 <i class="bi bi-person-circle me-1"></i>tumwater.admin
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><span class="dropdown-item-text small text-muted">Tumwater School District</span></li>
+                                <li><span class="dropdown-item-text small text-muted">District Code: 34033</span></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="#">Switch Role</a></li>
-                                <li><a class="dropdown-item" href="#">Sign Out</a></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-gear me-2"></i>Settings
+                                </a></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-box-arrow-right me-2"></i>Sign Out
+                                </a></li>
                             </ul>
                         </li>
                     </ul>

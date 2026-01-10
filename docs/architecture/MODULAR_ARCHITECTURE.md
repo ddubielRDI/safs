@@ -82,7 +82,7 @@ Each section project includes a marker class for assembly discovery.
 
 ### Full Solution
 ```bash
-dotnet build "School Apportionment and Financial Systems.sln"
+dotnet build "SAFS.sln"
 dotnet run --project Sasquatch
 ```
 

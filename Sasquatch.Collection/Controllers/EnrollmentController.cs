@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Sasquatch.Core.Data;
 using Sasquatch.Core.Models.Collection;
 using Sasquatch.Collection.ViewModels;
+using Sasquatch.Collection.Services;
 
 namespace Sasquatch.Collection.Controllers;
 
@@ -17,15 +18,35 @@ public class EnrollmentController : Controller
 {
     private readonly SasquatchDbContext _context;
     private readonly ILogger<EnrollmentController> _logger;
+    private readonly IWorkflowTabService _tabService;
 
     // For demo, we'll use Tumwater district
     private const string DemoDistrictCode = "34033";
     private const string DemoSchoolYear = "2024-25";
 
-    public EnrollmentController(SasquatchDbContext context, ILogger<EnrollmentController> logger)
+    public EnrollmentController(
+        SasquatchDbContext context,
+        ILogger<EnrollmentController> logger,
+        IWorkflowTabService tabService)
     {
         _context = context;
         _logger = logger;
+        _tabService = tabService;
+    }
+
+    /// <summary>
+    /// Get the workflow tab view model for the current user
+    /// </summary>
+    private WorkflowTabViewModel GetTabViewModel()
+    {
+        var currentRole = _tabService.GetCurrentRole(HttpContext);
+        return new WorkflowTabViewModel
+        {
+            ActiveTab = "enrollment",
+            VisibleTabs = _tabService.GetVisibleTabsForRole(currentRole),
+            UserRole = currentRole,
+            AvailableRoles = _tabService.GetAvailableRoles()
+        };
     }
 
     /// <summary>
@@ -62,6 +83,7 @@ public class EnrollmentController : Controller
 
         var viewModel = new EnrollmentDashboardViewModel
         {
+            Tabs = GetTabViewModel(),
             District = district,
             Submissions = submissions,
             SchoolYear = DemoSchoolYear
@@ -120,6 +142,7 @@ public class EnrollmentController : Controller
 
         var viewModel = new EnrollmentSubmissionViewModel
         {
+            Tabs = GetTabViewModel(),
             Submission = submission,
             DataRows = dataRows,
             Edits = submission.EnrollmentEdits.OrderByDescending(e => e.Severity).ToList(),
@@ -136,6 +159,7 @@ public class EnrollmentController : Controller
     /// </summary>
     public IActionResult Upload()
     {
+        ViewBag.Tabs = GetTabViewModel();
         return View();
     }
 
@@ -212,6 +236,7 @@ public class EnrollmentController : Controller
 
         var viewModel = new EnrollmentSubmissionViewModel
         {
+            Tabs = GetTabViewModel(),
             Submission = submission,
             Schools = schools,
             CanEdit = true,

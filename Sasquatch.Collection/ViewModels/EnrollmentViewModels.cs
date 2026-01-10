@@ -6,8 +6,9 @@ namespace Sasquatch.Collection.ViewModels;
 /// <summary>
 /// Dashboard view model showing all submissions for a district
 /// </summary>
-public class EnrollmentDashboardViewModel
+public class EnrollmentDashboardViewModel : IWorkflowViewModel
 {
+    public WorkflowTabViewModel Tabs { get; set; } = new();
     public District? District { get; set; }
     public List<EnrollmentSubmissionSummary> Submissions { get; set; } = new();
     public string SchoolYear { get; set; } = "2024-25";
@@ -51,8 +52,9 @@ public class EnrollmentSubmissionSummary
 /// <summary>
 /// View model for enrollment submission detail/edit
 /// </summary>
-public class EnrollmentSubmissionViewModel
+public class EnrollmentSubmissionViewModel : IWorkflowViewModel
 {
+    public WorkflowTabViewModel Tabs { get; set; } = new();
     public EnrollmentSubmission Submission { get; set; } = new();
     public List<EnrollmentDataRow> DataRows { get; set; } = new();
     public List<EnrollmentEdit> Edits { get; set; } = new();

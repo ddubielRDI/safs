@@ -1,0 +1,414 @@
+@model BudgetSubmissionViewModel
+@{
+    ViewData["Title"] = "Budget Details";
+}
+
+<div class="container-fluid">
+    @* Workflow Tab Navigation *@
+    @await Html.PartialAsync("_WorkflowTabs", Model.Tabs)
+
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Budget</a></li>
+                    <li class="breadcrumb-item active">@Model.Submission.FormType @Model.Submission.FiscalYear</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                @Model.Submission.FormType Budget
+                @if (Model.Submission.IsLocked)
+                {
+                    <i class="bi bi-lock-fill text-warning ms-2" title="Locked"></i>
+                }
+            </h1>
+            <p class="text-muted mb-0">@Model.Submission.District?.DistrictName</p>
+        </div>
+        <div class="col-auto">
+            @if (Model.CanSubmit)
+            {
+                <form asp-action="Submit" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="submissionId" value="@Model.Submission.SubmissionId" />
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-send me-1"></i>Submit for Approval
+                    </button>
+                </form>
+            }
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-lg-9">
+            @* Summary Cards *@
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <div class="h4 text-success mb-0">@Model.TotalRevenues.ToString("C0")</div>
+                            <small class="text-muted">Total Revenues</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-danger">
+                        <div class="card-body text-center">
+                            <div class="h4 text-danger mb-0">@Model.TotalExpenditures.ToString("C0")</div>
+                            <small class="text-muted">Total Expenditures</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card @(Model.FundBalance >= 0 ? "border-primary" : "border-warning")">
+                        <div class="card-body text-center">
+                            <div class="h4 @(Model.FundBalance >= 0 ? "text-primary" : "text-warning") mb-0">
+                                @Model.FundBalance.ToString("C0")
+                            </div>
+                            <small class="text-muted">Fund Balance</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Revenues Section *@
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <strong><i class="bi bi-arrow-down-circle me-1"></i>Revenues</strong>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fund</th>
+                                    <th>Object</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Prior Year</th>
+                                    <th class="text-end">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.DataRows.Where(r => r.IsRevenue))
+                                {
+                                    <tr class="@(row.HasError ? "table-danger" : row.HasWarning ? "table-warning" : "")">
+                                        <td>
+                                            <span class="badge bg-light text-dark">@row.FundCode</span>
+                                            @row.FundName
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">@row.ObjectCode</span>
+                                            @row.ObjectName
+                                        </td>
+                                        <td>@row.Description</td>
+                                        <td class="text-end">
+                                            @if (Model.CanEdit)
+                                            {
+                                                <input type="number" class="form-control form-control-sm text-end editable-amount"
+                                                       data-id="@row.BudgetDataId"
+                                                       value="@row.Amount"
+                                                       step="0.01" />
+                                            }
+                                            else
+                                            {
+                                                @row.Amount.ToString("C0")
+                                            }
+                                        </td>
+                                        <td class="text-end text-muted">@row.PriorYearAmount?.ToString("C0")</td>
+                                        <td class="text-end">
+                                            @if (row.VariancePercent.HasValue)
+                                            {
+                                                var pct = row.VariancePercent.Value;
+                                                <span class="@(pct > 0 ? "text-success" : pct < 0 ? "text-danger" : "")">
+                                                    @(pct > 0 ? "+" : "")@pct.ToString("F1")%
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td colspan="3">Total Revenues</td>
+                                    <td class="text-end">@Model.TotalRevenues.ToString("C0")</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            @* Expenditures Section *@
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <strong><i class="bi bi-arrow-up-circle me-1"></i>Expenditures</strong>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Program</th>
+                                    <th>Activity</th>
+                                    <th>Object</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Prior Year</th>
+                                    <th class="text-end">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.DataRows.Where(r => !r.IsRevenue))
+                                {
+                                    <tr class="@(row.HasError ? "table-danger" : row.HasWarning ? "table-warning" : "")">
+                                        <td>
+                                            <span class="badge bg-light text-dark">@row.ProgramCode</span>
+                                            @row.ProgramName
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info text-dark">@row.ActivityCode</span>
+                                            @row.ActivityName
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary">@row.ObjectCode</span>
+                                            @row.ObjectName
+                                        </td>
+                                        <td>@row.Description</td>
+                                        <td class="text-end">
+                                            @if (Model.CanEdit)
+                                            {
+                                                <input type="number" class="form-control form-control-sm text-end editable-amount"
+                                                       data-id="@row.BudgetDataId"
+                                                       value="@row.Amount"
+                                                       step="0.01" />
+                                            }
+                                            else
+                                            {
+                                                @row.Amount.ToString("C0")
+                                            }
+                                        </td>
+                                        <td class="text-end text-muted">@row.PriorYearAmount?.ToString("C0")</td>
+                                        <td class="text-end">
+                                            @if (row.VariancePercent.HasValue)
+                                            {
+                                                var pct = row.VariancePercent.Value;
+                                                <span class="@(pct > 0 ? "text-danger" : pct < 0 ? "text-success" : "")">
+                                                    @(pct > 0 ? "+" : "")@pct.ToString("F1")%
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td colspan="4">Total Expenditures</td>
+                                    <td class="text-end">@Model.TotalExpenditures.ToString("C0")</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* Sidebar *@
+        <div class="col-lg-3">
+            @* Status Card *@
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <strong>Submission Status</strong>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <small class="text-muted">Status</small>
+                        <div>
+                            @switch (Model.Submission.SubmissionStatus)
+                            {
+                                case "Draft":
+                                    <span class="badge bg-secondary fs-6">Draft</span>
+                                    break;
+                                case "Submitted":
+                                    <span class="badge bg-primary fs-6">Submitted</span>
+                                    break;
+                                case "Approved":
+                                    <span class="badge bg-success fs-6">Approved</span>
+                                    break;
+                            }
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted">Budget Type</small>
+                        <div><strong>@Model.Submission.FormType</strong></div>
+                    </div>
+                    <div>
+                        <small class="text-muted">School Year</small>
+                        <div><strong>@Model.Submission.FiscalYear</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            @* Validation Results *@
+            <div class="card">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong>Validation Results</strong>
+                    <span>
+                        @if (Model.Edits.Any(e => e.Severity == "Error"))
+                        {
+                            <span class="badge bg-danger">@Model.Edits.Count(e => e.Severity == "Error") Errors</span>
+                        }
+                        @if (Model.Edits.Any(e => e.Severity == "Warning"))
+                        {
+                            <span class="badge bg-warning text-dark">@Model.Edits.Count(e => e.Severity == "Warning") Warnings</span>
+                        }
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    @if (Model.Edits.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var edit in Model.Edits)
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex align-items-start">
+                                        @if (edit.Severity == "Error")
+                                        {
+                                            <i class="bi bi-x-circle-fill text-danger me-2 mt-1"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-exclamation-triangle-fill text-warning me-2 mt-1"></i>
+                                        }
+                                        <div class="flex-grow-1">
+                                            <div class="small fw-medium">@edit.Message</div>
+                                            <div class="text-muted small">@edit.ActualValue</div>
+                                            @if (Model.CanEdit && edit.Severity == "Warning")
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary mt-1" data-bs-toggle="modal" data-bs-target="#commentModal" data-edit-id="@edit.EditId">
+                                                    <i class="bi bi-chat me-1"></i>Add Comment
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4 text-success">
+                            <i class="bi bi-check-circle fs-1"></i>
+                            <p class="mb-0 mt-2">No validation issues</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* Comment Modal *@
+<div class="modal fade" id="commentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Comment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Explain why this value is correct:</p>
+                <textarea id="commentText" class="form-control" rows="4" placeholder="Enter your explanation..."></textarea>
+                <input type="hidden" id="commentEditId" />
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitComment()">Save Comment</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Handle editable amount changes
+        document.querySelectorAll('.editable-amount').forEach(input => {
+            input.addEventListener('change', async function() {
+                const id = this.dataset.id;
+                const amount = this.value;
+
+                try {
+                    const response = await fetch('@Url.Action("SaveData")', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                        },
+                        body: JSON.stringify({ budgetDataId: parseInt(id), amount: parseFloat(amount) })
+                    });
+
+                    const result = await response.json();
+                    if (!result.success) {
+                        alert('Failed to save: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('Error saving:', error);
+                }
+            });
+        });
+
+        // Handle comment modal
+        const commentModal = document.getElementById('commentModal');
+        if (commentModal) {
+            commentModal.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                const editId = button.getAttribute('data-edit-id');
+                document.getElementById('commentEditId').value = editId;
+                document.getElementById('commentText').value = '';
+            });
+        }
+
+        async function submitComment() {
+            const editId = document.getElementById('commentEditId').value;
+            const comment = document.getElementById('commentText').value;
+
+            try {
+                const response = await fetch('@Url.Action("AddComment")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                    },
+                    body: `editId=${editId}&comment=${encodeURIComponent(comment)}`
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('commentModal')).hide();
+                    location.reload();
+                } else {
+                    alert('Failed to save comment');
+                }
+            } catch (error) {
+                console.error('Error saving comment:', error);
+            }
+        }
+    </script>
+}

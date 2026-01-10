@@ -1,6 +1,6 @@
-@model EnrollmentDashboardViewModel
+@model BudgetDashboardViewModel
 @{
-    ViewData["Title"] = "Enrollment Dashboard";
+    ViewData["Title"] = "Budget Dashboard";
 }
 
 <div class="container-fluid">
@@ -10,7 +10,7 @@
     <div class="row mb-4">
         <div class="col">
             <h1 class="h3">
-                <i class="bi bi-people-fill me-2"></i>Enrollment Submissions (P-223)
+                <i class="bi bi-currency-dollar me-2"></i>Budget Submissions (F-195)
             </h1>
             <p class="text-muted mb-0">
                 @Model.District?.DistrictName (@Model.District?.DistrictCode) - School Year @Model.SchoolYear
@@ -19,10 +19,7 @@
         <div class="col-auto">
             <div class="btn-group">
                 <a asp-action="Upload" class="btn btn-primary">
-                    <i class="bi bi-upload me-1"></i>Upload File
-                </a>
-                <a asp-action="ManualEntry" class="btn btn-outline-primary">
-                    <i class="bi bi-pencil-square me-1"></i>Manual Entry
+                    <i class="bi bi-upload me-1"></i>Upload Budget File
                 </a>
             </div>
         </div>
@@ -46,7 +43,7 @@
 
     <div class="card">
         <div class="card-header bg-light">
-            <strong>Monthly Submissions</strong>
+            <strong>Budget Submissions</strong>
         </div>
         <div class="card-body p-0">
             @if (Model.Submissions.Any())
@@ -54,10 +51,11 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>Month</th>
+                            <th>Type</th>
                             <th>Status</th>
-                            <th class="text-end">Headcount</th>
-                            <th class="text-end">FTE</th>
+                            <th class="text-end">Revenues</th>
+                            <th class="text-end">Expenditures</th>
+                            <th class="text-end">Balance</th>
                             <th class="text-center">Errors</th>
                             <th class="text-center">Warnings</th>
                             <th>Submitted</th>
@@ -69,7 +67,7 @@
                         {
                             <tr class="@(submission.IsLocked ? "table-secondary" : "")">
                                 <td>
-                                    <strong>@submission.MonthName</strong>
+                                    <strong>@submission.BudgetType</strong>
                                     @if (submission.IsLocked)
                                     {
                                         <i class="bi bi-lock-fill text-warning ms-1" title="Locked"></i>
@@ -95,8 +93,18 @@
                                             break;
                                     }
                                 </td>
-                                <td class="text-end">@submission.TotalHeadcount.ToString("N0")</td>
-                                <td class="text-end">@submission.TotalFTE.ToString("N2")</td>
+                                <td class="text-end">@submission.TotalRevenues.ToString("C0")</td>
+                                <td class="text-end">@submission.TotalExpenditures.ToString("C0")</td>
+                                <td class="text-end">
+                                    @if (submission.IsBalanced)
+                                    {
+                                        <span class="text-success">@submission.FundBalance.ToString("C0")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger">@submission.FundBalance.ToString("C0")</span>
+                                    }
+                                </td>
                                 <td class="text-center">
                                     @if (submission.ErrorCount > 0)
                                     {
@@ -141,12 +149,44 @@
             {
                 <div class="text-center py-5">
                     <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
-                    <p class="text-muted mt-3">No enrollment submissions for this school year.</p>
+                    <p class="text-muted mt-3">No budget submissions for this school year.</p>
                     <a asp-action="Upload" class="btn btn-primary">
-                        <i class="bi bi-upload me-1"></i>Upload Enrollment Data
+                        <i class="bi bi-upload me-1"></i>Upload Budget Data
                     </a>
                 </div>
             }
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-info-circle me-1"></i>F-195 Budget Guidelines
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>Original budget due by August 31</li>
+                        <li>Revised budgets can be submitted any time before year-end</li>
+                        <li>Revenues must equal or exceed expenditures</li>
+                        <li>All Program/Activity/Object codes must be valid</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-link-45deg me-1"></i>Resources
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li><a href="https://ospi.k12.wa.us/safs-data-files" target="_blank">SAFS Data Files</a></li>
+                        <li><a href="#" class="text-muted">Accounting Manual (Coming Soon)</a></li>
+                        <li><a href="#" class="text-muted">Code Table Reference (Coming Soon)</a></li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
 </div>

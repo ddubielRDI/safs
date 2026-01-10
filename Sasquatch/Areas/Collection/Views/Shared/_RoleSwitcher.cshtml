@@ -1,0 +1,144 @@
+@model Sasquatch.Collection.ViewModels.RoleSwitcherViewModel
+@*
+    Role Switcher Component
+    Dropdown for switching between demo roles (District, ESD, OSPI).
+    Stores selection in session and redirects to current page.
+*@
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <span class="role-badge me-2 @GetRoleBadgeClass(Model.CurrentRole)">
+            <i class="bi @Model.CurrentRoleIcon"></i>
+        </span>
+        <span class="d-none d-md-inline">@Model.CurrentRoleDisplayName</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end role-switcher-menu">
+        <li class="dropdown-header">
+            <i class="bi bi-people-fill me-1"></i>Switch Demo Role
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        @foreach (var role in Model.AvailableRoles)
+        {
+            var isActive = role.Id == Model.CurrentRole;
+            <li>
+                <a class="dropdown-item d-flex align-items-center @(isActive ? "active" : "")"
+                   href="#"
+                   data-role="@role.Id"
+                   onclick="switchRole('@role.Id'); return false;">
+                    <span class="role-badge me-2 @GetRoleBadgeClass(role.Id)">
+                        <i class="bi @role.Icon"></i>
+                    </span>
+                    <div class="role-info">
+                        <div class="role-name">@role.DisplayName</div>
+                        <div class="role-desc small text-muted">@role.Description</div>
+                    </div>
+                    @if (isActive)
+                    {
+                        <i class="bi bi-check-lg ms-auto text-success"></i>
+                    }
+                </a>
+            </li>
+        }
+        <li><hr class="dropdown-divider"></li>
+        <li class="dropdown-item-text small">
+            <i class="bi bi-info-circle me-1"></i>
+            Role affects visible workflows
+        </li>
+    </ul>
+</li>
+
+@functions {
+    string GetRoleBadgeClass(string role) => role switch
+    {
+        "District" => "role-badge-district",
+        "ESD" => "role-badge-esd",
+        "OSPI" => "role-badge-ospi",
+        _ => "role-badge-default"
+    };
+}
+
+<style>
+    .role-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        font-size: 0.9rem;
+    }
+
+    .role-badge-district {
+        background-color: #0d6efd;
+        color: white;
+    }
+
+    .role-badge-esd {
+        background-color: #0dcaf0;
+        color: #000;
+    }
+
+    .role-badge-ospi {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .role-badge-default {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .role-switcher-menu {
+        min-width: 280px;
+    }
+
+    .role-switcher-menu .dropdown-item {
+        padding: 0.5rem 1rem;
+    }
+
+    .role-switcher-menu .dropdown-item:hover .role-desc {
+        color: rgba(255, 255, 255, 0.75) !important;
+    }
+
+    .role-switcher-menu .dropdown-item.active {
+        background-color: #e9ecef;
+        color: #212529;
+    }
+
+    .role-switcher-menu .dropdown-item.active:hover {
+        background-color: #dee2e6;
+    }
+
+    .role-info {
+        flex: 1;
+    }
+
+    .role-name {
+        font-weight: 500;
+    }
+</style>
+
+<script>
+    function switchRole(role) {
+        // POST to role switch endpoint
+        fetch('@Url.Action("SwitchRole", "Home", new { area = "Collection" })', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+            },
+            body: 'role=' + encodeURIComponent(role)
+        })
+        .then(response => {
+            if (response.ok) {
+                // Reload current page to reflect role change
+                window.location.reload();
+            } else {
+                console.error('Failed to switch role');
+            }
+        })
+        .catch(error => {
+            console.error('Error switching role:', error);
+        });
+    }
+</script>

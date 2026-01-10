@@ -9,9 +9,9 @@
 .playwright-mcp/
 
 # -----------------------------------------------------------------------------
-# Input Documents (RFP, requirements - reference materials, not code)
+# Input Documents - Now tracked in docs/inputs/
 # -----------------------------------------------------------------------------
-inputs/
+# (moved to docs/inputs/ for better organization)
 
 # -----------------------------------------------------------------------------
 # Data Files (generated/test data)

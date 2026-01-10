@@ -6,6 +6,9 @@
 }
 
 <div class="container-fluid">
+    @* Workflow Tab Navigation *@
+    @await Html.PartialAsync("_WorkflowTabs", Model.Tabs)
+
     <div class="row mb-4">
         <div class="col">
             <nav aria-label="breadcrumb">

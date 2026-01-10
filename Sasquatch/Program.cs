@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sasquatch.Core.Data;
+using Sasquatch.Collection.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +14,19 @@ builder.Services.AddControllersWithViews()
 // Configure Entity Framework with SQL Server
 builder.Services.AddDbContext<SasquatchDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Add session support for demo role switching
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.Name = ".Sasquatch.Session";
+});
+
+// Register workflow tab service
+builder.Services.AddScoped<IWorkflowTabService, WorkflowTabService>();
 
 var app = builder.Build();
 
@@ -28,6 +42,8 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.UseSession();
 
 app.UseAuthorization();
 
