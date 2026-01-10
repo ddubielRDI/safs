@@ -26,13 +26,22 @@
             </h1>
             <p class="text-muted mb-0">@Model.Submission.District?.DistrictName</p>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex align-items-center gap-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox"
+                       id="showInstructionsToggle"
+                       data-workflow="Enrollment"
+                       data-view="Details">
+                <label class="form-check-label small text-muted" for="showInstructionsToggle">
+                    <i class="bi bi-lightbulb me-1"></i>Show Instructions
+                </label>
+            </div>
             @if (Model.CanSubmit)
             {
                 <form asp-action="Submit" method="post" class="d-inline">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="submissionId" value="@Model.Submission.SubmissionId" />
-                    <button type="submit" class="btn btn-success">
+                    <button type="submit" class="btn btn-success" data-instruction="submit-approval">
                         <i class="bi bi-send me-1"></i>Submit for Approval
                     </button>
                 </form>
@@ -110,7 +119,7 @@
                                             @if (Model.CanEdit)
                                             {
                                                 <input type="number" class="form-control form-control-sm text-end editable-field"
-                                                       data-field="Headcount" value="@row.Headcount" style="width: 80px;" />
+                                                       data-field="Headcount" data-instruction="edit-headcount" value="@row.Headcount" style="width: 80px;" />
                                             }
                                             else
                                             {
@@ -200,7 +209,7 @@
                                             {
                                                 <div class="mt-2">
                                                     <button type="button" class="btn btn-sm btn-outline-secondary add-comment-btn"
-                                                            data-edit-id="@edit.EditId">
+                                                            data-edit-id="@edit.EditId" data-instruction="add-comment">
                                                         Add Comment
                                                     </button>
                                                 </div>
@@ -279,6 +288,13 @@
         </div>
     </div>
 </div>
+
+@if (ViewBag.InstructionsJson != null)
+{
+    <script>
+        window.workflowInstructions = @Html.Raw(ViewBag.InstructionsJson);
+    </script>
+}
 
 @section Scripts {
     <script>

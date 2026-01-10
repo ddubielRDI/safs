@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class BudgetController : Controller
     private readonly SasquatchDbContext _context;
     private readonly ILogger<BudgetController> _logger;
     private readonly IWorkflowTabService _tabService;
+    private readonly IInstructionService _instructionService;
 
     // For demo, we'll use Tumwater district
     private const string DemoDistrictCode = "34033";
@@ -27,11 +29,13 @@ public class BudgetController : Controller
     public BudgetController(
         SasquatchDbContext context,
         ILogger<BudgetController> logger,
-        IWorkflowTabService tabService)
+        IWorkflowTabService tabService,
+        IInstructionService instructionService)
     {
         _context = context;
         _logger = logger;
         _tabService = tabService;
+        _instructionService = instructionService;
     }
 
     /// <summary>
@@ -104,6 +108,7 @@ public class BudgetController : Controller
             SchoolYear = DemoSchoolYear
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Budget", "Index"));
         return View(viewModel);
     }
 
@@ -176,6 +181,7 @@ public class BudgetController : Controller
             ObjectCodes = GetObjectCodes()
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Budget", "Details"));
         return View(viewModel);
     }
 
@@ -194,6 +200,7 @@ public class BudgetController : Controller
             DistrictName = district?.DistrictName ?? "Tumwater School District"
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Budget", "Upload"));
         return View(viewModel);
     }
 

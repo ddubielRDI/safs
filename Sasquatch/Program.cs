@@ -28,6 +28,9 @@ builder.Services.AddSession(options =>
 // Register workflow tab service
 builder.Services.AddScoped<IWorkflowTabService, WorkflowTabService>();
 
+// Register instruction service for "Show Instructions" feature
+builder.Services.AddScoped<IInstructionService, InstructionService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

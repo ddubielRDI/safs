@@ -16,12 +16,21 @@
                 @Model.District?.DistrictName (@Model.District?.DistrictCode) - School Year @Model.SchoolYear
             </p>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex align-items-center gap-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox"
+                       id="showInstructionsToggle"
+                       data-workflow="Enrollment"
+                       data-view="Index">
+                <label class="form-check-label small text-muted" for="showInstructionsToggle">
+                    <i class="bi bi-lightbulb me-1"></i>Show Instructions
+                </label>
+            </div>
             <div class="btn-group">
-                <a asp-action="Upload" class="btn btn-primary">
+                <a asp-action="Upload" class="btn btn-primary" data-instruction="upload-file">
                     <i class="bi bi-upload me-1"></i>Upload File
                 </a>
-                <a asp-action="ManualEntry" class="btn btn-outline-primary">
+                <a asp-action="ManualEntry" class="btn btn-outline-primary" data-instruction="manual-entry">
                     <i class="bi bi-pencil-square me-1"></i>Manual Entry
                 </a>
             </div>
@@ -128,7 +137,7 @@
                                     }
                                 </td>
                                 <td class="text-end">
-                                    <a asp-action="Details" asp-route-id="@submission.SubmissionId" class="btn btn-sm btn-outline-primary">
+                                    <a asp-action="Details" asp-route-id="@submission.SubmissionId" class="btn btn-sm btn-outline-primary" data-instruction="view-submission">
                                         View
                                     </a>
                                 </td>
@@ -150,3 +159,10 @@
         </div>
     </div>
 </div>
+
+@if (ViewBag.InstructionsJson != null)
+{
+    <script>
+        window.workflowInstructions = @Html.Raw(ViewBag.InstructionsJson);
+    </script>
+}

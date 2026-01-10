@@ -24,13 +24,22 @@
             </h1>
             <p class="text-muted mb-0">@Model.Submission.District?.DistrictName</p>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex align-items-center gap-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox"
+                       id="showInstructionsToggle"
+                       data-workflow="Budget"
+                       data-view="Details">
+                <label class="form-check-label small text-muted" for="showInstructionsToggle">
+                    <i class="bi bi-lightbulb me-1"></i>Show Instructions
+                </label>
+            </div>
             @if (Model.CanSubmit)
             {
                 <form asp-action="Submit" method="post" class="d-inline">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="submissionId" value="@Model.Submission.SubmissionId" />
-                    <button type="submit" class="btn btn-success">
+                    <button type="submit" class="btn btn-success" data-instruction="submit-approval">
                         <i class="bi bi-send me-1"></i>Submit for Approval
                     </button>
                 </form>
@@ -121,7 +130,7 @@
                                             @if (Model.CanEdit)
                                             {
                                                 <input type="number" class="form-control form-control-sm text-end editable-amount"
-                                                       data-id="@row.BudgetDataId"
+                                                       data-id="@row.BudgetDataId" data-instruction="edit-amount"
                                                        value="@row.Amount"
                                                        step="0.01" />
                                             }
@@ -302,7 +311,7 @@
                                             <div class="text-muted small">@edit.ActualValue</div>
                                             @if (Model.CanEdit && edit.Severity == "Warning")
                                             {
-                                                <button class="btn btn-sm btn-outline-secondary mt-1" data-bs-toggle="modal" data-bs-target="#commentModal" data-edit-id="@edit.EditId">
+                                                <button class="btn btn-sm btn-outline-secondary mt-1" data-bs-toggle="modal" data-bs-target="#commentModal" data-edit-id="@edit.EditId" data-instruction="add-comment">
                                                     <i class="bi bi-chat me-1"></i>Add Comment
                                                 </button>
                                             }
@@ -324,6 +333,13 @@
         </div>
     </div>
 </div>
+
+@if (ViewBag.InstructionsJson != null)
+{
+    <script>
+        window.workflowInstructions = @Html.Raw(ViewBag.InstructionsJson);
+    </script>
+}
 
 @* Comment Modal *@
 <div class="modal fade" id="commentModal" tabindex="-1">

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class EnrollmentController : Controller
     private readonly SasquatchDbContext _context;
     private readonly ILogger<EnrollmentController> _logger;
     private readonly IWorkflowTabService _tabService;
+    private readonly IInstructionService _instructionService;
 
     // For demo, we'll use Tumwater district
     private const string DemoDistrictCode = "34033";
@@ -27,11 +29,13 @@ public class EnrollmentController : Controller
     public EnrollmentController(
         SasquatchDbContext context,
         ILogger<EnrollmentController> logger,
-        IWorkflowTabService tabService)
+        IWorkflowTabService tabService,
+        IInstructionService instructionService)
     {
         _context = context;
         _logger = logger;
         _tabService = tabService;
+        _instructionService = instructionService;
     }
 
     /// <summary>
@@ -89,6 +93,7 @@ public class EnrollmentController : Controller
             SchoolYear = DemoSchoolYear
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Enrollment", "Index"));
         return View(viewModel);
     }
 
@@ -151,6 +156,7 @@ public class EnrollmentController : Controller
             CanSubmit = !submission.IsLocked && submission.SubmissionStatus == "Draft"
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Enrollment", "Details"));
         return View(viewModel);
     }
 
@@ -160,6 +166,7 @@ public class EnrollmentController : Controller
     public IActionResult Upload()
     {
         ViewBag.Tabs = GetTabViewModel();
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Enrollment", "Upload"));
         return View();
     }
 
@@ -243,6 +250,7 @@ public class EnrollmentController : Controller
             CanSubmit = true
         };
 
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Enrollment", "ManualEntry"));
         return View(viewModel);
     }
 
