@@ -1,0 +1,237 @@
+@model OspiDashboardViewModel
+@{
+    ViewData["Title"] = "OSPI Dashboard";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">
+                <i class="bi bi-speedometer2 me-2"></i>OSPI Administrative Dashboard
+            </h1>
+            <p class="text-muted mb-0">School Year @Model.SchoolYear - District Submission Overview</p>
+        </div>
+        <div class="col-auto">
+            <a asp-action="Locks" class="btn btn-outline-secondary">
+                <i class="bi bi-lock me-1"></i>Lock Controls
+            </a>
+            <a asp-action="AuditLog" class="btn btn-outline-secondary">
+                <i class="bi bi-journal-text me-1"></i>Audit Log
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-bg-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-white-50">Total Districts</h6>
+                            <h2 class="card-title mb-0">@Model.TotalDistricts</h2>
+                        </div>
+                        <i class="bi bi-building opacity-25" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-dark-50">Pending</h6>
+                            <h2 class="card-title mb-0">@Model.PendingCount</h2>
+                        </div>
+                        <i class="bi bi-hourglass-split opacity-25" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-info">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-white-50">Submitted</h6>
+                            <h2 class="card-title mb-0">@Model.SubmittedCount</h2>
+                        </div>
+                        <i class="bi bi-send opacity-25" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-subtitle mb-1 text-white-50">Approved</h6>
+                            <h2 class="card-title mb-0">@Model.ApprovedCount</h2>
+                        </div>
+                        <i class="bi bi-check-circle opacity-25" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <form method="get" class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label class="col-form-label">Filter by:</label>
+                </div>
+                <div class="col-md-3">
+                    <select name="esdCode" class="form-select form-select-sm">
+                        <option value="">All ESDs</option>
+                        @foreach (var esd in Model.ESDs)
+                        {
+                            <option value="@esd.EsdCode" selected="@(Model.SelectedEsdCode == esd.EsdCode)">
+                                @esd.EsdName
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select name="month" class="form-select form-select-sm">
+                        <option value="">All Months</option>
+                        <option value="1" selected="@(Model.SelectedMonth == 1)">September</option>
+                        <option value="2" selected="@(Model.SelectedMonth == 2)">October</option>
+                        <option value="3" selected="@(Model.SelectedMonth == 3)">November</option>
+                        <option value="4" selected="@(Model.SelectedMonth == 4)">December</option>
+                        <option value="5" selected="@(Model.SelectedMonth == 5)">January</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                    <a asp-action="Index" class="btn btn-sm btn-outline-secondary">Clear</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- District Grid -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <strong>District Submission Status</strong>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>District</th>
+                            <th>ESD</th>
+                            <th class="text-center">Enrollment</th>
+                            <th class="text-center">Budget</th>
+                            <th>Last Submission</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var district in Model.DistrictStatuses)
+                        {
+                            <tr class="@(district.IsLocked ? "table-secondary" : "")">
+                                <td>
+                                    <div class="fw-semibold">@district.DistrictName</div>
+                                    <small class="text-muted">@district.DistrictCode</small>
+                                    @if (district.IsLocked)
+                                    {
+                                        <i class="bi bi-lock-fill text-warning ms-1" title="Locked"></i>
+                                    }
+                                </td>
+                                <td>
+                                    <small>@district.EsdName</small>
+                                </td>
+                                <td class="text-center">
+                                    @switch (district.EnrollmentStatus)
+                                    {
+                                        case "Not Started":
+                                            <span class="badge bg-light text-dark">Not Started</span>
+                                            break;
+                                        case "Draft":
+                                            <span class="badge bg-secondary">Draft</span>
+                                            break;
+                                        case "Submitted":
+                                            <span class="badge bg-primary">Submitted</span>
+                                            break;
+                                        case "Approved":
+                                            <span class="badge bg-success">Approved</span>
+                                            break;
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @switch (district.BudgetStatus)
+                                    {
+                                        case "Not Started":
+                                            <span class="badge bg-light text-dark">Not Started</span>
+                                            break;
+                                        case "Draft":
+                                            <span class="badge bg-secondary">Draft</span>
+                                            break;
+                                        case "Submitted":
+                                            <span class="badge bg-primary">Submitted</span>
+                                            break;
+                                        case "Approved":
+                                            <span class="badge bg-success">Approved</span>
+                                            break;
+                                    }
+                                </td>
+                                <td>
+                                    @if (district.LastSubmission.HasValue)
+                                    {
+                                        @district.LastSubmission.Value.ToString("MM/dd/yyyy")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <a asp-action="DistrictDetail" asp-route-districtCode="@district.DistrictCode"
+                                           class="btn btn-outline-primary">View</a>
+                                        @if (district.EnrollmentStatus == "Submitted")
+                                        {
+                                            <button type="button" class="btn btn-success approve-btn"
+                                                    data-district="@district.DistrictCode"
+                                                    data-name="@district.DistrictName">
+                                                Approve
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.querySelectorAll('.approve-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const districtCode = this.dataset.district;
+                const districtName = this.dataset.name;
+                if (confirm(`Approve enrollment submission for ${districtName}?`)) {
+                    // In production, this would submit the approval
+                    alert('Approval functionality - demo placeholder');
+                }
+            });
+        });
+    </script>
+}

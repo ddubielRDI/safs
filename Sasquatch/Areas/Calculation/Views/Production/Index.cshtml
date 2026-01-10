@@ -1,0 +1,54 @@
+@{
+    ViewData["Title"] = "Production Calculations";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">
+                <i class="bi bi-gear me-2"></i>Production Apportionment
+            </h1>
+            <p class="text-muted">Live calculation environment - School Year 2024-25</p>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Section 2: Data Calculation</strong> - This section is a placeholder.
+        The production apportionment calculation engine will be implemented here.
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <strong>Monthly Calculation Status</strong>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Run and monitor apportionment calculations.</p>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><i class="bi bi-circle text-muted me-2"></i>Load approved enrollment data</li>
+                        <li class="mb-2"><i class="bi bi-circle text-muted me-2"></i>Apply state constants</li>
+                        <li class="mb-2"><i class="bi bi-circle text-muted me-2"></i>Calculate apportionment</li>
+                        <li class="mb-2"><i class="bi bi-circle text-muted me-2"></i>Apply OSPI adjustments</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Generate reports</li>
+                    </ul>
+                    <button class="btn btn-primary" disabled>
+                        <i class="bi bi-play-circle me-1"></i>Run Calculation
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <strong>Recent Runs</strong>
+                </div>
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-clock-history text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-3">No calculation runs yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

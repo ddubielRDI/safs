@@ -1,0 +1,142 @@
+@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="container">
+    <div class="row mb-5">
+        <div class="col-lg-8 mx-auto text-center">
+            <h1 class="display-5 fw-bold">
+                <i class="bi bi-bank text-primary me-2"></i>Sasquatch
+            </h1>
+            <p class="lead text-muted">
+                School Apportionment in Washington: Query, Audit, Tracking, Calculation, and Handling
+            </p>
+            <p class="text-muted">
+                Washington State OSPI - RFP Demo Application
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <!-- Data Collection -->
+        <div class="col-md-4">
+            <div class="card h-100 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-collection me-2"></i>
+                    <strong>Section 1: Data Collection</strong>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Electronic interfaces for districts to submit enrollment and budget data with validation and correction workflows.</p>
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="bi bi-check-circle text-success me-2"></i>File upload interface</li>
+                        <li><i class="bi bi-check-circle text-success me-2"></i>Manual data entry</li>
+                        <li><i class="bi bi-check-circle text-success me-2"></i>Validation rules engine</li>
+                        <li><i class="bi bi-check-circle text-success me-2"></i>OSPI admin dashboard</li>
+                        <li><i class="bi bi-check-circle text-success me-2"></i>Data lock controls</li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-grid gap-2">
+                        <a asp-area="Collection" asp-controller="Enrollment" asp-action="Index" class="btn btn-primary">
+                            <i class="bi bi-people me-1"></i>Enrollment (P-223)
+                        </a>
+                        <a href="#" class="btn btn-outline-primary">
+                            <i class="bi bi-currency-dollar me-1"></i>Budget (F-195)
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Calculation -->
+        <div class="col-md-4">
+            <div class="card h-100 border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <i class="bi bi-calculator me-2"></i>
+                    <strong>Section 2: Data Calculation</strong>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Apportionment calculation engine with Production and Sandbox environments for what-if scenarios.</p>
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="bi bi-circle text-muted me-2"></i>Production environment</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>OSPI adjustments</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Sandbox scenarios</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Scenario comparison</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Audit trail</li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-grid gap-2">
+                        <a href="#" class="btn btn-warning">
+                            <i class="bi bi-gear me-1"></i>Production
+                        </a>
+                        <a href="#" class="btn btn-outline-warning">
+                            <i class="bi bi-box me-1"></i>Sandbox
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Reporting -->
+        <div class="col-md-4">
+            <div class="card h-100 border-success">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-file-earmark-text me-2"></i>
+                    <strong>Section 3: Data Reporting</strong>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">Report generation with monthly enrollment, annual budget, financial statements, and API integration.</p>
+                    <ul class="list-unstyled mb-0">
+                        <li><i class="bi bi-circle text-muted me-2"></i>Monthly enrollment (P-223)</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Annual budget (F-195)</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Financial statement (F-196)</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>Excel export</li>
+                        <li><i class="bi bi-circle text-muted me-2"></i>API integration</li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <div class="d-grid gap-2">
+                        <a href="#" class="btn btn-success">
+                            <i class="bi bi-file-earmark-bar-graph me-1"></i>Reports
+                        </a>
+                        <a href="#" class="btn btn-outline-success">
+                            <i class="bi bi-braces me-1"></i>API Docs
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Demo Info -->
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-info-circle me-2"></i>Demo Configuration
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <dl class="mb-0">
+                                <dt>District</dt>
+                                <dd>Tumwater School District (34033)</dd>
+                                <dt>School Year</dt>
+                                <dd>2024-25</dd>
+                            </dl>
+                        </div>
+                        <div class="col-md-6">
+                            <dl class="mb-0">
+                                <dt>Current User</dt>
+                                <dd>tumwater.admin (District Role)</dd>
+                                <dt>ESD</dt>
+                                <dd>ESD 113 - Capital Region</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

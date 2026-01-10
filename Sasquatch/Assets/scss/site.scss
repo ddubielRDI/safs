@@ -1,0 +1,35 @@
+// =============================================================================
+// SAFS Main Stylesheet
+// =============================================================================
+
+@use 'variables' as *;
+
+// -----------------------------------------------------------------------------
+// Base Styles
+// -----------------------------------------------------------------------------
+html {
+  font-size: $font-size-base;
+  position: relative;
+  min-height: 100%;
+}
+
+@media (min-width: $breakpoint-md) {
+  html {
+    font-size: $font-size-md;
+  }
+}
+
+body {
+  margin-bottom: $body-margin-bottom;
+}
+
+// -----------------------------------------------------------------------------
+// Focus States (Accessibility)
+// -----------------------------------------------------------------------------
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-check-input:focus {
+  box-shadow: 0 0 0 $focus-ring-width $white, 0 0 0 $focus-ring-spread $primary-color;
+}

@@ -1,0 +1,149 @@
+@model EnrollmentDashboardViewModel
+@{
+    ViewData["Title"] = "Enrollment Dashboard";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">
+                <i class="bi bi-people-fill me-2"></i>Enrollment Submissions (P-223)
+            </h1>
+            <p class="text-muted mb-0">
+                @Model.District?.DistrictName (@Model.District?.DistrictCode) - School Year @Model.SchoolYear
+            </p>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <a asp-action="Upload" class="btn btn-primary">
+                    <i class="bi bi-upload me-1"></i>Upload File
+                </a>
+                <a asp-action="ManualEntry" class="btn btn-outline-primary">
+                    <i class="bi bi-pencil-square me-1"></i>Manual Entry
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-header bg-light">
+            <strong>Monthly Submissions</strong>
+        </div>
+        <div class="card-body p-0">
+            @if (Model.Submissions.Any())
+            {
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Month</th>
+                            <th>Status</th>
+                            <th class="text-end">Headcount</th>
+                            <th class="text-end">FTE</th>
+                            <th class="text-center">Errors</th>
+                            <th class="text-center">Warnings</th>
+                            <th>Submitted</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var submission in Model.Submissions)
+                        {
+                            <tr class="@(submission.IsLocked ? "table-secondary" : "")">
+                                <td>
+                                    <strong>@submission.MonthName</strong>
+                                    @if (submission.IsLocked)
+                                    {
+                                        <i class="bi bi-lock-fill text-warning ms-1" title="Locked"></i>
+                                    }
+                                </td>
+                                <td>
+                                    @switch (submission.SubmissionStatus)
+                                    {
+                                        case "Draft":
+                                            <span class="badge bg-secondary">Draft</span>
+                                            break;
+                                        case "Submitted":
+                                            <span class="badge bg-primary">Submitted</span>
+                                            break;
+                                        case "Approved":
+                                            <span class="badge bg-success">Approved</span>
+                                            break;
+                                        case "Locked":
+                                            <span class="badge bg-warning text-dark">Locked</span>
+                                            break;
+                                        default:
+                                            <span class="badge bg-light text-dark">@submission.SubmissionStatus</span>
+                                            break;
+                                    }
+                                </td>
+                                <td class="text-end">@submission.TotalHeadcount.ToString("N0")</td>
+                                <td class="text-end">@submission.TotalFTE.ToString("N2")</td>
+                                <td class="text-center">
+                                    @if (submission.ErrorCount > 0)
+                                    {
+                                        <span class="badge bg-danger">@submission.ErrorCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (submission.WarningCount > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark">@submission.WarningCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (submission.SubmittedDate.HasValue)
+                                    {
+                                        @submission.SubmittedDate.Value.ToString("MM/dd/yyyy")
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <a asp-action="Details" asp-route-id="@submission.SubmissionId" class="btn btn-sm btn-outline-primary">
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-3">No enrollment submissions for this school year.</p>
+                    <a asp-action="Upload" class="btn btn-primary">
+                        <i class="bi bi-upload me-1"></i>Upload Enrollment Data
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+</div>

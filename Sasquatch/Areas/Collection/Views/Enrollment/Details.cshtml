@@ -1,0 +1,354 @@
+@model EnrollmentSubmissionViewModel
+@{
+    ViewData["Title"] = "Enrollment Details";
+    var monthNames = new[] { "", "September", "October", "November", "December", "January", "February", "March", "April", "May", "June", "July", "August" };
+    var monthName = monthNames[Model.Submission.Month];
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Enrollment</a></li>
+                    <li class="breadcrumb-item active">@monthName @Model.Submission.SchoolYear</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                @monthName Enrollment
+                @if (Model.Submission.IsLocked)
+                {
+                    <i class="bi bi-lock-fill text-warning ms-2" title="Locked"></i>
+                }
+            </h1>
+            <p class="text-muted mb-0">@Model.Submission.District?.DistrictName</p>
+        </div>
+        <div class="col-auto">
+            @if (Model.CanSubmit)
+            {
+                <form asp-action="Submit" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="submissionId" value="@Model.Submission.SubmissionId" />
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-send me-1"></i>Submit for Approval
+                    </button>
+                </form>
+            }
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Main Data Grid -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong>Enrollment Data</strong>
+                    <span class="badge bg-primary">@Model.DataRows.Count records</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="enrollmentGrid">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>School</th>
+                                    <th>Grade</th>
+                                    <th>Program</th>
+                                    <th class="text-end">Headcount</th>
+                                    <th class="text-end">FTE</th>
+                                    <th class="text-end">Prior HC</th>
+                                    <th class="text-end">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.DataRows)
+                                {
+                                    var rowClass = row.HasError ? "table-danger" : (row.HasWarning || (row.HeadcountVariancePct.HasValue && Math.Abs(row.HeadcountVariancePct.Value) > 10) ? "table-warning" : "");
+                                    <tr class="@rowClass" data-id="@row.EnrollmentId">
+                                        <td>
+                                            <small class="text-muted">@row.SchoolCode</small>
+                                            @row.SchoolName
+                                        </td>
+                                        <td>@row.GradeLevel</td>
+                                        <td>
+                                            @if (row.ProgramType == "BasicEd")
+                                            {
+                                                <span class="badge bg-secondary">Basic Ed</span>
+                                            }
+                                            else if (row.ProgramType == "RunningStart")
+                                            {
+                                                <span class="badge bg-info">Running Start</span>
+                                            }
+                                            else if (row.ProgramType == "SpecialEd")
+                                            {
+                                                <span class="badge bg-purple">Special Ed</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-light text-dark">@row.ProgramType</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (Model.CanEdit)
+                                            {
+                                                <input type="number" class="form-control form-control-sm text-end editable-field"
+                                                       data-field="Headcount" value="@row.Headcount" style="width: 80px;" />
+                                            }
+                                            else
+                                            {
+                                                @row.Headcount.ToString("N0")
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (Model.CanEdit)
+                                            {
+                                                <input type="number" step="0.01" class="form-control form-control-sm text-end editable-field"
+                                                       data-field="FTE" value="@row.FTE" style="width: 80px;" />
+                                            }
+                                            else
+                                            {
+                                                @row.FTE.ToString("N2")
+                                            }
+                                        </td>
+                                        <td class="text-end text-muted">
+                                            @(row.PriorMonthHeadcount?.ToString("N0") ?? "-")
+                                        </td>
+                                        <td class="text-end">
+                                            @if (row.HeadcountVariancePct.HasValue)
+                                            {
+                                                var pct = row.HeadcountVariancePct.Value;
+                                                var colorClass = Math.Abs(pct) > 10 ? "text-danger fw-bold" : (pct > 0 ? "text-success" : "text-danger");
+                                                <span class="@colorClass">
+                                                    @(pct > 0 ? "+" : "")@pct.ToString("F1")%
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td colspan="3">Total</td>
+                                    <td class="text-end">@Model.DataRows.Sum(r => r.Headcount).ToString("N0")</td>
+                                    <td class="text-end">@Model.DataRows.Sum(r => r.FTE).ToString("N2")</td>
+                                    <td class="text-end">@Model.DataRows.Sum(r => r.PriorMonthHeadcount ?? 0).ToString("N0")</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edits/Warnings Panel -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <strong>Validation Results</strong>
+                </div>
+                <div class="card-body p-0">
+                    @if (Model.Edits.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var edit in Model.Edits)
+                            {
+                                var iconClass = edit.Severity == "Error" ? "bi-x-circle-fill text-danger" : "bi-exclamation-triangle-fill text-warning";
+                                <div class="list-group-item @(edit.IsResolved ? "bg-light" : "")">
+                                    <div class="d-flex align-items-start">
+                                        <i class="bi @iconClass me-2 mt-1"></i>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-semibold small">@edit.EditRuleId</div>
+                                            <div class="small">@edit.Message</div>
+                                            @if (!string.IsNullOrEmpty(edit.FieldValue))
+                                            {
+                                                <div class="text-muted small">@edit.FieldValue</div>
+                                            }
+                                            @if (edit.IsResolved)
+                                            {
+                                                <div class="text-success small mt-1">
+                                                    <i class="bi bi-check-circle me-1"></i>Resolved
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(edit.DistrictComment))
+                                                {
+                                                    <div class="fst-italic small text-muted">@edit.DistrictComment</div>
+                                                }
+                                            }
+                                            else if (edit.Severity == "Warning")
+                                            {
+                                                <div class="mt-2">
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary add-comment-btn"
+                                                            data-edit-id="@edit.EditId">
+                                                        Add Comment
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-4">
+                            <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                            <p class="text-muted mt-2 mb-0">No validation issues</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Status Card -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <strong>Submission Status</strong>
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Status</dt>
+                        <dd>
+                            @switch (Model.Submission.SubmissionStatus)
+                            {
+                                case "Draft":
+                                    <span class="badge bg-secondary">Draft</span>
+                                    break;
+                                case "Submitted":
+                                    <span class="badge bg-primary">Submitted</span>
+                                    break;
+                                case "Approved":
+                                    <span class="badge bg-success">Approved</span>
+                                    break;
+                            }
+                        </dd>
+                        @if (Model.Submission.SubmittedDate.HasValue)
+                        {
+                            <dt>Submitted</dt>
+                            <dd>@Model.Submission.SubmittedDate.Value.ToString("g") by @Model.Submission.SubmittedBy</dd>
+                        }
+                        @if (Model.Submission.ApprovedDate.HasValue)
+                        {
+                            <dt>Approved</dt>
+                            <dd>@Model.Submission.ApprovedDate.Value.ToString("g") by @Model.Submission.ApprovedBy</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Comment Modal -->
+<div class="modal fade" id="commentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Explanation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Provide an explanation for this variance to resolve the warning.</p>
+                <textarea id="commentText" class="form-control" rows="4" placeholder="Enter explanation..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveCommentBtn">Save & Resolve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let currentEditId = null;
+
+        // Add comment button handler
+        document.querySelectorAll('.add-comment-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                currentEditId = this.dataset.editId;
+                document.getElementById('commentText').value = '';
+                new bootstrap.Modal(document.getElementById('commentModal')).show();
+            });
+        });
+
+        // Save comment
+        document.getElementById('saveCommentBtn').addEventListener('click', async function () {
+            const comment = document.getElementById('commentText').value;
+            if (!comment.trim()) {
+                alert('Please enter an explanation.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('editId', currentEditId);
+            formData.append('comment', comment);
+            formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]').value);
+
+            const response = await fetch('@Url.Action("AddComment")', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + result.message);
+            }
+        });
+
+        @if (Model.CanEdit)
+        {
+            <text>
+        // Editable field handler
+        document.querySelectorAll('.editable-field').forEach(input => {
+            input.addEventListener('change', async function () {
+                const row = this.closest('tr');
+                const enrollmentId = row.dataset.id;
+                const field = this.dataset.field;
+                const value = this.value;
+
+                const data = {
+                    enrollmentId: parseInt(enrollmentId),
+                    headcount: parseInt(row.querySelector('[data-field="Headcount"]').value),
+                    fte: parseFloat(row.querySelector('[data-field="FTE"]').value)
+                };
+
+                const response = await fetch('@Url.Action("SaveData")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    alert('Error saving: ' + result.message);
+                }
+            });
+        });
+            </text>
+        }
+    </script>
+}

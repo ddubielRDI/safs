@@ -1,0 +1,112 @@
+@{
+    ViewData["Title"] = "Reports";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">
+                <i class="bi bi-file-earmark-bar-graph me-2"></i>Reports
+            </h1>
+            <p class="text-muted">Generate and export apportionment reports</p>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Section 3: Data Reporting</strong> - This section is a placeholder.
+        Report generation and API integration will be implemented here.
+    </div>
+
+    <div class="row g-4">
+        <!-- Enrollment Reports -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-people me-2"></i>Enrollment Reports
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-3">
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Monthly P-223 Summary</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Year-over-Year Comparison</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">District Enrollment Trends</a></li>
+                        <li><a href="#" class="text-decoration-none">Grade Level Distribution</a></li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <a asp-action="Enrollment" class="btn btn-outline-primary btn-sm">View All</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Budget Reports -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-warning text-dark">
+                    <i class="bi bi-currency-dollar me-2"></i>Budget Reports
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-3">
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Annual F-195 Summary</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Revenue by Source</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Expenditure by Program</a></li>
+                        <li><a href="#" class="text-decoration-none">Fund Balance Trends</a></li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <a asp-action="Budget" class="btn btn-outline-warning btn-sm">View All</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Apportionment Reports -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-calculator me-2"></i>Apportionment Reports
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-3">
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Monthly Apportionment</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">Annual Summary (F-196)</a></li>
+                        <li class="mb-2"><a href="#" class="text-decoration-none">District Allocation Details</a></li>
+                        <li><a href="#" class="text-decoration-none">State Totals</a></li>
+                    </ul>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <a asp-action="FinancialStatement" class="btn btn-outline-success btn-sm">View All</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export & API Section -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-filetype-xlsx me-2"></i>Export to Excel
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Export any report to Excel format for further analysis.</p>
+                    <button class="btn btn-outline-primary" disabled>
+                        <i class="bi bi-download me-1"></i>Export Report
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-braces me-2"></i>API Integration
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Access data programmatically via REST API.</p>
+                    <code class="d-block mb-2">/api/enrollment/{districtCode}</code>
+                    <code class="d-block mb-2">/api/apportionment/{districtCode}</code>
+                    <code class="d-block">/api/districts</code>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

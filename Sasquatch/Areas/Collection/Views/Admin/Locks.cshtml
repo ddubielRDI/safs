@@ -1,0 +1,202 @@
+@{
+    ViewData["Title"] = "Lock Controls";
+    var activeLocks = ViewBag.ActiveLocks as List<DataLock> ?? new List<DataLock>();
+    var esds = ViewBag.ESDs as List<Esd> ?? new List<Esd>();
+    var districts = ViewBag.Districts as List<District> ?? new List<District>();
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Dashboard</a></li>
+                    <li class="breadcrumb-item active">Lock Controls</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                <i class="bi bi-lock me-2"></i>Data Lock Controls
+            </h1>
+            <p class="text-muted">Manage submission locks for districts, ESDs, or statewide.</p>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <div class="row">
+        <!-- Create Lock -->
+        <div class="col-lg-5">
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <strong>Create New Lock</strong>
+                </div>
+                <div class="card-body">
+                    <form asp-action="CreateLock" method="post">
+                        @Html.AntiForgeryToken()
+
+                        <div class="mb-3">
+                            <label class="form-label">Lock Scope</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="lockScope" id="scopeAll" value="All" checked>
+                                <label class="btn btn-outline-primary" for="scopeAll">All Districts</label>
+
+                                <input type="radio" class="btn-check" name="lockScope" id="scopeEsd" value="ESD">
+                                <label class="btn btn-outline-primary" for="scopeEsd">By ESD</label>
+
+                                <input type="radio" class="btn-check" name="lockScope" id="scopeDistrict" value="District">
+                                <label class="btn btn-outline-primary" for="scopeDistrict">Single District</label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3 d-none" id="esdSelect">
+                            <label class="form-label">Select ESD</label>
+                            <select name="scopeValue" class="form-select" id="esdDropdown">
+                                <option value="">Choose ESD...</option>
+                                @foreach (var esd in esds)
+                                {
+                                    <option value="@esd.EsdCode">@esd.EsdName</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3 d-none" id="districtSelect">
+                            <label class="form-label">Select District</label>
+                            <select name="scopeValue" class="form-select" id="districtDropdown">
+                                <option value="">Choose District...</option>
+                                @foreach (var district in districts)
+                                {
+                                    <option value="@district.DistrictCode">@district.DistrictName (@district.DistrictCode)</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Lock Type</label>
+                            <select name="lockType" class="form-select" required>
+                                <option value="Monthly">Monthly Calculation Lock</option>
+                                <option value="Annual">Annual Year-End Lock</option>
+                                <option value="Audit">Audit Lock</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Reason (Optional)</label>
+                            <textarea name="reason" class="form-control" rows="2" placeholder="Enter reason for lock..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-danger w-100">
+                            <i class="bi bi-lock-fill me-1"></i>Create Lock
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Locks -->
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong>Active Locks</strong>
+                    <span class="badge bg-primary">@activeLocks.Count</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (activeLocks.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Scope</th>
+                                        <th>Type</th>
+                                        <th>Locked By</th>
+                                        <th>Date</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var lockItem in activeLocks)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @if (lockItem.LockScope == "All")
+                                                {
+                                                    <span class="badge bg-danger">All Districts</span>
+                                                }
+                                                else if (lockItem.LockScope == "ESD")
+                                                {
+                                                    <span class="badge bg-warning text-dark">ESD @lockItem.ScopeValue</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">District @lockItem.ScopeValue</span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(lockItem.Reason))
+                                                {
+                                                    <br />
+                                                    <small class="text-muted">@lockItem.Reason</small>
+                                                }
+                                            </td>
+                                            <td>@lockItem.LockType</td>
+                                            <td>@lockItem.LockedBy</td>
+                                            <td>@lockItem.LockedDate.ToString("MM/dd/yyyy HH:mm")</td>
+                                            <td class="text-end">
+                                                <form asp-action="RemoveLock" method="post" class="d-inline">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="lockId" value="@lockItem.LockId" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-success"
+                                                            onclick="return confirm('Remove this lock?')">
+                                                        <i class="bi bi-unlock"></i> Unlock
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5">
+                            <i class="bi bi-unlock text-success" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-3 mb-0">No active locks</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const scopeRadios = document.querySelectorAll('input[name="lockScope"]');
+        const esdSelect = document.getElementById('esdSelect');
+        const districtSelect = document.getElementById('districtSelect');
+        const esdDropdown = document.getElementById('esdDropdown');
+        const districtDropdown = document.getElementById('districtDropdown');
+
+        scopeRadios.forEach(radio => {
+            radio.addEventListener('change', function () {
+                esdSelect.classList.add('d-none');
+                districtSelect.classList.add('d-none');
+                esdDropdown.removeAttribute('required');
+                districtDropdown.removeAttribute('required');
+
+                if (this.value === 'ESD') {
+                    esdSelect.classList.remove('d-none');
+                    esdDropdown.setAttribute('required', 'required');
+                } else if (this.value === 'District') {
+                    districtSelect.classList.remove('d-none');
+                    districtDropdown.setAttribute('required', 'required');
+                }
+            });
+        });
+    </script>
+}
