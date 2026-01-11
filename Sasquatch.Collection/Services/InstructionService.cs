@@ -49,9 +49,8 @@ public class InstructionService : IInstructionService
         {
             ["Index"] = new List<InstructionStep>
             {
-                new() { ElementId = "upload-file", StepNumber = 1, Text = "Upload enrollment data from a CSV file" },
-                new() { ElementId = "manual-entry", StepNumber = 2, Text = "Or enter data manually by school" },
-                new() { ElementId = "view-submission", StepNumber = 3, Text = "View or edit a submission" }
+                new() { ElementId = "upload-file", StepNumber = 1, Text = "Upload enrollment data from a CSV file OR enter data manually by school" },
+                new() { ElementId = "view-submission", StepNumber = 2, Text = "View or edit a submission" }
             },
             ["Details"] = new List<InstructionStep>
             {
