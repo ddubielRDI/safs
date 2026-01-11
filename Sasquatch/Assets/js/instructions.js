@@ -3,50 +3,12 @@
 // =============================================================================
 // Displays numbered instruction pills above elements with data-instruction attr
 // when the "Show Instructions" checkbox is enabled.
+//
+// Instructions are provided by the server via window.workflowInstructions
+// (injected from InstructionService.cs through ViewBag.InstructionsJson)
 
 (function() {
     'use strict';
-
-    // Instruction definitions by workflow and view
-    const instructions = {
-        'Enrollment': {
-            'Index': [
-                { elementId: 'upload-file', stepNumber: 1, text: 'Upload enrollment data from a CSV file' },
-                { elementId: 'manual-entry', stepNumber: 2, text: 'Or enter data manually by school' },
-                { elementId: 'view-submission', stepNumber: 3, text: 'View or edit a submission' }
-            ],
-            'Details': [
-                { elementId: 'edit-headcount', stepNumber: 1, text: 'Edit headcount or FTE values directly' },
-                { elementId: 'add-comment', stepNumber: 2, text: 'Add explanation to resolve warnings' },
-                { elementId: 'submit-approval', stepNumber: 3, text: 'Submit when all errors are resolved' }
-            ],
-            'Upload': [
-                { elementId: 'file-drop', stepNumber: 1, text: 'Click or drag your enrollment file here' },
-                { elementId: 'upload-validate', stepNumber: 2, text: 'Click to validate and process' }
-            ],
-            'ManualEntry': [
-                { elementId: 'school-select', stepNumber: 1, text: 'Select a school to edit' },
-                { elementId: 'edit-fields', stepNumber: 2, text: 'Enter enrollment counts' },
-                { elementId: 'save-data', stepNumber: 3, text: 'Save your changes' }
-            ]
-        },
-        'Budget': {
-            'Index': [
-                { elementId: 'upload-budget', stepNumber: 1, text: 'Upload a budget file (CSV or Excel)' },
-                { elementId: 'view-submission', stepNumber: 2, text: 'View or edit a submission' }
-            ],
-            'Details': [
-                { elementId: 'edit-amount', stepNumber: 1, text: 'Edit revenue or expenditure amounts' },
-                { elementId: 'add-comment', stepNumber: 2, text: 'Add explanation for variances' },
-                { elementId: 'submit-approval', stepNumber: 3, text: 'Submit when budget is balanced' }
-            ],
-            'Upload': [
-                { elementId: 'budget-type', stepNumber: 1, text: 'Select Original, Revised, or Final' },
-                { elementId: 'file-drop', stepNumber: 2, text: 'Click or drag your budget file here' },
-                { elementId: 'upload-validate', stepNumber: 3, text: 'Click to validate and upload' }
-            ]
-        }
-    };
 
     // Create instruction pill element
     function createPill(step) {
@@ -150,7 +112,8 @@
     function showInstructions(workflow, view) {
         addStyles();
 
-        const viewInstructions = instructions[workflow]?.[view] || [];
+        // Use server-provided instructions (single source of truth)
+        const viewInstructions = window.workflowInstructions || [];
 
         viewInstructions.forEach(step => {
             // Find first matching element (there may be multiple with same data-instruction)
