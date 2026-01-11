@@ -23,9 +23,13 @@ public class BudgetController : Controller
     private readonly IInstructionService _instructionService;
     private readonly IBudgetFileParser _fileParser;
 
-    // For demo, we'll use Tumwater district
-    private const string DemoDistrictCode = "34033";
+    // For demo, school year is fixed; district comes from session
     private const string DemoSchoolYear = "2024-25";
+
+    /// <summary>
+    /// Get the current demo district from session
+    /// </summary>
+    private string GetCurrentDistrict() => _tabService.GetCurrentDistrict(HttpContext);
 
     public BudgetController(
         SasquatchDbContext context,
@@ -63,7 +67,7 @@ public class BudgetController : Controller
     {
         var district = await _context.Districts
             .Include(d => d.Esd)
-            .FirstOrDefaultAsync(d => d.DistrictCode == DemoDistrictCode);
+            .FirstOrDefaultAsync(d => d.DistrictCode == GetCurrentDistrict());
 
         if (district == null)
         {
@@ -122,7 +126,7 @@ public class BudgetController : Controller
     {
         var district = await _context.Districts
             .Include(d => d.Esd)
-            .FirstOrDefaultAsync(d => d.DistrictCode == DemoDistrictCode);
+            .FirstOrDefaultAsync(d => d.DistrictCode == GetCurrentDistrict());
 
         // Create demo budget data rows
         var dataRows = GetDemoBudgetData();
@@ -162,7 +166,7 @@ public class BudgetController : Controller
         var submission = new BudgetSubmission
         {
             SubmissionId = id,
-            DistrictCode = DemoDistrictCode,
+            DistrictCode = GetCurrentDistrict(),
             FiscalYear = DemoSchoolYear,
             FormType = id == 1 ? "Original" : "Revised",
             SubmissionStatus = id == 1 ? "Approved" : "Draft",
@@ -194,7 +198,7 @@ public class BudgetController : Controller
     public async Task<IActionResult> Upload()
     {
         var district = await _context.Districts
-            .FirstOrDefaultAsync(d => d.DistrictCode == DemoDistrictCode);
+            .FirstOrDefaultAsync(d => d.DistrictCode == GetCurrentDistrict());
 
         var viewModel = new BudgetUploadViewModel
         {
@@ -232,7 +236,7 @@ public class BudgetController : Controller
             // Create new submission record
             var submission = new BudgetSubmission
             {
-                DistrictCode = DemoDistrictCode,
+                DistrictCode = GetCurrentDistrict(),
                 FiscalYear = DemoSchoolYear,
                 FormType = string.IsNullOrEmpty(budgetType) ? "Original" : budgetType,
                 SubmissionStatus = "Draft",
@@ -334,6 +338,42 @@ public class BudgetController : Controller
     {
         // For demo, just return success
         return Json(new { success = true });
+    }
+
+    /// <summary>
+    /// Delete a budget submission and all associated data
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(int submissionId)
+    {
+        var submission = await _context.BudgetSubmissions
+            .FirstOrDefaultAsync(s => s.SubmissionId == submissionId);
+
+        if (submission == null)
+        {
+            return NotFound();
+        }
+
+        if (submission.IsLocked || submission.SubmissionStatus == "Approved")
+        {
+            TempData["Error"] = "Cannot delete locked or approved submissions.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Cascade delete: edits, data, then submission
+        var edits = _context.BudgetEdits.Where(e => e.SubmissionId == submissionId);
+        var data = _context.BudgetData.Where(d => d.SubmissionId == submissionId);
+
+        _context.BudgetEdits.RemoveRange(edits);
+        _context.BudgetData.RemoveRange(data);
+        _context.BudgetSubmissions.Remove(submission);
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Budget submission {SubmissionId} deleted", submissionId);
+        TempData["Success"] = "Submission deleted successfully.";
+        return RedirectToAction(nameof(Index));
     }
 
     #region Demo Data Helpers

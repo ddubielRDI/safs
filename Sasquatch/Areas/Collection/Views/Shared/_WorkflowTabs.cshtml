@@ -3,17 +3,30 @@
     Workflow Tab Navigation Component
     Displays horizontal tabs for each workflow based on user role.
     Active tab is highlighted based on current controller.
+    Includes shared "Show Instructions" toggle for all workflow views.
 *@
 
 <div class="workflow-tabs-container mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="d-flex align-items-center">
-            <span class="text-muted small me-2">Data Collection Workflows:</span>
+            <span class="workflow-section-label me-2">Data Collection Workflows</span>
         </div>
-        <div class="role-indicator">
-            <span class="badge @GetRoleBadgeClass(Model.UserRole)">
-                <i class="bi @GetRoleIcon(Model.UserRole) me-1"></i>@GetRoleDisplayName(Model.UserRole)
-            </span>
+        <div class="d-flex align-items-center gap-3">
+            @* Show Instructions Toggle - shared across all workflow views *@
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox"
+                       id="showInstructionsToggle"
+                       data-workflow="@GetCurrentWorkflow()"
+                       data-view="@GetCurrentView()">
+                <label class="form-check-label small" for="showInstructionsToggle">
+                    <i class="bi bi-lightbulb me-1"></i>Show Instructions
+                </label>
+            </div>
+            <div class="role-indicator">
+                <span class="badge @GetRoleBadgeClass(Model.UserRole)">
+                    <i class="bi @GetRoleIcon(Model.UserRole) me-1"></i>@GetRoleDisplayName(Model.UserRole)
+                </span>
+            </div>
         </div>
     </div>
 
@@ -96,15 +109,56 @@
         "OSPI" => "OSPI Admin",
         _ => role
     };
+
+    /// <summary>
+    /// Get the current workflow name from the active tab or route data
+    /// </summary>
+    string GetCurrentWorkflow()
+    {
+        // Try to get from the active tab first
+        var activeTab = Model.VisibleTabs.FirstOrDefault(t => Model.IsActive(t.Id));
+        if (activeTab != null)
+        {
+            return activeTab.Controller;
+        }
+        // Fall back to route data
+        return ViewContext.RouteData.Values["controller"]?.ToString() ?? "Unknown";
+    }
+
+    /// <summary>
+    /// Get the current view name from route data
+    /// </summary>
+    string GetCurrentView()
+    {
+        return ViewContext.RouteData.Values["action"]?.ToString() ?? "Index";
+    }
 }
 
 <style>
     .workflow-tabs-container {
-        background: linear-gradient(to bottom, #f8f9fa, #fff);
-        padding: 1rem 1rem 0 1rem;
-        border-radius: 0.5rem 0.5rem 0 0;
-        border: 1px solid #dee2e6;
+        background: linear-gradient(135deg, var(--primary-light, #e8f4ff) 0%, var(--bg-elevated, #f8f9fa) 100%);
+        padding: 1rem 1.25rem 0 1.25rem;
+        border-radius: 0.75rem 0.75rem 0 0;
+        border: 2px solid var(--primary, #0d6efd);
         border-bottom: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .workflow-section-label {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary, #212529);
+        letter-spacing: 0.02em;
+    }
+
+    /* Toggle styling within workflow container */
+    .workflow-tabs-container .form-check-label {
+        color: var(--text-primary, #212529);
+        font-weight: 500;
+    }
+
+    .workflow-tabs-container #showInstructionsToggle:checked + label {
+        color: var(--color-success, #198754);
     }
 
     .nav-tabs-workflow {

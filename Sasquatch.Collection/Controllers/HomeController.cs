@@ -43,4 +43,32 @@ public class HomeController : Controller
     {
         return RedirectToAction("Index", "Enrollment", new { area = "Collection" });
     }
+
+    /// <summary>
+    /// Switch the demo district
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult SwitchDistrict(string districtCode)
+    {
+        _tabService.SetCurrentDistrict(HttpContext, districtCode);
+
+        // Redirect back to the referrer or default to Enrollment
+        var referer = Request.Headers["Referer"].ToString();
+        if (!string.IsNullOrEmpty(referer))
+        {
+            return Redirect(referer);
+        }
+
+        return RedirectToAction("Index", "Enrollment", new { area = "Collection" });
+    }
+
+    /// <summary>
+    /// GET endpoint for district switch (fallback)
+    /// </summary>
+    [HttpGet]
+    public IActionResult SwitchDistrict()
+    {
+        return RedirectToAction("Index", "Enrollment", new { area = "Collection" });
+    }
 }

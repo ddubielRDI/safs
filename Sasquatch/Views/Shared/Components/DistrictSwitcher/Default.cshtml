@@ -1,0 +1,96 @@
+@model Sasquatch.Collection.ViewModels.DistrictSwitcherViewModel
+@*
+    District Switcher View Component
+    Dropdown for switching between demo districts.
+*@
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <span class="district-badge me-2">
+            <i class="bi bi-building"></i>
+        </span>
+        <span class="d-none d-md-inline">@Model.CurrentDistrictName</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end district-switcher-menu">
+        <li class="dropdown-header">
+            <i class="bi bi-geo-alt-fill me-1"></i>Switch Demo District
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        @foreach (var district in Model.AvailableDistricts)
+        {
+            var isActive = district.DistrictCode == Model.CurrentDistrictCode;
+            <li>
+                <form asp-area="Collection" asp-controller="Home" asp-action="SwitchDistrict" method="post" class="d-inline w-100">
+                    <input type="hidden" name="districtCode" value="@district.DistrictCode" />
+                    <button type="submit" class="dropdown-item d-flex align-items-center w-100 @(isActive ? "active" : "")">
+                        <span class="district-badge me-2">
+                            <i class="bi bi-building"></i>
+                        </span>
+                        <div class="district-info text-start">
+                            <div class="district-name">@district.DistrictName</div>
+                            <div class="district-code small text-muted">@district.DistrictCode</div>
+                        </div>
+                        @if (isActive)
+                        {
+                            <i class="bi bi-check-lg ms-auto text-success"></i>
+                        }
+                    </button>
+                </form>
+            </li>
+        }
+        <li><hr class="dropdown-divider"></li>
+        <li class="dropdown-item-text small">
+            <i class="bi bi-info-circle me-1"></i>
+            District affects data shown
+        </li>
+    </ul>
+</li>
+
+<style>
+    .district-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        font-size: 0.9rem;
+        background-color: #e9ecef;
+        color: #495057;
+    }
+
+    .district-switcher-menu {
+        min-width: 260px;
+    }
+
+    .district-switcher-menu .dropdown-item {
+        padding: 0.5rem 1rem;
+        border: none;
+        background: transparent;
+    }
+
+    .district-switcher-menu button.dropdown-item {
+        cursor: pointer;
+    }
+
+    .district-switcher-menu button.dropdown-item:hover {
+        background-color: #e9ecef;
+    }
+
+    .district-switcher-menu .dropdown-item.active {
+        background-color: #e9ecef;
+        color: #212529;
+    }
+
+    .district-switcher-menu .dropdown-item.active .district-code {
+        color: #6c757d !important;
+    }
+
+    .district-info {
+        flex: 1;
+    }
+
+    .district-name {
+        font-weight: 500;
+    }
+</style>

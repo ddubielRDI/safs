@@ -70,6 +70,27 @@ public class RoleSwitcherViewModel
 }
 
 /// <summary>
+/// View model for the district switcher component
+/// </summary>
+public class DistrictSwitcherViewModel
+{
+    /// <summary>
+    /// Current district code
+    /// </summary>
+    public string CurrentDistrictCode { get; set; } = "34033";
+
+    /// <summary>
+    /// Display name for current district
+    /// </summary>
+    public string CurrentDistrictName { get; set; } = "Tumwater";
+
+    /// <summary>
+    /// All available districts for switching
+    /// </summary>
+    public List<DistrictInfo> AvailableDistricts { get; set; } = new();
+}
+
+/// <summary>
 /// Base view model interface for workflow views that need tab support
 /// </summary>
 public interface IWorkflowViewModel

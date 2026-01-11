@@ -27,6 +27,21 @@ public interface IWorkflowTabService
     /// Get all available roles for the role switcher
     /// </summary>
     List<RoleInfo> GetAvailableRoles();
+
+    /// <summary>
+    /// Get the current demo district from session
+    /// </summary>
+    string GetCurrentDistrict(HttpContext context);
+
+    /// <summary>
+    /// Set the demo district in session
+    /// </summary>
+    void SetCurrentDistrict(HttpContext context, string districtCode);
+
+    /// <summary>
+    /// Get all available districts for the district switcher
+    /// </summary>
+    List<DistrictInfo> GetAvailableDistricts();
 }
 
 /// <summary>
@@ -55,6 +70,15 @@ public class RoleInfo
     public string DisplayName { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Icon { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Information about a district for the district switcher
+/// </summary>
+public class DistrictInfo
+{
+    public string DistrictCode { get; set; } = string.Empty;
+    public string DistrictName { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -229,5 +253,41 @@ public class WorkflowTabService : IWorkflowTabService
     public List<RoleInfo> GetAvailableRoles()
     {
         return AvailableRoles;
+    }
+
+    // District session management
+    private const string DistrictSessionKey = "DemoDistrict";
+    private const string DefaultDistrict = "34033"; // Tumwater
+
+    /// <summary>
+    /// Available districts for demo mode (ESD 113 districts)
+    /// </summary>
+    private static readonly List<DistrictInfo> AvailableDistricts = new()
+    {
+        new DistrictInfo { DistrictCode = "34033", DistrictName = "Tumwater" },
+        new DistrictInfo { DistrictCode = "34003", DistrictName = "North Thurston" },
+        new DistrictInfo { DistrictCode = "34311", DistrictName = "Olympia" },
+        new DistrictInfo { DistrictCode = "34401", DistrictName = "Rochester" },
+        new DistrictInfo { DistrictCode = "34501", DistrictName = "Tenino" },
+        new DistrictInfo { DistrictCode = "34601", DistrictName = "Yelm" }
+    };
+
+    public string GetCurrentDistrict(HttpContext context)
+    {
+        return context.Session.GetString(DistrictSessionKey) ?? DefaultDistrict;
+    }
+
+    public void SetCurrentDistrict(HttpContext context, string districtCode)
+    {
+        // Validate district
+        if (AvailableDistricts.Any(d => d.DistrictCode == districtCode))
+        {
+            context.Session.SetString(DistrictSessionKey, districtCode);
+        }
+    }
+
+    public List<DistrictInfo> GetAvailableDistricts()
+    {
+        return AvailableDistricts;
     }
 }
