@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="minimal" data-mode="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -71,7 +71,23 @@
                             </ul>
                         </li>
                     </ul>
-                    <ul class="navbar-nav">
+                    <ul class="navbar-nav align-items-center">
+                        @* Theme Switcher *@
+                        <li class="nav-item me-2">
+                            <div class="theme-switcher">
+                                <select id="theme-select" class="theme-select" aria-label="Select theme">
+                                    <option value="minimal">Modern Minimal</option>
+                                    <option value="dense">Data-Dense Pro</option>
+                                    <option value="friendly">Friendly Gov</option>
+                                    <option value="glass">Glassmorphism</option>
+                                </select>
+                                <button id="mode-toggle" class="mode-toggle" type="button" aria-label="Toggle dark mode">
+                                    <i class="bi bi-moon icon-moon"></i>
+                                    <i class="bi bi-sun icon-sun"></i>
+                                </button>
+                            </div>
+                        </li>
+
                         @* Role Switcher - shown for demo purposes *@
                         @await Component.InvokeAsync("RoleSwitcher")
 
@@ -121,6 +137,7 @@
     <script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="~/js/instructions.js" asp-append-version="true"></script>
+    <script src="~/js/theme-switcher.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

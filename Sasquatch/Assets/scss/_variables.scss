@@ -3,26 +3,29 @@
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// OSPI Color Palette
-// Extracted from https://ospi.k12.wa.us/
+// Legacy OSPI Colors (kept for reference, not actively used)
+// The theme system now controls colors via CSS custom properties
 // -----------------------------------------------------------------------------
-$ospi-gold: #FFFACD;        // Navbar, accents (LemonChiffon - pale yellow)
-$ospi-blue: #0967B6;        // Primary actions, links
-$ospi-cream: #F7F5EB;       // Page backgrounds
-$ospi-charcoal: #333333;    // Dark backgrounds, headings
-$ospi-gray-text: #40403D;   // Body text
-$ospi-teal: #244A5F;        // Secondary headings
-$ospi-sage: #8CB5AB;        // Reporting/output accents
-$ospi-footer-dark: #292929; // Footer background
+$ospi-blue: #0967B6;        // Reference only
+$ospi-teal: #244A5F;        // Reference only
+$ospi-charcoal: #333333;    // Reference only
 
 // -----------------------------------------------------------------------------
-// Semantic Color Mappings
+// Semantic Color Mappings (CSS Custom Property References)
+// These SCSS variables allow use in SCSS functions where needed
+// Actual values come from _themes.scss CSS custom properties
 // -----------------------------------------------------------------------------
-$primary-color: $ospi-blue;     // Actions, buttons, links
-$secondary-color: $ospi-gold;   // Accents, navbar
-$body-bg: $ospi-cream;
-$text-color: $ospi-gray-text;
-$white: white;
+$primary-color: var(--primary);
+$secondary-color: var(--secondary);
+$body-bg: var(--bg-main);
+$text-color: var(--text-primary);
+$white: #ffffff;
+
+// Status colors (consistent across themes)
+$success-color: var(--color-success);
+$warning-color: var(--color-warning);
+$error-color: var(--color-error);
+$info-color: var(--color-info);
 
 // -----------------------------------------------------------------------------
 // Typography

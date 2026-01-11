@@ -1,0 +1,379 @@
+// =============================================================================
+// SASQUATCH Theme System
+// 4 switchable themes with light/dark mode variants
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Semantic Colors (Shared Across All Themes)
+// -----------------------------------------------------------------------------
+:root {
+  // Status colors - consistent for user recognition
+  --color-success: #16a34a;
+  --color-success-light: #22c55e;
+  --color-warning: #d97706;
+  --color-warning-light: #f59e0b;
+  --color-error: #dc2626;
+  --color-error-light: #ef4444;
+  --color-info: #2563eb;
+  --color-info-light: #3b82f6;
+
+  // Focus ring
+  --focus-ring-color: var(--primary);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  // Transitions
+  --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+// Dark mode semantic colors
+[data-mode="dark"] {
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+}
+
+// =============================================================================
+// THEME 1: Modern Minimal
+// Inspired by Linear/Notion - clean, airy, focus on data
+// =============================================================================
+
+[data-theme="minimal"][data-mode="light"],
+[data-theme="minimal"]:not([data-mode]),
+:root:not([data-theme]) {
+  // Primary palette
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-active: #4338ca;
+  --primary-light: #e0e7ff;
+
+  // Secondary palette
+  --secondary: #a855f7;
+  --secondary-hover: #9333ea;
+  --secondary-light: #f3e8ff;
+
+  // Backgrounds
+  --bg-main: #ffffff;
+  --bg-card: #f8fafc;
+  --bg-elevated: #e2e8f0;
+  --bg-hover: #f1f5f9;
+  --bg-active: #e2e8f0;
+
+  // Text
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-inverse: #ffffff;
+
+  // Borders
+  --border: #e5e7eb;
+  --border-hover: #d1d5db;
+  --border-focus: var(--primary);
+
+  // Shadows
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+[data-theme="minimal"][data-mode="dark"] {
+  --primary: #818cf8;
+  --primary-hover: #a5b4fc;
+  --primary-active: #6366f1;
+  --primary-light: #312e81;
+
+  --secondary: #c084fc;
+  --secondary-hover: #d8b4fe;
+  --secondary-light: #3b0764;
+
+  --bg-main: #0f172a;
+  --bg-card: #1e293b;
+  --bg-elevated: #334155;
+  --bg-hover: #334155;
+  --bg-active: #475569;
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-inverse: #0f172a;
+
+  --border: #374151;
+  --border-hover: #4b5563;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+}
+
+// =============================================================================
+// THEME 2: Data-Dense Professional
+// Inspired by Bloomberg/Jira - compact, enterprise, efficient
+// =============================================================================
+
+[data-theme="dense"][data-mode="light"] {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-active: #1e40af;
+  --primary-light: #dbeafe;
+
+  --secondary: #64748b;
+  --secondary-hover: #475569;
+  --secondary-light: #f1f5f9;
+
+  --bg-main: #f9fafb;
+  --bg-card: #f1f5f9;
+  --bg-elevated: #e2e8f0;
+  --bg-hover: #e5e7eb;
+  --bg-active: #d1d5db;
+
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-inverse: #ffffff;
+
+  --border: #d1d5db;
+  --border-hover: #9ca3af;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 4px 8px -2px rgb(0 0 0 / 0.15);
+}
+
+[data-theme="dense"][data-mode="dark"] {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-active: #2563eb;
+  --primary-light: #1e3a5f;
+
+  --secondary: #94a3b8;
+  --secondary-hover: #cbd5e1;
+  --secondary-light: #334155;
+
+  --bg-main: #111827;
+  --bg-card: #1f2937;
+  --bg-elevated: #374151;
+  --bg-hover: #374151;
+  --bg-active: #4b5563;
+
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-inverse: #111827;
+
+  --border: #4b5563;
+  --border-hover: #6b7280;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 4px 8px -2px rgb(0 0 0 / 0.6);
+}
+
+// =============================================================================
+// THEME 3: Friendly Government
+// Warm, accessible, education/healthcare vibe
+// =============================================================================
+
+[data-theme="friendly"][data-mode="light"] {
+  --primary: #059669;
+  --primary-hover: #047857;
+  --primary-active: #065f46;
+  --primary-light: #d1fae5;
+
+  --secondary: #d97706;
+  --secondary-hover: #b45309;
+  --secondary-light: #fef3c7;
+
+  --bg-main: #fefefe;
+  --bg-card: #f9fafb;
+  --bg-elevated: #f3f4f6;
+  --bg-hover: #f3f4f6;
+  --bg-active: #e5e7eb;
+
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-inverse: #ffffff;
+
+  --border: #d1d5db;
+  --border-hover: #9ca3af;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.06);
+}
+
+[data-theme="friendly"][data-mode="dark"] {
+  --primary: #10b981;
+  --primary-hover: #34d399;
+  --primary-active: #059669;
+  --primary-light: #064e3b;
+
+  --secondary: #f59e0b;
+  --secondary-hover: #fbbf24;
+  --secondary-light: #78350f;
+
+  --bg-main: #1f2937;
+  --bg-card: #111827;
+  --bg-elevated: #1e293b;
+  --bg-hover: #374151;
+  --bg-active: #4b5563;
+
+  --text-primary: #f9fafb;
+  --text-secondary: #e5e7eb;
+  --text-muted: #d1d5db;
+  --text-inverse: #1f2937;
+
+  --border: #4b5563;
+  --border-hover: #6b7280;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+// =============================================================================
+// THEME 4: Modern Glassmorphism
+// Apple/Vercel style - gradients, blur, depth
+// =============================================================================
+
+[data-theme="glass"][data-mode="light"] {
+  --primary: #8b5cf6;
+  --primary-hover: #7c3aed;
+  --primary-active: #6d28d9;
+  --primary-light: #ede9fe;
+
+  --secondary: #06b6d4;
+  --secondary-hover: #0891b2;
+  --secondary-light: #cffafe;
+
+  --bg-main: #f8fafc;
+  --bg-card: #e0f2fe;
+  --bg-elevated: #f0f9ff;
+  --bg-hover: #e0f2fe;
+  --bg-active: #bae6fd;
+
+  --text-primary: #1e1b4b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --border: #bfdbfe;
+  --border-hover: #93c5fd;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(139 92 246 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(139 92 246 / 0.1), 0 2px 4px -2px rgb(6 182 212 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(139 92 246 / 0.15), 0 4px 6px -4px rgb(6 182 212 / 0.1);
+
+  // Glassmorphism specific
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-blur: blur(10px);
+}
+
+[data-theme="glass"][data-mode="dark"] {
+  --primary: #a78bfa;
+  --primary-hover: #c4b5fd;
+  --primary-active: #8b5cf6;
+  --primary-light: #2e1065;
+
+  --secondary: #22d3ee;
+  --secondary-hover: #67e8f9;
+  --secondary-light: #164e63;
+
+  --bg-main: #0f0f23;
+  --bg-card: #1e1b4b;
+  --bg-elevated: #312e81;
+  --bg-hover: #312e81;
+  --bg-active: #3730a3;
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-inverse: #0f0f23;
+
+  --border: #60a5fa;
+  --border-hover: #93c5fd;
+  --border-focus: var(--primary);
+
+  --shadow-sm: 0 1px 2px 0 rgb(167 139 250 / 0.15);
+  --shadow-md: 0 4px 6px -1px rgb(167 139 250 / 0.2), 0 2px 4px -2px rgb(34 211 238 / 0.15);
+  --shadow-lg: 0 10px 15px -3px rgb(167 139 250 / 0.25), 0 4px 6px -4px rgb(34 211 238 / 0.2);
+
+  // Glassmorphism specific
+  --glass-bg: rgba(30, 27, 75, 0.7);
+  --glass-border: rgba(96, 165, 250, 0.2);
+  --glass-blur: blur(10px);
+}
+
+// =============================================================================
+// Glassmorphism Effect Classes
+// =============================================================================
+
+[data-theme="glass"] {
+  .glass-effect {
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+  }
+
+  .card,
+  .modal-content,
+  .dropdown-menu {
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+  }
+}
+
+// =============================================================================
+// Global Theme Transitions
+// =============================================================================
+
+// Only apply transitions when user hasn't requested reduced motion
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme-loaded] {
+    // Apply transitions to key elements only (performance optimization)
+    body,
+    .navbar-themed,
+    .card,
+    .card-themed,
+    .btn,
+    .footer-themed,
+    .dropdown-menu,
+    .form-control,
+    .form-select,
+    .alert,
+    .badge,
+    .table {
+      transition: var(--theme-transition);
+    }
+  }
+}
+
+// Disable ALL transitions for users who prefer reduced motion
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+// Disable transitions on initial load to prevent flash
+html:not([data-theme-loaded]) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+}

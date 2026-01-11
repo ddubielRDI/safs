@@ -1,22 +1,9 @@
 // =============================================================================
-// SAFS Main Stylesheet - OSPI Branded Theme
+// SAFS Main Stylesheet - Multi-Theme System
 // =============================================================================
 
 @use 'variables' as *;
-
-// -----------------------------------------------------------------------------
-// CSS Custom Properties (for runtime theming)
-// -----------------------------------------------------------------------------
-:root {
-  --ospi-gold: #{$ospi-gold};
-  --ospi-blue: #{$ospi-blue};
-  --ospi-cream: #{$ospi-cream};
-  --ospi-charcoal: #{$ospi-charcoal};
-  --ospi-gray-text: #{$ospi-gray-text};
-  --ospi-teal: #{$ospi-teal};
-  --ospi-sage: #{$ospi-sage};
-  --ospi-footer-dark: #{$ospi-footer-dark};
-}
+@use 'themes';
 
 // -----------------------------------------------------------------------------
 // Base Styles
@@ -35,23 +22,23 @@ html {
 
 body {
   margin-bottom: $body-margin-bottom;
-  background-color: var(--ospi-cream);
-  color: var(--ospi-gray-text);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
 }
 
 // Links
 a:not(.btn):not(.nav-link):not(.navbar-brand):not(.dropdown-item) {
-  color: var(--ospi-blue);
+  color: var(--primary);
 
   &:hover,
   &:focus {
-    color: darken($ospi-blue, 15%);
+    color: var(--primary-hover);
   }
 }
 
 // Headings
 h1, h2, h3, h4, h5, h6 {
-  color: var(--ospi-charcoal);
+  color: var(--text-primary);
 }
 
 // -----------------------------------------------------------------------------
@@ -62,202 +49,415 @@ h1, h2, h3, h4, h5, h6 {
 .btn-link.nav-link:focus,
 .form-control:focus,
 .form-check-input:focus {
-  box-shadow: 0 0 0 $focus-ring-width $white, 0 0 0 $focus-ring-spread $primary-color;
+  box-shadow: 0 0 0 $focus-ring-width $white, 0 0 0 $focus-ring-spread var(--primary);
 }
 
 // -----------------------------------------------------------------------------
-// OSPI Navbar Theme
+// Theme-Aware Navbar
 // -----------------------------------------------------------------------------
-.navbar-ospi {
-  background-color: var(--ospi-gold) !important;
+.navbar-themed {
+  background-color: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 
   .navbar-brand {
-    color: var(--ospi-charcoal) !important;
+    color: var(--text-primary) !important;
     font-weight: 600;
 
     &:hover,
     &:focus {
-      color: var(--ospi-teal) !important;
+      color: var(--primary) !important;
     }
   }
 
   .nav-link {
-    color: var(--ospi-charcoal) !important;
+    color: var(--text-secondary) !important;
 
     &:hover,
     &:focus {
-      color: var(--ospi-teal) !important;
+      color: var(--primary) !important;
+    }
+
+    &.active {
+      color: var(--primary) !important;
+      font-weight: 500;
     }
 
     &.dropdown-toggle::after {
-      border-top-color: var(--ospi-charcoal);
+      border-top-color: var(--text-secondary);
     }
   }
 
   .navbar-toggler {
-    border-color: var(--ospi-charcoal);
+    border-color: var(--border);
 
     .navbar-toggler-icon {
-      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='%23333333' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+      // Use CSS filter to adapt icon color to theme
+      filter: var(--icon-filter, none);
     }
   }
 
   .dropdown-menu {
-    border-color: var(--ospi-gold);
-    border-top: 3px solid var(--ospi-gold);
+    background-color: var(--bg-card);
+    border-color: var(--border);
+    box-shadow: var(--shadow-md);
+
+    .dropdown-item {
+      color: var(--text-primary);
+
+      &:hover,
+      &:focus {
+        background-color: var(--bg-hover);
+        color: var(--primary);
+      }
+    }
+
+    .dropdown-divider {
+      border-color: var(--border);
+    }
   }
 }
 
+// Dark mode icon filter
+[data-mode="dark"] .navbar-themed .navbar-toggler-icon {
+  filter: invert(1);
+}
+
 // -----------------------------------------------------------------------------
-// OSPI Button Variants
+// Theme-Aware Button Variants
 // -----------------------------------------------------------------------------
-.btn-ospi-primary {
-  background-color: var(--ospi-blue);
-  border-color: var(--ospi-blue);
-  color: white;
+.btn-primary-themed {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--text-inverse);
 
   &:hover,
   &:focus {
-    background-color: darken($ospi-blue, 10%);
-    border-color: darken($ospi-blue, 10%);
-    color: white;
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+    color: var(--text-inverse);
   }
 
   &:active {
-    background-color: darken($ospi-blue, 15%);
-    border-color: darken($ospi-blue, 15%);
+    background-color: var(--primary-active);
+    border-color: var(--primary-active);
   }
 }
 
-.btn-ospi-outline {
+.btn-secondary-themed {
+  background-color: var(--secondary);
+  border-color: var(--secondary);
+  color: var(--text-inverse);
+
+  &:hover,
+  &:focus {
+    background-color: var(--secondary-hover);
+    border-color: var(--secondary-hover);
+    color: var(--text-inverse);
+  }
+}
+
+.btn-outline-themed {
   background-color: transparent;
-  border-color: var(--ospi-blue);
-  color: var(--ospi-blue);
+  border-color: var(--primary);
+  color: var(--primary);
 
   &:hover,
   &:focus {
-    background-color: var(--ospi-blue);
-    border-color: var(--ospi-blue);
-    color: white;
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: var(--text-inverse);
   }
 }
 
-.btn-ospi-gold {
-  background-color: var(--ospi-gold);
-  border-color: var(--ospi-gold);
-  color: var(--ospi-charcoal);
+.btn-ghost-themed {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
 
   &:hover,
   &:focus {
-    background-color: darken($ospi-gold, 10%);
-    border-color: darken($ospi-gold, 10%);
-    color: var(--ospi-charcoal);
-  }
-
-  &:active {
-    background-color: darken($ospi-gold, 15%);
-    border-color: darken($ospi-gold, 15%);
-  }
-}
-
-.btn-ospi-teal {
-  background-color: var(--ospi-teal);
-  border-color: var(--ospi-teal);
-  color: white;
-
-  &:hover,
-  &:focus {
-    background-color: darken($ospi-teal, 10%);
-    border-color: darken($ospi-teal, 10%);
-    color: white;
+    background-color: var(--bg-hover);
+    color: var(--primary);
   }
 }
 
 // -----------------------------------------------------------------------------
-// Card Section Themes
+// Theme-Aware Cards
 // -----------------------------------------------------------------------------
+.card-themed {
+  background-color: var(--bg-card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
 
-// Data Collection - Blue theme
+  .card-header {
+    background-color: var(--bg-elevated);
+    border-bottom-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .card-body {
+    color: var(--text-primary);
+  }
+
+  .card-footer {
+    background-color: var(--bg-elevated);
+    border-top-color: var(--border);
+  }
+}
+
+// Card Section Variants (for workflow sections)
 .card-section-collection {
-  border-color: var(--ospi-blue) !important;
+  border-left: 4px solid var(--primary) !important;
 
   .card-header {
-    background-color: var(--ospi-blue) !important;
-    color: white !important;
-    border-bottom-color: var(--ospi-blue) !important;
+    background-color: var(--primary-light) !important;
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--primary) !important;
   }
 }
 
-// Calculation - Gold accent theme
 .card-section-calculation {
-  border-color: var(--ospi-gold) !important;
+  border-left: 4px solid var(--secondary) !important;
 
   .card-header {
-    background-color: var(--ospi-gold) !important;
-    color: var(--ospi-charcoal) !important;
-    border-bottom-color: var(--ospi-gold) !important;
+    background-color: var(--secondary-light) !important;
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--secondary) !important;
   }
 }
 
-// Reporting - Teal theme
 .card-section-reporting {
-  border-color: var(--ospi-teal) !important;
+  border-left: 4px solid var(--color-info) !important;
 
   .card-header {
-    background-color: var(--ospi-teal) !important;
-    color: white !important;
-    border-bottom-color: var(--ospi-teal) !important;
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--color-info) !important;
   }
 }
 
 // -----------------------------------------------------------------------------
-// OSPI Footer Theme
+// Theme-Aware Footer
 // -----------------------------------------------------------------------------
-.footer-ospi {
-  background-color: var(--ospi-footer-dark) !important;
-  color: var(--ospi-cream) !important;
-  border-top: 3px solid var(--ospi-gold) !important;
+.footer-themed {
+  background-color: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border-top: 1px solid var(--border) !important;
 
   a {
-    color: var(--ospi-sage);
+    color: var(--primary);
 
     &:hover,
     &:focus {
-      color: var(--ospi-gold);
+      color: var(--primary-hover);
     }
   }
 
   .text-muted {
-    color: rgba(247, 245, 235, 0.7) !important;
-  }
-
-  .badge {
-    background-color: var(--ospi-gold) !important;
-    color: var(--ospi-charcoal) !important;
+    color: var(--text-muted) !important;
   }
 }
 
 // -----------------------------------------------------------------------------
-// OSPI Role Badge Colors (for RoleSwitcher)
+// Theme-Aware Role Badges (for RoleSwitcher)
 // -----------------------------------------------------------------------------
 .role-badge-district {
-  background-color: var(--ospi-blue) !important;
-  color: white !important;
+  background-color: var(--primary) !important;
+  color: var(--text-inverse) !important;
 }
 
 .role-badge-esd {
-  background-color: var(--ospi-sage) !important;
-  color: var(--ospi-charcoal) !important;
+  background-color: var(--secondary) !important;
+  color: var(--text-inverse) !important;
 }
 
 .role-badge-ospi {
-  background-color: var(--ospi-gold) !important;
-  color: var(--ospi-charcoal) !important;
+  background-color: var(--color-info) !important;
+  color: var(--text-inverse) !important;
 }
 
 .role-badge-default {
-  background-color: #6c757d !important;
-  color: white !important;
+  background-color: var(--text-muted) !important;
+  color: var(--text-inverse) !important;
+}
+
+// -----------------------------------------------------------------------------
+// Theme-Aware Tables
+// -----------------------------------------------------------------------------
+.table-themed {
+  color: var(--text-primary);
+
+  thead {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+
+    th {
+      border-bottom-color: var(--border);
+      font-weight: 600;
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom-color: var(--border);
+
+      &:hover {
+        background-color: var(--bg-hover);
+      }
+    }
+
+    td {
+      border-bottom-color: var(--border);
+    }
+  }
+
+  // Striped variant
+  &.table-striped tbody tr:nth-of-type(odd) {
+    background-color: var(--bg-card);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Theme-Aware Forms
+// -----------------------------------------------------------------------------
+.form-control-themed {
+  background-color: var(--bg-main);
+  border-color: var(--border);
+  color: var(--text-primary);
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+
+  &:focus {
+    background-color: var(--bg-main);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-light);
+  }
+
+  &:disabled {
+    background-color: var(--bg-elevated);
+    color: var(--text-muted);
+  }
+}
+
+.form-select-themed {
+  background-color: var(--bg-main);
+  border-color: var(--border);
+  color: var(--text-primary);
+
+  &:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-light);
+  }
+}
+
+.form-label-themed {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+// -----------------------------------------------------------------------------
+// Theme-Aware Alerts / Status Messages
+// -----------------------------------------------------------------------------
+.alert-success-themed {
+  background-color: color-mix(in srgb, var(--color-success) 15%, var(--bg-main));
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.alert-warning-themed {
+  background-color: color-mix(in srgb, var(--color-warning) 15%, var(--bg-main));
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.alert-error-themed {
+  background-color: color-mix(in srgb, var(--color-error) 15%, var(--bg-main));
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.alert-info-themed {
+  background-color: color-mix(in srgb, var(--color-info) 15%, var(--bg-main));
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+// -----------------------------------------------------------------------------
+// Theme Switcher Component
+// -----------------------------------------------------------------------------
+.theme-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  .theme-select {
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+
+    &:focus {
+      border-color: var(--primary);
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+  }
+
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background-color: var(--bg-hover);
+      color: var(--primary);
+    }
+
+    &:focus {
+      border-color: var(--primary);
+      outline: none;
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+
+    .icon-sun,
+    .icon-moon {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    // Show sun in dark mode, moon in light mode
+    .icon-sun {
+      display: none;
+    }
+
+    .icon-moon {
+      display: block;
+    }
+  }
+}
+
+[data-mode="dark"] .theme-switcher .mode-toggle {
+  .icon-sun {
+    display: block;
+  }
+
+  .icon-moon {
+    display: none;
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -271,6 +471,8 @@ h1, h2, h3, h4, h5, h6 {
   white-space: normal;
   max-width: fit-content;
   transition: opacity 0.2s ease;
+  background-color: var(--primary-light);
+  color: var(--text-primary);
 
   strong {
     font-weight: 700;
@@ -291,38 +493,99 @@ h1, h2, h3, h4, h5, h6 {
 
 // Toggle label styling when checked
 #showInstructionsToggle:checked + label {
-  color: var(--bs-success);
+  color: var(--color-success);
 }
 
 // -----------------------------------------------------------------------------
 // Utility Classes
 // -----------------------------------------------------------------------------
-.text-ospi-blue {
-  color: var(--ospi-blue) !important;
+.text-primary-themed {
+  color: var(--primary) !important;
 }
 
-.text-ospi-gold {
-  color: var(--ospi-gold) !important;
+.text-secondary-themed {
+  color: var(--secondary) !important;
 }
 
-.text-ospi-teal {
-  color: var(--ospi-teal) !important;
+.text-muted-themed {
+  color: var(--text-muted) !important;
 }
 
-.bg-ospi-cream {
-  background-color: var(--ospi-cream) !important;
+.bg-main-themed {
+  background-color: var(--bg-main) !important;
 }
 
-.bg-ospi-charcoal {
-  background-color: var(--ospi-charcoal) !important;
+.bg-card-themed {
+  background-color: var(--bg-card) !important;
 }
 
-.border-ospi-gold {
-  border-color: var(--ospi-gold) !important;
+.bg-elevated-themed {
+  background-color: var(--bg-elevated) !important;
+}
+
+.border-themed {
+  border-color: var(--border) !important;
+}
+
+.shadow-themed {
+  box-shadow: var(--shadow-md) !important;
 }
 
 // Badge background colors (for program type pills)
 .bg-purple {
   background-color: #6f42c1 !important;
   color: white !important;
+}
+
+// -----------------------------------------------------------------------------
+// Legacy Class Aliases (for backwards compatibility during transition)
+// These map old OSPI classes to new theme-aware classes
+// -----------------------------------------------------------------------------
+.navbar-ospi {
+  @extend .navbar-themed;
+}
+
+.btn-ospi-primary {
+  @extend .btn-primary-themed;
+}
+
+.btn-ospi-outline {
+  @extend .btn-outline-themed;
+}
+
+.btn-ospi-gold {
+  @extend .btn-secondary-themed;
+}
+
+.btn-ospi-teal {
+  @extend .btn-primary-themed;
+}
+
+.footer-ospi {
+  @extend .footer-themed;
+}
+
+// Legacy utility classes
+.text-ospi-blue {
+  color: var(--primary) !important;
+}
+
+.text-ospi-gold {
+  color: var(--secondary) !important;
+}
+
+.text-ospi-teal {
+  color: var(--color-info) !important;
+}
+
+.bg-ospi-cream {
+  background-color: var(--bg-main) !important;
+}
+
+.bg-ospi-charcoal {
+  background-color: var(--bg-elevated) !important;
+}
+
+.border-ospi-gold {
+  border-color: var(--secondary) !important;
 }
