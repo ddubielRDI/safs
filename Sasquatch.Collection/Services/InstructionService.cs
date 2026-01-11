@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sasquatch.Collection.Services;
 
 /// <summary>
@@ -22,16 +24,19 @@ public class InstructionStep
     /// <summary>
     /// The data-instruction attribute value of the target element
     /// </summary>
+    [JsonPropertyName("elementId")]
     public string ElementId { get; set; } = string.Empty;
 
     /// <summary>
     /// The step number (1, 2, 3...) shown in the pill
     /// </summary>
+    [JsonPropertyName("stepNumber")]
     public int StepNumber { get; set; }
 
     /// <summary>
     /// The instruction text displayed in the pill
     /// </summary>
+    [JsonPropertyName("text")]
     public string Text { get; set; } = string.Empty;
 }
 
