@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using OfficeOpenXml;
 using Sasquatch.Core.Data;
 using Sasquatch.Collection.Services;
+
+// Configure EPPlus for non-commercial use (EPPlus 8+ API)
+ExcelPackage.License.SetNonCommercialPersonal("SAFS Demo");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +34,10 @@ builder.Services.AddScoped<IWorkflowTabService, WorkflowTabService>();
 
 // Register instruction service for "Show Instructions" feature
 builder.Services.AddScoped<IInstructionService, InstructionService>();
+
+// Register file parser services
+builder.Services.AddScoped<IEnrollmentFileParser, EnrollmentFileParser>();
+builder.Services.AddScoped<IBudgetFileParser, BudgetFileParser>();
 
 var app = builder.Build();
 

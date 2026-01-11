@@ -21,6 +21,7 @@ public class EnrollmentController : Controller
     private readonly ILogger<EnrollmentController> _logger;
     private readonly IWorkflowTabService _tabService;
     private readonly IInstructionService _instructionService;
+    private readonly IEnrollmentFileParser _fileParser;
 
     // For demo, we'll use Tumwater district
     private const string DemoDistrictCode = "34033";
@@ -30,12 +31,14 @@ public class EnrollmentController : Controller
         SasquatchDbContext context,
         ILogger<EnrollmentController> logger,
         IWorkflowTabService tabService,
-        IInstructionService instructionService)
+        IInstructionService instructionService,
+        IEnrollmentFileParser fileParser)
     {
         _context = context;
         _logger = logger;
         _tabService = tabService;
         _instructionService = instructionService;
+        _fileParser = fileParser;
     }
 
     /// <summary>
@@ -175,39 +178,77 @@ public class EnrollmentController : Controller
     /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public Task<IActionResult> Upload(IFormFile file, byte month)
+    public async Task<IActionResult> Upload(IFormFile file, byte month)
     {
         var result = new EnrollmentUploadResult();
 
-        if (file == null || file.Length == 0)
+        // Validate file
+        var (isValid, error) = _fileParser.ValidateFile(file);
+        if (!isValid)
         {
             result.Success = false;
-            result.Message = "Please select a file to upload.";
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            result.Message = error ?? "Invalid file.";
+            return View("UploadResult", result);
         }
 
+        // Use transaction for atomic save
+        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // For demo, we'll simulate file processing
-            // In production, this would parse CSV/Excel and validate
+            // Create new submission record
+            var submission = new EnrollmentSubmission
+            {
+                DistrictCode = DemoDistrictCode,
+                SchoolYear = DemoSchoolYear,
+                Month = month > 0 ? month : (byte)2, // Default to October
+                SubmissionStatus = "Draft",
+                CreatedDate = DateTime.UtcNow
+            };
+            _context.EnrollmentSubmissions.Add(submission);
+            await _context.SaveChangesAsync();
 
+            // Parse the file
+            var parseResult = await _fileParser.ParseAsync(file, submission.SubmissionId);
+
+            if (!parseResult.Success)
+            {
+                await transaction.RollbackAsync();
+                result.Success = false;
+                result.Message = "Failed to parse file.";
+                result.Errors = parseResult.Errors;
+                return View("UploadResult", result);
+            }
+
+            // Save parsed data
+            if (parseResult.Data.Any())
+            {
+                _context.EnrollmentData.AddRange(parseResult.Data);
+                await _context.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            // Build success result
             result.Success = true;
             result.Message = $"File '{file.FileName}' processed successfully.";
-            result.RecordsProcessed = 50; // Demo value
-            result.WarningCount = 2;
+            result.RecordsProcessed = parseResult.RecordsProcessed;
+            result.Warnings = parseResult.Warnings;
+            result.WarningCount = parseResult.WarningCount;
+            result.SubmissionId = submission.SubmissionId;
 
-            // Log the upload
-            _logger.LogInformation("Enrollment file uploaded: {FileName} for month {Month}", file.FileName, month);
+            _logger.LogInformation("Enrollment file uploaded: {FileName} for month {Month}, {RecordCount} records",
+                file.FileName, month, parseResult.RecordsProcessed);
 
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            return View("UploadResult", result);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "Error processing enrollment upload");
             result.Success = false;
             result.Message = "An error occurred processing the file.";
             result.Errors.Add(ex.Message);
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            return View("UploadResult", result);
         }
     }
 

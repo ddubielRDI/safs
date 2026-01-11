@@ -1,0 +1,196 @@
+@model EnrollmentUploadResult
+@{
+    ViewData["Title"] = "Upload Result";
+}
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Enrollment</a></li>
+                    <li class="breadcrumb-item active">Upload Result</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                @if (Model.Success)
+                {
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    <span>Upload Successful</span>
+                }
+                else
+                {
+                    <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                    <span>Upload Failed</span>
+                }
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            @if (Model.Success)
+            {
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>@Model.Message
+                </div>
+
+                @* Summary Cards *@
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <div class="h4 text-primary mb-0">@Model.RecordsProcessed</div>
+                                <small class="text-muted">Records Processed</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-warning">
+                            <div class="card-body text-center">
+                                <div class="h4 text-warning mb-0">@Model.WarningCount</div>
+                                <small class="text-muted">Warnings</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-danger">
+                            <div class="card-body text-center">
+                                <div class="h4 text-danger mb-0">@Model.ErrorCount</div>
+                                <small class="text-muted">Errors</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Validation Results *@
+                @if (Model.Errors.Any() || Model.Warnings.Any())
+                {
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <strong>Validation Results</strong>
+                            @if (Model.ErrorCount > 0)
+                            {
+                                <span class="badge bg-danger ms-2">@Model.ErrorCount Errors</span>
+                            }
+                            @if (Model.WarningCount > 0)
+                            {
+                                <span class="badge bg-warning text-dark ms-2">@Model.WarningCount Warnings</span>
+                            }
+                        </div>
+                        <div class="card-body p-0">
+                            @if (Model.Errors.Any())
+                            {
+                                <div class="list-group list-group-flush">
+                                    @foreach (var error in Model.Errors)
+                                    {
+                                        <div class="list-group-item list-group-item-danger">
+                                            <i class="bi bi-x-circle-fill me-2"></i>@error
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (Model.Warnings.Any())
+                            {
+                                <div class="list-group list-group-flush">
+                                    @foreach (var warning in Model.Warnings)
+                                    {
+                                        <div class="list-group-item list-group-item-warning">
+                                            <i class="bi bi-exclamation-triangle-fill me-2"></i>@warning
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>No validation issues found. Your enrollment data passed all validation checks.
+                    </div>
+                }
+
+                <div class="d-flex justify-content-between">
+                    <a asp-action="Upload" class="btn btn-outline-secondary">
+                        <i class="bi bi-upload me-1"></i>Upload Another File
+                    </a>
+                    @if (Model.SubmissionId.HasValue)
+                    {
+                        <a asp-action="Details" asp-route-id="@Model.SubmissionId" class="btn btn-primary">
+                            <i class="bi bi-eye me-1"></i>View Enrollment Details
+                        </a>
+                    }
+                    else
+                    {
+                        <a asp-action="Index" class="btn btn-primary">
+                            <i class="bi bi-list me-1"></i>View All Submissions
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle me-2"></i>@Model.Message
+                </div>
+
+                @if (Model.Errors.Any())
+                {
+                    <div class="card mb-4">
+                        <div class="card-header bg-danger text-white">
+                            <strong>Errors</strong>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="list-group list-group-flush">
+                                @foreach (var error in Model.Errors)
+                                {
+                                    <div class="list-group-item">
+                                        <i class="bi bi-x-circle-fill text-danger me-2"></i>@error
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-content-between">
+                    <a asp-action="Index" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-1"></i>Back to Enrollment
+                    </a>
+                    <a asp-action="Upload" class="btn btn-primary">
+                        <i class="bi bi-upload me-1"></i>Try Again
+                    </a>
+                </div>
+            }
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-question-circle me-1"></i>Next Steps
+                </div>
+                <div class="card-body">
+                    @if (Model.Success)
+                    {
+                        <ol class="mb-0">
+                            <li class="mb-2">Review the validation warnings (if any)</li>
+                            <li class="mb-2">Add comments to explain any variances</li>
+                            <li class="mb-2">Make any necessary edits to enrollment data</li>
+                            <li>Submit for approval when ready</li>
+                        </ol>
+                    }
+                    else
+                    {
+                        <ol class="mb-0">
+                            <li class="mb-2">Review the error messages above</li>
+                            <li class="mb-2">Correct the issues in your source file</li>
+                            <li class="mb-2">Verify the file format matches requirements</li>
+                            <li>Try uploading again</li>
+                        </ol>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

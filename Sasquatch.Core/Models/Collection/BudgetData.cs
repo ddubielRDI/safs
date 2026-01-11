@@ -13,6 +13,7 @@ public class BudgetData
     public string? ObjectCode { get; set; }
     public string? ItemCode { get; set; }
     public string? ItemDescription { get; set; }
+    public string FiscalYear { get; set; } = string.Empty;  // e.g., "2024-25"
     public decimal Amount { get; set; }
     public decimal? PriorMonthAmount { get; set; }
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;

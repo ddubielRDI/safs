@@ -21,6 +21,7 @@ public class BudgetController : Controller
     private readonly ILogger<BudgetController> _logger;
     private readonly IWorkflowTabService _tabService;
     private readonly IInstructionService _instructionService;
+    private readonly IBudgetFileParser _fileParser;
 
     // For demo, we'll use Tumwater district
     private const string DemoDistrictCode = "34033";
@@ -30,12 +31,14 @@ public class BudgetController : Controller
         SasquatchDbContext context,
         ILogger<BudgetController> logger,
         IWorkflowTabService tabService,
-        IInstructionService instructionService)
+        IInstructionService instructionService,
+        IBudgetFileParser fileParser)
     {
         _context = context;
         _logger = logger;
         _tabService = tabService;
         _instructionService = instructionService;
+        _fileParser = fileParser;
     }
 
     /// <summary>
@@ -209,44 +212,82 @@ public class BudgetController : Controller
     /// </summary>
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public Task<IActionResult> Upload(IFormFile file, string budgetType)
+    public async Task<IActionResult> Upload(IFormFile file, string budgetType)
     {
         var result = new BudgetUploadResult();
 
-        if (file == null || file.Length == 0)
+        // Validate file
+        var (isValid, error) = _fileParser.ValidateFile(file);
+        if (!isValid)
         {
             result.Success = false;
-            result.Message = "Please select a file to upload.";
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            result.Message = error ?? "Invalid file.";
+            return View("UploadResult", result);
         }
 
+        // Use transaction for atomic save
+        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // For demo, simulate file processing
+            // Create new submission record
+            var submission = new BudgetSubmission
+            {
+                DistrictCode = DemoDistrictCode,
+                FiscalYear = DemoSchoolYear,
+                FormType = string.IsNullOrEmpty(budgetType) ? "Original" : budgetType,
+                SubmissionStatus = "Draft",
+                CreatedDate = DateTime.UtcNow
+            };
+            _context.BudgetSubmissions.Add(submission);
+            await _context.SaveChangesAsync();
+
+            // Parse the file
+            var parseResult = await _fileParser.ParseAsync(file, submission.SubmissionId);
+
+            if (!parseResult.Success)
+            {
+                await transaction.RollbackAsync();
+                result.Success = false;
+                result.Message = "Failed to parse file.";
+                result.Errors = parseResult.Errors;
+                return View("UploadResult", result);
+            }
+
+            // Save parsed data
+            if (parseResult.Data.Any())
+            {
+                _context.BudgetData.AddRange(parseResult.Data);
+                await _context.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            // Build success result
             result.Success = true;
             result.Message = $"File '{file.FileName}' processed successfully.";
-            result.RecordsProcessed = 245;
-            result.RevenueRecords = 45;
-            result.ExpenditureRecords = 200;
-            result.TotalRevenues = 46_100_000.00m;
-            result.TotalExpenditures = 45_950_000.00m;
-            result.WarningCount = 3;
+            result.RecordsProcessed = parseResult.RecordsProcessed;
+            result.TotalRevenues = parseResult.Data.Where(d => d.Amount > 0).Sum(d => d.Amount);
+            result.TotalExpenditures = parseResult.Data.Where(d => d.Amount < 0).Sum(d => Math.Abs(d.Amount));
+            result.RevenueRecords = parseResult.Data.Count(d => d.Amount > 0);
+            result.ExpenditureRecords = parseResult.Data.Count(d => d.Amount < 0);
+            result.Warnings = parseResult.Warnings;
+            result.WarningCount = parseResult.WarningCount;
+            result.SubmissionId = submission.SubmissionId;
 
-            result.Warnings.Add("BUD-003: Certificated salaries increased 12% from prior year");
-            result.Warnings.Add("BUD-003: Pupil transportation increased 15% from prior year");
-            result.Warnings.Add("BUD-005: Technology supplies exceeds typical range");
+            _logger.LogInformation("Budget file uploaded: {FileName} for type {BudgetType}, {RecordCount} records across {YearCount} fiscal years",
+                file.FileName, budgetType, parseResult.RecordsProcessed,
+                parseResult.Data.Select(d => d.FiscalYear).Distinct().Count());
 
-            _logger.LogInformation("Budget file uploaded: {FileName} for type {BudgetType}", file.FileName, budgetType);
-
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            return View("UploadResult", result);
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "Error processing budget upload");
             result.Success = false;
             result.Message = "An error occurred processing the file.";
             result.Errors.Add(ex.Message);
-            return Task.FromResult<IActionResult>(View("UploadResult", result));
+            return View("UploadResult", result);
         }
     }
 

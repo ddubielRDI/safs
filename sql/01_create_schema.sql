@@ -134,6 +134,7 @@ CREATE TABLE dbo.BudgetData (
     ObjectCode CHAR(3),
     ItemCode NVARCHAR(10),
     ItemDescription NVARCHAR(200),
+    FiscalYear NVARCHAR(10) NOT NULL DEFAULT '2024-25',  -- e.g., "2024-25", "2025-26"
     Amount DECIMAL(18,2) NOT NULL,
     PriorMonthAmount DECIMAL(18,2),
     Variance AS (Amount - ISNULL(PriorMonthAmount, Amount)) PERSISTED,

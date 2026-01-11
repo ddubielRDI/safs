@@ -97,6 +97,7 @@ public class EnrollmentUploadResult
     public int RecordsProcessed { get; set; }
     public int ErrorCount { get; set; }
     public int WarningCount { get; set; }
+    public int? SubmissionId { get; set; }
     public List<string> Errors { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
 }
