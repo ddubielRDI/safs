@@ -60,12 +60,12 @@
     }
 
     // Position pill within viewport bounds
-    function positionPill(pill, element) {
+    function positionPill(pill, element, stepNumber) {
         const buffer = 10; // px from viewport edge
         const viewportWidth = window.innerWidth;
 
-        // Position above element
-        pill.style.top = '-2.5rem';
+        // Stagger heights: odd steps at -2.5rem, even steps at -4.5rem
+        pill.style.top = stepNumber % 2 === 0 ? '-4.5rem' : '-2.5rem';
 
         // Pre-check: if element is near right edge, default to right-align
         const elementRect = element.getBoundingClientRect();
@@ -171,7 +171,7 @@
             element.appendChild(pill);
 
             // Position above the element, respecting viewport bounds
-            positionPill(pill, element);
+            positionPill(pill, element, step.stepNumber);
         });
     }
 
@@ -190,7 +190,9 @@
             document.querySelectorAll('.instruction-pill').forEach(pill => {
                 const element = pill.parentElement;
                 if (element) {
-                    positionPill(pill, element);
+                    // Extract step number from pill's number element
+                    const stepNumber = parseInt(pill.querySelector('.instruction-number')?.textContent) || 1;
+                    positionPill(pill, element, stepNumber);
                 }
             });
         }, 100);

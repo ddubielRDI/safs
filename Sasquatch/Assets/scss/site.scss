@@ -320,3 +320,9 @@ h1, h2, h3, h4, h5, h6 {
 .border-ospi-gold {
   border-color: var(--ospi-gold) !important;
 }
+
+// Badge background colors (for program type pills)
+.bg-purple {
+  background-color: #6f42c1 !important;
+  color: white !important;
+}
