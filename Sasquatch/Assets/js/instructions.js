@@ -81,6 +81,7 @@
                 pointer-events: none;
                 animation: instructionFadeIn 0.3s ease-out;
                 max-width: 400px;
+                width: max-content;
             }
             .instruction-number {
                 display: inline-flex;
