@@ -69,33 +69,36 @@
                 position: absolute;
                 z-index: 1050;
                 display: inline-flex;
-                align-items: center;
+                align-items: flex-start;
                 gap: 0.5rem;
                 padding: 0.35rem 0.75rem;
                 background: linear-gradient(135deg, #198754 0%, #20c997 100%);
                 color: white;
-                border-radius: 50px;
+                border-radius: 12px;
                 font-size: 0.85rem;
                 font-weight: 500;
                 box-shadow: 0 2px 8px rgba(25, 135, 84, 0.4);
-                white-space: nowrap;
                 pointer-events: none;
                 animation: instructionFadeIn 0.3s ease-out;
+                max-width: 400px;
             }
             .instruction-number {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 1.5rem;
+                min-width: 1.5rem;
                 height: 1.5rem;
                 background: rgba(255, 255, 255, 0.25);
                 border-radius: 50%;
                 font-weight: 700;
+                flex-shrink: 0;
             }
             .instruction-text {
-                max-width: 250px;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                line-height: 1.4;
+                white-space: normal !important;
+                overflow: visible !important;
+                text-overflow: clip !important;
+                max-width: none !important;
             }
             @keyframes instructionFadeIn {
                 from { opacity: 0; transform: translateY(5px); }
