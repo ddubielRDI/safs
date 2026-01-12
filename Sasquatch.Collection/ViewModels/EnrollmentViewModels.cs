@@ -116,6 +116,12 @@ public class OspiDashboardViewModel
     public int SubmittedCount { get; set; }
     public int ApprovedCount { get; set; }
     public int PendingCount { get; set; }
+
+    // State-level aggregate data (SAFS-002 compliance)
+    public int StatewideHeadcount { get; set; }
+    public decimal StatewideFTE { get; set; }
+    public int StatewideSchoolCount { get; set; }
+    public int StatewideSubmissionCount { get; set; }
 }
 
 /// <summary>
@@ -131,4 +137,71 @@ public class DistrictSubmissionStatus
     public string BudgetStatus { get; set; } = "Not Started";
     public bool IsLocked { get; set; }
     public DateTime? LastSubmission { get; set; }
+}
+
+/// <summary>
+/// View model for bulk import page
+/// </summary>
+public class BulkImportViewModel : IWorkflowViewModel
+{
+    public WorkflowTabViewModel Tabs { get; set; } = new();
+    public string SchoolYear { get; set; } = "2024-25";
+    public List<(byte Month, string Name)> AvailableMonths { get; set; } = new()
+    {
+        (1, "September"),
+        (2, "October"),
+        (3, "November"),
+        (4, "December"),
+        (5, "January"),
+        (6, "February"),
+        (7, "March"),
+        (8, "April"),
+        (9, "May"),
+        (10, "June")
+    };
+}
+
+/// <summary>
+/// Result of bulk import operation
+/// </summary>
+public class BulkImportResultViewModel : IWorkflowViewModel
+{
+    public WorkflowTabViewModel Tabs { get; set; } = new();
+    public bool Success { get; set; }
+    public string? Message { get; set; }
+    public string SchoolYear { get; set; } = string.Empty;
+    public byte Month { get; set; }
+    public string MonthName => Month switch
+    {
+        1 => "September", 2 => "October", 3 => "November", 4 => "December",
+        5 => "January", 6 => "February", 7 => "March", 8 => "April",
+        9 => "May", 10 => "June", 11 => "July", 12 => "August", _ => "Unknown"
+    };
+
+    public int DistrictsCreated { get; set; }
+    public int SchoolsCreated { get; set; }
+    public int SubmissionsCreated { get; set; }
+    public int RecordsCreated { get; set; }
+    public int DistrictsFailed { get; set; }
+
+    public TimeSpan Duration { get; set; }
+    public List<string> Errors { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+    public List<DistrictImportResult> DistrictResults { get; set; } = new();
+}
+
+/// <summary>
+/// Result for a single district in bulk import
+/// </summary>
+public class DistrictImportResult
+{
+    public string DistrictCode { get; set; } = string.Empty;
+    public string DistrictName { get; set; } = string.Empty;
+    public int? SubmissionId { get; set; }
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int SchoolCount { get; set; }
+    public int RecordCount { get; set; }
+    public int WarningCount { get; set; }
+    public int ErrorCount { get; set; }
 }

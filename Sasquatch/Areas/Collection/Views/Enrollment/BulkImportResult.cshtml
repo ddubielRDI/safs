@@ -1,0 +1,243 @@
+@model Sasquatch.Collection.ViewModels.BulkImportResultViewModel
+@{
+    ViewData["Title"] = "Bulk Import Result";
+}
+
+<div class="container-fluid">
+    @* Workflow Tab Navigation *@
+    @await Html.PartialAsync("_WorkflowTabs", Model.Tabs)
+
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Enrollment</a></li>
+                    <li class="breadcrumb-item"><a asp-action="BulkImport">Bulk Import</a></li>
+                    <li class="breadcrumb-item active">Result</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                @if (Model.Success)
+                {
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    <span>Bulk Import Completed</span>
+                }
+                else
+                {
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                    <span>Bulk Import Completed with Issues</span>
+                }
+            </h1>
+            <p class="text-muted">
+                @Model.MonthName @Model.SchoolYear - Processed in @Model.Duration.TotalSeconds.ToString("F1") seconds
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-9">
+            @if (Model.Success)
+            {
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>@Model.Message
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>@Model.Message
+                </div>
+            }
+
+            @* Summary Cards *@
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card border-primary">
+                        <div class="card-body text-center">
+                            <div class="h4 text-primary mb-0">@Model.SubmissionsCreated</div>
+                            <small class="text-muted">Districts Imported</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-info">
+                        <div class="card-body text-center">
+                            <div class="h4 text-info mb-0">@Model.SchoolsCreated</div>
+                            <small class="text-muted">Schools Created</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <div class="h4 text-success mb-0">@Model.RecordsCreated.ToString("N0")</div>
+                            <small class="text-muted">Enrollment Records</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-danger">
+                        <div class="card-body text-center">
+                            <div class="h4 text-danger mb-0">@Model.DistrictsFailed</div>
+                            <small class="text-muted">Districts Failed</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Errors *@
+            @if (Model.Errors.Any())
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-danger text-white">
+                        <strong>Import Errors</strong>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            @foreach (var error in Model.Errors)
+                            {
+                                <div class="list-group-item list-group-item-danger">
+                                    <i class="bi bi-x-circle-fill me-2"></i>@error
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* District Results Table *@
+            @if (Model.DistrictResults.Any())
+            {
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <strong>District Import Results</strong>
+                        <span class="badge bg-secondary">@Model.DistrictResults.Count districts</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>District</th>
+                                        <th class="text-end">Schools</th>
+                                        <th class="text-end">Records</th>
+                                        <th class="text-end">Warnings</th>
+                                        <th class="text-end">Errors</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var district in Model.DistrictResults.OrderBy(d => d.DistrictName))
+                                    {
+                                        <tr class="@(district.Success ? "" : "table-danger")">
+                                            <td>
+                                                @if (district.Success)
+                                                {
+                                                    <span class="badge bg-success"><i class="bi bi-check"></i></span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-danger"><i class="bi bi-x"></i></span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <strong>@district.DistrictName</strong>
+                                                <small class="text-muted d-block">@district.DistrictCode</small>
+                                                @if (!string.IsNullOrEmpty(district.Error))
+                                                {
+                                                    <small class="text-danger d-block">@district.Error</small>
+                                                }
+                                            </td>
+                                            <td class="text-end">@district.SchoolCount</td>
+                                            <td class="text-end">@district.RecordCount</td>
+                                            <td class="text-end">
+                                                @if (district.WarningCount > 0)
+                                                {
+                                                    <span class="badge bg-warning text-dark">@district.WarningCount</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">0</span>
+                                                }
+                                            </td>
+                                            <td class="text-end">
+                                                @if (district.ErrorCount > 0)
+                                                {
+                                                    <span class="badge bg-danger">@district.ErrorCount</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">0</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (district.SubmissionId.HasValue)
+                                                {
+                                                    <a asp-action="Details" asp-route-id="@district.SubmissionId"
+                                                       class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="d-flex justify-content-between">
+                <a asp-action="BulkImport" class="btn btn-outline-secondary">
+                    <i class="bi bi-cloud-upload me-1"></i>Import Another File
+                </a>
+                <a asp-action="Index" class="btn btn-primary">
+                    <i class="bi bi-list me-1"></i>View All Submissions
+                </a>
+            </div>
+        </div>
+
+        <div class="col-lg-3">
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <i class="bi bi-clock me-1"></i>Performance
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Total Time</dt>
+                        <dd>@Model.Duration.TotalSeconds.ToString("F1") seconds</dd>
+                        @if (Model.SubmissionsCreated > 0)
+                        {
+                            <dt>Avg per District</dt>
+                            <dd>@((Model.Duration.TotalMilliseconds / Model.SubmissionsCreated).ToString("F0")) ms</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <i class="bi bi-question-circle me-1"></i>Next Steps
+                </div>
+                <div class="card-body">
+                    <ol class="mb-0 small">
+                        <li class="mb-2">Click "View" on any district to see their enrollment data</li>
+                        <li class="mb-2">Review validation warnings</li>
+                        <li class="mb-2">Districts can edit their own submissions</li>
+                        <li>Submit for approval when ready</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+</style>

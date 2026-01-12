@@ -14,9 +14,13 @@
 # (moved to docs/inputs/ for better organization)
 
 # -----------------------------------------------------------------------------
-# Data Files (generated/test data)
+# Sample Data - Track small samples, ignore large bulk data
 # -----------------------------------------------------------------------------
-data/
+# Large extract files (34-264 MB each)
+data/collection/budget/extracts/*.zip
+data/collection/budget/extracts/csv-*/
+# Markdown conversions (regenerable from xlsx)
+data/collection/**/*.md
 
 # -----------------------------------------------------------------------------
 # Node.js / npm

@@ -73,6 +73,37 @@ public class AdminController : Controller
 
         var esds = await _context.ESDs.OrderBy(e => e.EsdName).ToListAsync();
 
+        // Calculate state-level aggregates (SAFS-002: State-level view)
+        var enrollmentQuery = _context.EnrollmentSubmissions
+            .Where(s => s.SchoolYear == DemoSchoolYear);
+
+        if (!string.IsNullOrEmpty(esdCode))
+        {
+            var esdDistricts = await _context.Districts
+                .Where(d => d.EsdCode == esdCode)
+                .Select(d => d.DistrictCode)
+                .ToListAsync();
+            enrollmentQuery = enrollmentQuery.Where(s => esdDistricts.Contains(s.DistrictCode));
+        }
+
+        if (month.HasValue)
+        {
+            enrollmentQuery = enrollmentQuery.Where(s => s.Month == month.Value);
+        }
+
+        var submissionIds = await enrollmentQuery.Select(s => s.SubmissionId).ToListAsync();
+
+        var aggregates = await _context.EnrollmentData
+            .Where(d => submissionIds.Contains(d.SubmissionId))
+            .GroupBy(d => 1)
+            .Select(g => new
+            {
+                TotalHeadcount = g.Sum(d => d.Headcount),
+                TotalFTE = g.Sum(d => d.FTE),
+                SchoolCount = g.Select(d => d.SchoolCode).Distinct().Count()
+            })
+            .FirstOrDefaultAsync();
+
         var viewModel = new OspiDashboardViewModel
         {
             DistrictStatuses = districtStatuses.OrderBy(d => d.EsdName).ThenBy(d => d.DistrictName).ToList(),
@@ -83,7 +114,12 @@ public class AdminController : Controller
             TotalDistricts = districtStatuses.Count,
             SubmittedCount = districtStatuses.Count(d => d.EnrollmentStatus == "Submitted"),
             ApprovedCount = districtStatuses.Count(d => d.EnrollmentStatus == "Approved"),
-            PendingCount = districtStatuses.Count(d => d.EnrollmentStatus == "Draft" || d.EnrollmentStatus == "Not Started")
+            PendingCount = districtStatuses.Count(d => d.EnrollmentStatus == "Draft" || d.EnrollmentStatus == "Not Started"),
+            // State-level aggregates
+            StatewideHeadcount = aggregates?.TotalHeadcount ?? 0,
+            StatewideFTE = aggregates?.TotalFTE ?? 0,
+            StatewideSchoolCount = aggregates?.SchoolCount ?? 0,
+            StatewideSubmissionCount = submissionIds.Count
         };
 
         return View(viewModel);

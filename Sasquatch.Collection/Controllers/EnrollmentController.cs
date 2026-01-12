@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using Sasquatch.Core.Data;
 using Sasquatch.Core.Models.Collection;
+using Sasquatch.Core.Models.Shared;
 using Sasquatch.Collection.ViewModels;
 using Sasquatch.Collection.Services;
 
@@ -25,6 +27,78 @@ public class EnrollmentController : Controller
 
     // For demo, school year is fixed; district comes from session
     private const string DemoSchoolYear = "2024-25";
+
+    // Washington State County-to-ESD mapping (39 counties, 9 ESDs)
+    // County codes are the first 2 digits of CCDDD district codes
+    private static readonly Dictionary<string, string> CountyToEsd = new()
+    {
+        // ESD 101 - Northeast Washington (Spokane region)
+        { "01", "101" }, // Adams
+        { "02", "101" }, // Asotin
+        { "13", "101" }, // Columbia
+        { "16", "101" }, // Ferry
+        { "06", "101" }, // Garfield
+        { "22", "101" }, // Lincoln
+        { "28", "101" }, // Pend Oreille
+        { "32", "101" }, // Spokane
+        { "33", "101" }, // Stevens
+        { "38", "101" }, // Whitman
+
+        // ESD 105 - Yakima Region (Central)
+        { "07", "105" }, // Chelan
+        { "12", "105" }, // Douglas
+        { "19", "105" }, // Grant
+        { "20", "105" }, // Kittitas
+        { "21", "105" }, // Klickitat
+        { "25", "105" }, // Okanogan
+        { "39", "105" }, // Yakima
+
+        // ESD 112 - Southwest Washington (Vancouver)
+        { "08", "112" }, // Clark
+        { "10", "112" }, // Cowlitz
+        { "36", "112" }, // Wahkiakum
+        { "30", "112" }, // Skamania
+
+        // ESD 113 - Capital Region (Olympia/Tumwater)
+        { "18", "113" }, // Grays Harbor
+        { "23", "113" }, // Lewis
+        { "24", "113" }, // Mason
+        { "26", "113" }, // Pacific
+        { "34", "113" }, // Thurston (Tumwater)
+
+        // ESD 114 - Olympic Region (Bremerton)
+        { "09", "114" }, // Clallam
+        { "15", "114" }, // Jefferson
+        { "35", "114" }, // Kitsap
+
+        // ESD 121 - Puget Sound (Seattle/King)
+        { "17", "121" }, // King (Seattle) - using actual WA county code
+        { "27", "121" }, // Pierce (Tacoma)
+
+        // ESD 123 - Southeast Washington (Tri-Cities)
+        { "03", "123" }, // Benton
+        { "14", "123" }, // Franklin
+        { "37", "123" }, // Walla Walla
+
+        // ESD 171 - North Central (Wenatchee)
+        // Note: Some counties shared with ESD 105
+
+        // ESD 189 - Northwest Washington (Bellingham)
+        { "29", "189" }, // San Juan
+        { "31", "189" }, // Skagit
+        { "04", "189" }, // Snohomish
+        { "40", "189" }, // Whatcom
+        { "11", "189" }, // Island
+    };
+
+    // Valid grade levels by school type for ENR-002 validation
+    private static readonly Dictionary<string, HashSet<string>> ValidGradesBySchoolType = new()
+    {
+        { "Elementary", new HashSet<string> { "PK", "K", "01", "02", "03", "04", "05", "06" } },
+        { "Middle", new HashSet<string> { "06", "07", "08" } },
+        { "High", new HashSet<string> { "09", "10", "11", "12" } },
+        // Alternative/Combined schools can have any grade
+    };
 
     /// <summary>
     /// Get the current demo district from session
@@ -433,7 +507,361 @@ public class EnrollmentController : Controller
     }
 
     /// <summary>
+    /// Bulk import page - upload statewide enrollment file
+    /// </summary>
+    public IActionResult BulkImport()
+    {
+        var viewModel = new BulkImportViewModel
+        {
+            Tabs = GetTabViewModel(),
+            SchoolYear = DemoSchoolYear
+        };
+        ViewBag.InstructionsJson = JsonSerializer.Serialize(_instructionService.GetInstructions("Enrollment", "BulkImport"));
+        return View(viewModel);
+    }
+
+    /// <summary>
+    /// Process bulk import of statewide enrollment file
+    /// </summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(50 * 1024 * 1024)] // 50MB limit for large statewide files
+    public async Task<IActionResult> BulkImport(IFormFile file, string schoolYear, byte month)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = new BulkImportResultViewModel
+        {
+            Tabs = GetTabViewModel(),
+            SchoolYear = schoolYear ?? DemoSchoolYear,
+            Month = month > 0 ? month : (byte)2
+        };
+
+        // Validate file
+        var (isValid, error) = _fileParser.ValidateFile(file);
+        if (!isValid)
+        {
+            result.Success = false;
+            result.Message = error ?? "Invalid file.";
+            result.Duration = stopwatch.Elapsed;
+            return View("BulkImportResult", result);
+        }
+
+        try
+        {
+            // Parse the file, grouping by district
+            var parseResult = await _fileParser.ParseBulkAsync(file);
+
+            if (!parseResult.Success)
+            {
+                result.Success = false;
+                result.Message = "Failed to parse file.";
+                result.Errors = parseResult.Errors;
+                result.Duration = stopwatch.Elapsed;
+                return View("BulkImportResult", result);
+            }
+
+            result.Warnings = parseResult.Warnings;
+
+            // Process each district
+            foreach (var kvp in parseResult.DistrictDataMap)
+            {
+                var districtCode = kvp.Key;
+                var districtData = kvp.Value;
+                var districtResult = new DistrictImportResult
+                {
+                    DistrictCode = districtCode,
+                    DistrictName = districtData.DistrictName
+                };
+
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // Ensure district exists
+                    var (district, districtWasCreated) = await EnsureDistrictAsync(districtCode, districtData.DistrictName);
+                    if (district == null)
+                    {
+                        throw new Exception($"Failed to create district {districtCode}");
+                    }
+                    if (districtWasCreated)
+                    {
+                        result.DistrictsCreated++;
+                    }
+
+                    // Ensure schools exist
+                    var schoolsCreated = 0;
+                    foreach (var schoolRow in districtData.Schools)
+                    {
+                        var (school, schoolWasCreated) = await EnsureSchoolAsync(districtCode, schoolRow.SchoolCode, schoolRow.SchoolName);
+                        if (schoolWasCreated)
+                        {
+                            schoolsCreated++;
+                        }
+                    }
+                    districtResult.SchoolCount = districtData.Schools.Count;
+
+                    // Create submission
+                    var submission = new EnrollmentSubmission
+                    {
+                        DistrictCode = districtCode,
+                        SchoolYear = result.SchoolYear,
+                        Month = result.Month,
+                        SubmissionStatus = "Draft",
+                        CreatedDate = DateTime.UtcNow
+                    };
+                    _context.EnrollmentSubmissions.Add(submission);
+                    await _context.SaveChangesAsync();
+
+                    // Add enrollment data
+                    var recordCount = 0;
+                    foreach (var schoolRow in districtData.Schools)
+                    {
+                        foreach (var enrollmentRecord in schoolRow.EnrollmentRecords)
+                        {
+                            enrollmentRecord.SubmissionId = submission.SubmissionId;
+                            _context.EnrollmentData.Add(enrollmentRecord);
+                            recordCount++;
+                        }
+                    }
+                    await _context.SaveChangesAsync();
+
+                    // Populate prior month data for variance validation
+                    await PopulatePriorMonthDataAsync(submission, districtCode, result.SchoolYear, result.Month);
+
+                    // Run validation
+                    await RunValidation(submission.SubmissionId);
+
+                    // Get validation counts
+                    var edits = await _context.EnrollmentEdits
+                        .Where(e => e.SubmissionId == submission.SubmissionId)
+                        .ToListAsync();
+                    districtResult.WarningCount = edits.Count(e => e.Severity == "Warning");
+                    districtResult.ErrorCount = edits.Count(e => e.Severity == "Error");
+
+                    await transaction.CommitAsync();
+
+                    districtResult.Success = true;
+                    districtResult.SubmissionId = submission.SubmissionId;
+                    districtResult.RecordCount = recordCount;
+                    result.SubmissionsCreated++;
+                    result.RecordsCreated += recordCount;
+                    result.SchoolsCreated += schoolsCreated;
+
+                    _logger.LogInformation("Bulk import: District {DistrictCode} - {RecordCount} records",
+                        districtCode, recordCount);
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    districtResult.Success = false;
+                    districtResult.Error = ex.Message;
+                    result.DistrictsFailed++;
+                    _logger.LogError(ex, "Bulk import failed for district {DistrictCode}", districtCode);
+                }
+
+                result.DistrictResults.Add(districtResult);
+            }
+
+            // Determine success
+            result.Success = result.DistrictsFailed == 0;
+            result.Message = result.Success
+                ? $"Successfully imported {result.SubmissionsCreated} districts with {result.RecordsCreated:N0} enrollment records."
+                : $"Import completed with {result.DistrictsFailed} failures. {result.SubmissionsCreated} districts imported successfully.";
+
+            stopwatch.Stop();
+            result.Duration = stopwatch.Elapsed;
+
+            _logger.LogInformation("Bulk import completed: {Districts} districts, {Records} records, {Duration}ms",
+                result.SubmissionsCreated, result.RecordsCreated, result.Duration.TotalMilliseconds);
+
+            return View("BulkImportResult", result);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, "Bulk import failed");
+            result.Success = false;
+            result.Message = $"Import failed: {ex.Message}";
+            result.Duration = stopwatch.Elapsed;
+            return View("BulkImportResult", result);
+        }
+    }
+
+    /// <summary>
+    /// Ensure a district exists, creating it if necessary
+    /// Returns (district, wasCreated)
+    /// </summary>
+    private async Task<(District? District, bool WasCreated)> EnsureDistrictAsync(string districtCode, string districtName)
+    {
+        if (string.IsNullOrWhiteSpace(districtCode))
+        {
+            return (null, false);
+        }
+
+        var existing = await _context.Districts.FirstOrDefaultAsync(d => d.DistrictCode == districtCode);
+        if (existing != null)
+        {
+            return (existing, false);
+        }
+
+        // Derive county code and ESD code from district code
+        // CCDDD format: first 2 digits are county, DDD is district number
+        var countyCode = districtCode.Length >= 2 ? districtCode.Substring(0, 2) : "00";
+
+        // Look up ESD by county code, default to 113 (Capital Region) if not found
+        var esdCode = CountyToEsd.TryGetValue(countyCode, out var mappedEsd) ? mappedEsd : "113";
+
+        var district = new District
+        {
+            DistrictCode = districtCode,
+            DistrictName = districtName ?? districtCode, // Fallback to code if name is null
+            CountyCode = countyCode,
+            EsdCode = esdCode,
+            Class = 1,
+            IsActive = true,
+            CreatedDate = DateTime.UtcNow
+        };
+        _context.Districts.Add(district);
+        await _context.SaveChangesAsync();
+
+        return (district, true);
+    }
+
+    /// <summary>
+    /// Ensure a school exists, creating it if necessary
+    /// Returns (school, wasCreated)
+    /// </summary>
+    private async Task<(School? School, bool WasCreated)> EnsureSchoolAsync(string districtCode, string schoolCode, string schoolName)
+    {
+        if (string.IsNullOrWhiteSpace(districtCode) || string.IsNullOrWhiteSpace(schoolCode))
+        {
+            return (null, false);
+        }
+
+        var existing = await _context.Schools
+            .FirstOrDefaultAsync(s => s.DistrictCode == districtCode && s.SchoolCode == schoolCode);
+
+        if (existing != null)
+        {
+            return (existing, false);
+        }
+
+        // Infer school type from name (with null safety)
+        string? schoolType = null;
+        var safeName = schoolName ?? "";
+        if (safeName.Contains("Elementary", StringComparison.OrdinalIgnoreCase) ||
+            safeName.Contains("Primary", StringComparison.OrdinalIgnoreCase))
+        {
+            schoolType = "Elementary";
+        }
+        else if (safeName.Contains("Middle", StringComparison.OrdinalIgnoreCase) ||
+                 safeName.Contains("Junior", StringComparison.OrdinalIgnoreCase))
+        {
+            schoolType = "Middle";
+        }
+        else if (safeName.Contains("High", StringComparison.OrdinalIgnoreCase))
+        {
+            schoolType = "High";
+        }
+
+        var school = new School
+        {
+            SchoolCode = schoolCode,
+            DistrictCode = districtCode,
+            SchoolName = schoolName ?? $"School {schoolCode}", // Fallback to code if name is null
+            SchoolType = schoolType,
+            IsActive = true
+        };
+        _context.Schools.Add(school);
+        await _context.SaveChangesAsync();
+
+        return (school, true);
+    }
+
+    /// <summary>
+    /// Get the prior school year (e.g., "2024-25" -> "2023-24")
+    /// </summary>
+    private static string GetPriorSchoolYear(string schoolYear)
+    {
+        if (string.IsNullOrEmpty(schoolYear) || schoolYear.Length < 7)
+            return schoolYear;
+
+        // Parse "2024-25" format
+        if (int.TryParse(schoolYear.Substring(0, 4), out var startYear))
+        {
+            return $"{startYear - 1}-{(startYear - 1) % 100:D2}";
+        }
+        return schoolYear;
+    }
+
+    /// <summary>
+    /// Populate prior month headcount/FTE data for variance validation
+    /// Queries the prior month's submission and matches records by school/grade/program
+    /// </summary>
+    private async Task PopulatePriorMonthDataAsync(EnrollmentSubmission submission, string districtCode, string schoolYear, byte month)
+    {
+        // Determine prior month and year
+        var priorMonth = month == 1 ? (byte)12 : (byte)(month - 1);
+        var priorYear = month == 1 ? GetPriorSchoolYear(schoolYear) : schoolYear;
+
+        // Find prior month submission for this district
+        var priorSubmission = await _context.EnrollmentSubmissions
+            .Include(s => s.EnrollmentData)
+            .FirstOrDefaultAsync(s => s.DistrictCode == districtCode
+                && s.SchoolYear == priorYear
+                && s.Month == priorMonth
+                && s.SubmissionStatus != "Rejected");
+
+        if (priorSubmission == null)
+        {
+            _logger.LogInformation("No prior month submission found for district {DistrictCode}, {SchoolYear} month {Month}",
+                districtCode, priorYear, priorMonth);
+            return;
+        }
+
+        // Null safety for EnrollmentData collection
+        if (priorSubmission.EnrollmentData == null || !priorSubmission.EnrollmentData.Any())
+        {
+            _logger.LogWarning("Prior submission {SubmissionId} has no enrollment data", priorSubmission.SubmissionId);
+            return;
+        }
+
+        // Build lookup by composite key: SchoolCode + GradeLevel + ProgramType
+        // Filter out records with null keys to prevent dictionary exceptions
+        var priorDataLookup = priorSubmission.EnrollmentData
+            .Where(d => !string.IsNullOrEmpty(d.SchoolCode) && !string.IsNullOrEmpty(d.GradeLevel))
+            .ToDictionary(
+                d => (d.SchoolCode, d.GradeLevel, d.ProgramType ?? ""),
+                d => (d.Headcount, d.FTE));
+
+        // Reload current submission data to update
+        var currentData = await _context.EnrollmentData
+            .Where(d => d.SubmissionId == submission.SubmissionId)
+            .ToListAsync();
+
+        var matchCount = 0;
+        foreach (var data in currentData)
+        {
+            // Use same key format as lookup (null ProgramType -> empty string)
+            var key = (data.SchoolCode, data.GradeLevel, data.ProgramType ?? "");
+            if (priorDataLookup.TryGetValue(key, out var prior))
+            {
+                data.PriorMonthHeadcount = prior.Headcount;
+                data.PriorMonthFTE = prior.FTE;
+                matchCount++;
+            }
+        }
+
+        if (matchCount > 0)
+        {
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Populated prior month data for {MatchCount} records in district {DistrictCode}",
+                matchCount, districtCode);
+        }
+    }
+
+    /// <summary>
     /// Run validation rules on a submission
+    /// Implements all 7 ENR rules per EditRules table
     /// </summary>
     private async Task RunValidation(int submissionId)
     {
@@ -443,22 +871,23 @@ public class EnrollmentController : Controller
 
         if (submission == null) return;
 
-        // Get active edit rules
-        var rules = await _context.EditRules
-            .Where(r => r.FormType == "P-223" && r.IsActive)
-            .ToListAsync();
-
         // Clear existing edits
         var existingEdits = await _context.EnrollmentEdits
             .Where(e => e.SubmissionId == submissionId)
             .ToListAsync();
         _context.EnrollmentEdits.RemoveRange(existingEdits);
 
-        // Apply rules
+        // Pre-load school types for ENR-002 validation
+        var schoolCodes = submission.EnrollmentData.Select(d => d.SchoolCode).Distinct().ToList();
+        var schoolTypes = await _context.Schools
+            .Where(s => schoolCodes.Contains(s.SchoolCode))
+            .ToDictionaryAsync(s => s.SchoolCode, s => s.SchoolType);
+
+        // Apply all 7 ENR validation rules
         foreach (var data in submission.EnrollmentData)
         {
-            // ENR-001: Month-over-month variance check
-            if (data.PriorMonthHeadcount > 0)
+            // ENR-001: Month-over-month headcount variance > 10% (Warning)
+            if (data.PriorMonthHeadcount.HasValue && data.PriorMonthHeadcount.Value > 0)
             {
                 var variance = Math.Abs((decimal)(data.Headcount - data.PriorMonthHeadcount.Value) / data.PriorMonthHeadcount.Value * 100);
                 if (variance > 10)
@@ -470,12 +899,39 @@ public class EnrollmentController : Controller
                         Severity = "Warning",
                         Message = $"Headcount changed by {variance:F1}% from prior month",
                         FieldName = "Headcount",
-                        FieldValue = $"{data.Headcount} (was {data.PriorMonthHeadcount})"
+                        FieldValue = $"{data.Headcount} (was {data.PriorMonthHeadcount})",
+                        CreatedDate = DateTime.UtcNow
                     });
                 }
             }
 
-            // ENR-003: FTE exceeds headcount
+            // ENR-002: Invalid grade for school type (Error)
+            if (schoolTypes.TryGetValue(data.SchoolCode, out var schoolType) && !string.IsNullOrEmpty(schoolType))
+            {
+                if (ValidGradesBySchoolType.TryGetValue(schoolType, out var validGrades))
+                {
+                    // Normalize grade (e.g., "K" stays "K", "1" -> "01")
+                    var normalizedGrade = data.GradeLevel.Length == 1 && char.IsDigit(data.GradeLevel[0])
+                        ? data.GradeLevel.PadLeft(2, '0')
+                        : data.GradeLevel;
+
+                    if (!validGrades.Contains(normalizedGrade) && !validGrades.Contains(data.GradeLevel))
+                    {
+                        _context.EnrollmentEdits.Add(new EnrollmentEdit
+                        {
+                            SubmissionId = submissionId,
+                            EditRuleId = "ENR-002",
+                            Severity = "Error",
+                            Message = $"Grade {data.GradeLevel} is invalid for {schoolType} school",
+                            FieldName = "GradeLevel",
+                            FieldValue = $"Grade: {data.GradeLevel}, School Type: {schoolType}",
+                            CreatedDate = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+
+            // ENR-003: FTE exceeds headcount (Error)
             if (data.FTE > data.Headcount)
             {
                 _context.EnrollmentEdits.Add(new EnrollmentEdit
@@ -485,7 +941,78 @@ public class EnrollmentController : Controller
                     Severity = "Error",
                     Message = "FTE cannot exceed headcount",
                     FieldName = "FTE",
-                    FieldValue = $"FTE: {data.FTE}, Headcount: {data.Headcount}"
+                    FieldValue = $"FTE: {data.FTE}, Headcount: {data.Headcount}",
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+
+            // ENR-004: Negative values (Error)
+            if (data.Headcount < 0 || data.FTE < 0)
+            {
+                _context.EnrollmentEdits.Add(new EnrollmentEdit
+                {
+                    SubmissionId = submissionId,
+                    EditRuleId = "ENR-004",
+                    Severity = "Error",
+                    Message = "Headcount and FTE must be non-negative",
+                    FieldName = data.Headcount < 0 ? "Headcount" : "FTE",
+                    FieldValue = $"Headcount: {data.Headcount}, FTE: {data.FTE}",
+                    CreatedDate = DateTime.UtcNow
+                });
+            }
+
+            // ENR-005: Suspicious FTE values
+            // Check if FTE equals Headcount exactly (common data entry error - FTE rarely equals headcount exactly)
+            // Also check if FTE has unusual decimal pattern suggesting truncated headcount
+            if (data.Headcount > 0 && data.FTE > 0)
+            {
+                // If FTE exactly equals Headcount, it's suspicious (part-time students would make FTE < HC)
+                if ((int)data.FTE == data.Headcount && data.FTE == Math.Floor(data.FTE))
+                {
+                    _context.EnrollmentEdits.Add(new EnrollmentEdit
+                    {
+                        SubmissionId = submissionId,
+                        EditRuleId = "ENR-005",
+                        Severity = "Warning",
+                        Message = "FTE equals Headcount exactly - verify this is correct (typically FTE < Headcount)",
+                        FieldName = "FTE",
+                        FieldValue = $"Headcount: {data.Headcount}, FTE: {data.FTE}",
+                        CreatedDate = DateTime.UtcNow
+                    });
+                }
+            }
+
+            // ENR-006: Large enrollment drop > 25% (Warning)
+            if (data.PriorMonthHeadcount.HasValue && data.PriorMonthHeadcount.Value > 0)
+            {
+                var changePercent = (decimal)(data.Headcount - data.PriorMonthHeadcount.Value) / data.PriorMonthHeadcount.Value * 100;
+                if (changePercent < -25)
+                {
+                    _context.EnrollmentEdits.Add(new EnrollmentEdit
+                    {
+                        SubmissionId = submissionId,
+                        EditRuleId = "ENR-006",
+                        Severity = "Warning",
+                        Message = $"Large enrollment decrease of {Math.Abs(changePercent):F1}% from prior month",
+                        FieldName = "Headcount",
+                        FieldValue = $"{data.Headcount} (was {data.PriorMonthHeadcount})",
+                        CreatedDate = DateTime.UtcNow
+                    });
+                }
+            }
+
+            // ENR-007: Missing school code (Error)
+            if (string.IsNullOrWhiteSpace(data.SchoolCode))
+            {
+                _context.EnrollmentEdits.Add(new EnrollmentEdit
+                {
+                    SubmissionId = submissionId,
+                    EditRuleId = "ENR-007",
+                    Severity = "Error",
+                    Message = "School code is required",
+                    FieldName = "SchoolCode",
+                    FieldValue = "(empty)",
+                    CreatedDate = DateTime.UtcNow
                 });
             }
         }

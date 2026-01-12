@@ -1,0 +1,245 @@
+@model Sasquatch.Collection.ViewModels.BulkImportViewModel
+@{
+    ViewData["Title"] = "Bulk Import Enrollment";
+}
+
+<div class="container-fluid">
+    @* Workflow Tab Navigation *@
+    @await Html.PartialAsync("_WorkflowTabs", Model.Tabs)
+
+    <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a asp-action="Index">Enrollment</a></li>
+                    <li class="breadcrumb-item active">Bulk Import</li>
+                </ol>
+            </nav>
+            <h1 class="h3">
+                <i class="bi bi-cloud-upload me-2"></i>Bulk Import Statewide Enrollment
+            </h1>
+            <p class="text-muted">Upload a statewide enrollment file to import data for all districts.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <strong>Admin Operation</strong> - This will create submissions for multiple districts
+                </div>
+                <div class="card-body">
+                    <form asp-action="BulkImport" method="post" enctype="multipart/form-data" id="bulkImportForm">
+                        @Html.AntiForgeryToken()
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label for="schoolYear" class="form-label">School Year</label>
+                                <select id="schoolYear" name="schoolYear" class="form-select" required>
+                                    <option value="2024-25" selected>2024-25</option>
+                                    <option value="2025-26">2025-26</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="month" class="form-label">Reporting Month</label>
+                                <select id="month" name="month" class="form-select" required>
+                                    @foreach (var m in Model.AvailableMonths)
+                                    {
+                                        if (m.Month == 2)
+                                        {
+                                            <option value="@m.Month" selected>@m.Name</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@m.Month">@m.Name</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="file" class="form-label">Statewide Enrollment File</label>
+                            <div class="upload-zone border rounded p-5 text-center" id="uploadZone">
+                                <i class="bi bi-file-earmark-spreadsheet text-muted" style="font-size: 3rem;"></i>
+                                <p class="mt-3 mb-2">Drag and drop your file here, or click to browse</p>
+                                <p class="text-muted small">Supported format: XLSX (Excel) - up to 50MB</p>
+                                <input type="file" id="file" name="file" class="form-control d-none" accept=".xlsx" required />
+                            </div>
+                            <div id="fileInfo" class="mt-2 d-none">
+                                <div class="d-flex align-items-center p-2 bg-light rounded">
+                                    <i class="bi bi-file-earmark-spreadsheet text-success me-2" style="font-size: 1.5rem;"></i>
+                                    <div class="flex-grow-1">
+                                        <div id="fileName" class="fw-semibold"></div>
+                                        <small id="fileSize" class="text-muted"></small>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="removeFile">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Expected file format:</strong> OSPI statewide enrollment file with columns:
+                            CCDDD, District, S #, School, K-12 grades, ALE, Running Start, Open Doors, SPED
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-warning" id="uploadBtn" disabled>
+                                <i class="bi bi-cloud-upload me-1"></i>Start Bulk Import
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <strong>What This Does</strong>
+                </div>
+                <div class="card-body">
+                    <ul class="small mb-0">
+                        <li>Parses the entire statewide file</li>
+                        <li>Creates districts/schools if they don't exist</li>
+                        <li>Creates one enrollment submission per district</li>
+                        <li>Runs validation rules on each submission</li>
+                        <li>Shows summary of imported data</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <strong>Available Data Files</strong>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-2">OSPI enrollment files in Data folder:</p>
+                    <ul class="small mb-0">
+                        <li>schoolenrollment-17-18-current.xlsx</li>
+                        <li>25-26_enrollment_summary.xlsx</li>
+                        <li>24-25-ale-enrollment-posting.xlsx</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay" class="d-none">
+    <div class="loading-content">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h5>Processing Bulk Import...</h5>
+        <p class="text-muted">This may take several minutes for large files.</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('file');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const removeFile = document.getElementById('removeFile');
+        const form = document.getElementById('bulkImportForm');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        // Click to browse
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('border-warning', 'bg-light');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('border-warning', 'bg-light');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('border-warning', 'bg-light');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                showFileInfo(e.dataTransfer.files[0]);
+            }
+        });
+
+        // File input change
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) {
+                showFileInfo(fileInput.files[0]);
+            }
+        });
+
+        // Remove file
+        removeFile.addEventListener('click', () => {
+            fileInput.value = '';
+            fileInfo.classList.add('d-none');
+            uploadZone.classList.remove('d-none');
+            uploadBtn.disabled = true;
+        });
+
+        // Form submit - show loading
+        form.addEventListener('submit', () => {
+            loadingOverlay.classList.remove('d-none');
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing...';
+        });
+
+        function showFileInfo(file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.remove('d-none');
+            uploadZone.classList.add('d-none');
+            uploadBtn.disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+    </script>
+}
+
+<style>
+    .upload-zone {
+        cursor: pointer;
+        transition: all 0.2s;
+        border-style: dashed !important;
+    }
+
+    .upload-zone:hover {
+        border-color: var(--bs-warning) !important;
+        background-color: var(--bs-light);
+    }
+
+    #loadingOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .loading-content {
+        text-align: center;
+    }
+</style>
