@@ -92,3 +92,13 @@ a {
 a:hover {
   text-decoration: underline;
 }
+
+/* Mock/placeholder data indicator - to be replaced with real data before submission */
+.mock {
+  color: #16a34a !important; /* green-600 */
+}
+
+/* Alternative: inline style support */
+span[style*="color: green"] {
+  color: #16a34a !important;
+}
