@@ -1,0 +1,88 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor': '#1e3a5f',
+    'primaryTextColor': '#ffffff',
+    'primaryBorderColor': '#0d2137',
+    'lineColor': '#2c5282',
+    'secondaryColor': '#3182ce',
+    'tertiaryColor': '#e2e8f0',
+    'background': '#ffffff',
+    'mainBkg': '#1e3a5f',
+    'secondBkg': '#2b6cb0',
+    'fontFamily': 'Arial, sans-serif'
+  }
+}}%%
+
+flowchart TB
+    subgraph Users["<b>USER INTERFACE LAYER</b>"]
+        direction LR
+        DP["<b>District Portal</b><br/>295 Districts"]
+        AP["<b>OSPI Admin Portal</b><br/>Internal Staff"]
+        PP["<b>Public Reports</b><br/>Transparency"]
+    end
+
+    subgraph API["<b>API GATEWAY & SECURITY</b>"]
+        direction LR
+        REST["<b>REST APIs</b>"]
+        GQL["<b>GraphQL</b>"]
+        AUTH["<b>OAuth 2.0 / SAML</b><br/>SAW Integration"]
+    end
+
+    subgraph Services["<b>APPLICATION SERVICES</b>"]
+        direction LR
+        S1["<b>Section 1</b><br/>Data Collection<br/><i>82 Requirements</i>"]
+        S2["<b>Section 2</b><br/>Calculations<br/><i>32 Requirements</i>"]
+        S3["<b>Section 3</b><br/>Reporting<br/><i>31 Requirements</i>"]
+        RULES["<b>Rules Engine</b><br/>Configurable<br/>Formulas"]
+    end
+
+    subgraph Data["<b>DATA LAYER</b>"]
+        direction LR
+        DB[("<b>SQL Server 2022</b><br/>Primary Database")]
+        DW[("<b>Data Warehouse</b><br/>Analytics & Reports")]
+        BLOB["<b>Azure Blob</b><br/>Document Storage"]
+    end
+
+    subgraph External["<b>EXTERNAL INTEGRATIONS (18+ Systems)</b>"]
+        direction LR
+        CEDARS["<b>CEDARS</b><br/>Student Data"]
+        IGRANTS["<b>iGrants</b><br/>Grants Mgmt"]
+        EDS["<b>EDS</b><br/>Education Data"]
+        SAW["<b>SAW Portal</b><br/>Authentication"]
+        AFRS["<b>AFRS</b><br/>State Accounting"]
+    end
+
+    DP --> REST
+    AP --> REST
+    PP --> GQL
+    REST --> AUTH
+    GQL --> AUTH
+    AUTH --> S1
+    AUTH --> S2
+    AUTH --> S3
+    S1 --> RULES
+    S2 --> RULES
+    S1 --> DB
+    S2 --> DB
+    S3 --> DW
+    S1 --> BLOB
+    S1 <--> CEDARS
+    S1 <--> IGRANTS
+    S1 <--> EDS
+    AUTH <--> SAW
+    S2 --> AFRS
+
+    classDef userLayer fill:#2563eb,stroke:#1e40af,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef apiLayer fill:#7c3aed,stroke:#5b21b6,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef serviceLayer fill:#059669,stroke:#047857,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef dataLayer fill:#dc2626,stroke:#b91c1c,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef externalLayer fill:#d97706,stroke:#b45309,stroke-width:3px,color:#ffffff,font-weight:bold
+    classDef rulesEngine fill:#0891b2,stroke:#0e7490,stroke-width:3px,color:#ffffff,font-weight:bold
+
+    class DP,AP,PP userLayer
+    class REST,GQL,AUTH apiLayer
+    class S1,S2,S3 serviceLayer
+    class RULES rulesEngine
+    class DB,DW,BLOB dataLayer
+    class CEDARS,IGRANTS,EDS,SAW,AFRS externalLayer
