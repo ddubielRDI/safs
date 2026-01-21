@@ -14,13 +14,22 @@ This catalog contains **243** normalized requirements extracted from the SASQUAT
 
 | Metric | Count |
 |--------|-------|
-| Total Requirements | 243 |
-| Data Collection | 82 |
+| Total Requirements | 247 |
+| Data Collection | 85 |
 | All | 55 |
 | Data Calculations | 32 |
 | Data Reporting | 31 |
-| Technical | 27 |
+| Technical | 28 |
 | Sys All | 16 |
+
+### Workflow Gap Requirements Added (v3.3)
+
+| Gap ID | Category | Description |
+|--------|----------|-------------|
+| F197-GAP-001 | Data Collection | Monthly State of Finance reconciliation |
+| F197-GAP-002 | Data Collection | Year-end completion verification |
+| F195-GAP-001 | Data Collection | ESD levy data entry |
+| SYS-GAP-001 | Technical | Annual configuration administration |
 
 ### By Priority
 
@@ -42,7 +51,7 @@ This catalog contains **243** normalized requirements extracted from the SASQUAT
 
 ## Data Collection
 
-*82 requirements*
+*85 requirements*
 
 ### 0013ENR
 
@@ -3044,9 +3053,57 @@ This catalog contains **243** normalized requirements extracted from the SASQUAT
 
 ---
 
+### F197-GAP-001
+
+**Priority:** 🔴 High | **Complexity:** 📈 Medium | **Type:** Functional
+
+**Background:** Monthly State of Finance Report reconciliation workflow (AS-IS Workflow Gap)
+
+> The system SHALL support monthly State of Finance Report reconciliation workflow between District, ESD, and Treasurer. The system must enable multi-party data submission, cross-validation of cash file data, discrepancy notification, resolution workflow, and final sign-off from all parties.
+
+**Pain Point:** Current process requires manual reconciliation between multiple parties (Treasurer, District, ESD) with no automated validation or discrepancy tracking. This creates risk of budget miscalculations and delays in financial reporting.
+
+**Tags:** reconciliation, budget, treasury, multi-party, f-197, workflow-gap
+
+**Source:** Attachment B, F-197 Cash File Report, Steps 8-12
+
+---
+
+### F197-GAP-002
+
+**Priority:** 🔴 High | **Complexity:** 📈 Medium | **Type:** Functional
+
+**Background:** Year-end completion verification (AS-IS Workflow Gap)
+
+> The system SHALL track and verify year-end cash file completion status across all districts. The system must provide dashboard visibility of completion status, automated reminders for incomplete submissions, and final year-end lock-out once verification is complete.
+
+**Pain Point:** Year-end processing currently lacks systematic tracking of district completion status. Staff must manually verify each district's submission status, creating risk of incomplete data in final reports.
+
+**Tags:** year-end, verification, compliance, f-197, workflow-gap
+
+**Source:** Attachment B, F-197 Cash File Report, Step 17
+
+---
+
+### F195-GAP-001
+
+**Priority:** 🔴 High | **Complexity:** 📈 Medium | **Type:** Functional
+
+**Background:** ESD levy data entry requirement (AS-IS Workflow Gap)
+
+> The system SHALL support ESD levy data entry for budget calculations. ESDs must be able to enter, review, and submit levy data that flows into district budget calculations. The system shall validate levy data against historical trends and flag anomalies.
+
+**Pain Point:** ESD levy data entry is currently handled outside the main system, requiring manual data transfer and increasing risk of calculation errors in budget reports.
+
+**Tags:** budget, levy, esd, f-195, data-entry, workflow-gap
+
+**Source:** Attachment B, F-195 Budget, Step 5
+
+---
+
 ## Technical
 
-*27 requirements*
+*28 requirements*
 
 ### 162TEC
 
@@ -3369,5 +3426,21 @@ This catalog contains **243** normalized requirements extracted from the SASQUAT
 > WaTech classifies certain personnel data—such as Social Security Numbers (SSN), residential addresses, personal phone numbers, and professional license information—as Category 3 Confidential Information. SAFS currently collects some of this data (e.g., SSN) to support the S-275 reporting process and integration with external systems like eCert. There is an enterprise-wide initiative underway to reduce the collection of SSNs and other sensitive data wherever possible. (See: https://watech.wa.gov/categorizing-data-state-agency)
 
 **Tags:** reporting, integration, security, all
+
+---
+
+### SYS-GAP-001
+
+**Priority:** 🔴 High | **Complexity:** 📊 High | **Type:** Functional
+
+**Background:** Annual system configuration administration (AS-IS Workflow Gap)
+
+> The system SHALL support annual configuration updates for form settings, calculation rules, and validation parameters. This includes an IT administration interface for updating fiscal year settings, form field configurations, calculation formulas, validation thresholds, and compliance rule updates. The system must support a deployment/testing workflow allowing IT staff to test configuration changes in a staging environment before production deployment.
+
+**Pain Point:** Current system configuration changes require direct database modifications or code changes, creating risk of errors and downtime. There is no formal testing workflow for configuration changes, and no audit trail of configuration history.
+
+**Tags:** administration, configuration, annual, deployment, testing, technical, workflow-gap
+
+**Source:** Attachment B, Cross-Workflow IT Admin
 
 ---
