@@ -1,9 +1,0 @@
-{
-  "pipeline_start": "2026-01-19T16:30:00Z",
-  "current_phase": "1.5",
-  "phases": {
-    "0": {"status": "completed", "duration_ms": 2000, "message": "5 documents organized"},
-    "1": {"status": "completed", "duration_ms": 15000, "message": "5/5 converted to markdown"},
-    "1.5": {"status": "completed", "duration_ms": 5000, "message": "Education domain (98% confidence)"}
-  }
-}
