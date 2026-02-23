@@ -1,0 +1,379 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Unified Requirements Traceability Matrix",
+  "description": "Single source of truth linking all traceability entities: RFP Source -> Mandatory Item -> Requirement -> Specification -> Risk -> Mitigation -> Bid Section -> Evidence",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["meta", "entities", "chain_links", "verification"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["generated_at", "last_updated_by_phase", "chain_version"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "rfp_id": { "type": "string", "description": "RFP identifier from the source document" },
+        "rfp_title": { "type": "string" },
+        "last_updated_by_phase": { "type": "string", "description": "Phase ID that last modified this RTM" },
+        "chain_version": { "type": "integer", "minimum": 1, "description": "Incremented each time chain_links are rematerialized" },
+        "integrity_hash": { "type": "string", "description": "SHA-256 of the requirements array for change detection" }
+      }
+    },
+
+    "entities": {
+      "type": "object",
+      "required": ["rfp_sources", "mandatory_items", "requirements", "specifications", "risks", "bid_sections", "evidence", "evaluation_criteria"],
+      "properties": {
+
+        "rfp_sources": {
+          "type": "array",
+          "description": "Where in the RFP each item was found",
+          "items": {
+            "type": "object",
+            "required": ["source_id", "document", "text_excerpt"],
+            "properties": {
+              "source_id": { "type": "string", "pattern": "^SRC-\\d{3,}$" },
+              "document": { "type": "string", "description": "Original filename in flattened/" },
+              "section": { "type": "string", "description": "Section heading or identifier" },
+              "page_or_row": { "type": "string", "description": "Page number, row number, or location" },
+              "text_excerpt": { "type": "string", "maxLength": 500 }
+            }
+          }
+        },
+
+        "mandatory_items": {
+          "type": "array",
+          "description": "SHALL/MUST items extracted by Phase 1.7",
+          "items": {
+            "type": "object",
+            "required": ["mandatory_id", "text", "source_type", "category", "coverage_status"],
+            "properties": {
+              "mandatory_id": { "type": "string", "pattern": "^M\\d{3}$" },
+              "text": { "type": "string" },
+              "source_type": { "type": "string", "enum": ["SHALL", "MUST", "REQUIRED", "MANDATORY", "OFFEROR_SHALL", "CONTRACTOR_SHALL", "VENDOR_SHALL", "PROPOSAL_MUST"] },
+              "category": { "type": "string", "enum": ["TECHNICAL", "PROCESS", "PERSONNEL", "COMPLIANCE", "DELIVERY", "FORMAT", "OTHER"] },
+              "linked_requirement_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Requirement IDs that address this mandatory item (populated by Phase 4)"
+              },
+              "linked_compliance_framework_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "coverage_status": {
+                "type": "string",
+                "enum": ["PLANNED", "ADDRESSED", "GAP", "WAIVED"],
+                "description": "PLANNED=will be addressed, ADDRESSED=verified in bid, GAP=not covered, WAIVED=user approved gap"
+              },
+              "bid_location": {
+                "$ref": "#/$defs/BidLocation",
+                "description": "Where in the bid this mandatory item is addressed (populated post-bid-authoring)"
+              },
+              "source_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+
+        "requirements": {
+          "type": "array",
+          "description": "Normalized requirements from Phase 2b",
+          "items": {
+            "type": "object",
+            "required": ["req_id", "text", "category", "priority"],
+            "properties": {
+              "req_id": { "type": "string", "pattern": "^\\d{3}[A-Z]{2,4}$", "description": "Canonical ID e.g., 001ENR" },
+              "text": { "type": "string" },
+              "category": { "type": "string" },
+              "priority": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+              "requirement_type": { "type": "string", "enum": ["FUNCTIONAL", "NON_FUNCTIONAL", "INTERFACE", "DATA", "COMPLIANCE"] },
+              "source_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "References to rfp_sources[] (populated by Phase 2)"
+              },
+              "mandatory_item_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Mandatory items this requirement addresses (populated by Phase 4)"
+              },
+              "evaluation_factor": {
+                "type": ["string", "null"],
+                "description": "Evaluation factor name this requirement maps to (populated by Phase 4)"
+              },
+              "evaluation_weight_inherited": {
+                "type": ["number", "null"],
+                "description": "Points inherited from evaluation factor (populated by Phase 4)"
+              },
+              "composite_priority_score": {
+                "type": ["number", "null"],
+                "description": "Computed: eval_weight + priority_bonus + mandatory_bonus + risk_bonus"
+              }
+            }
+          }
+        },
+
+        "specifications": {
+          "type": "array",
+          "description": "Specification sections (section-level, not file-level)",
+          "items": {
+            "type": "object",
+            "required": ["spec_id", "file", "linked_requirement_ids", "spec_type"],
+            "properties": {
+              "spec_id": {
+                "type": "string",
+                "pattern": "^SPEC-[A-Z]+-[A-Z]+-\\d{2}$",
+                "description": "e.g., SPEC-ARCH-ENR-01"
+              },
+              "file": { "type": "string", "description": "Spec filename e.g., ARCHITECTURE.md" },
+              "section_anchor": { "type": "string", "description": "Markdown heading anchor e.g., #enrollment-pipeline" },
+              "section_title": { "type": "string" },
+              "linked_requirement_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "spec_type": {
+                "type": "string",
+                "enum": ["ARCHITECTURE", "SECURITY", "INTEROPERABILITY", "UI_UX", "ENTITY", "RISK"]
+              }
+            }
+          }
+        },
+
+        "risks": {
+          "type": "array",
+          "description": "All identified risks with mitigation strategies",
+          "items": {
+            "type": "object",
+            "required": ["risk_id", "title", "risk_level", "linked_requirement_ids"],
+            "properties": {
+              "risk_id": { "type": "string", "pattern": "^RISK-\\d{3}$" },
+              "title": { "type": "string" },
+              "category": { "type": "string" },
+              "likelihood": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "impact": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "risk_score": { "type": "number" },
+              "risk_level": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+              "linked_requirement_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "mitigation_strategies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["mitigation_id", "strategy"],
+                  "properties": {
+                    "mitigation_id": { "type": "string", "pattern": "^MIT-\\d{3}-\\d{2}$" },
+                    "strategy": { "type": "string" },
+                    "owner_role": { "type": "string" },
+                    "timeline": { "type": "string" },
+                    "status": {
+                      "type": "string",
+                      "enum": ["IDENTIFIED", "DESIGNED", "IMPLEMENTED", "VERIFIED"]
+                    },
+                    "bid_location": {
+                      "$ref": "#/$defs/BidLocation",
+                      "description": "Where in the bid this mitigation is described (populated post-bid-authoring)"
+                    },
+                    "evidence_ids": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+
+        "bid_sections": {
+          "type": "array",
+          "description": "Actual bid section locations (populated post-bid-authoring)",
+          "items": {
+            "type": "object",
+            "required": ["bid_section_id", "file", "section_title"],
+            "properties": {
+              "bid_section_id": { "type": "string", "pattern": "^BID-[A-Z]+-[A-Z]+$" },
+              "file": { "type": "string" },
+              "section_anchor": { "type": "string" },
+              "section_title": { "type": "string" },
+              "page_estimate": { "type": "integer" },
+              "linked_requirement_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_risk_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_mitigation_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_mandatory_item_ids": { "type": "array", "items": { "type": "string" } },
+              "evaluation_factor": { "type": "string" },
+              "evaluation_weight_served": { "type": "number" },
+              "themes_present": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+
+        "evidence": {
+          "type": "array",
+          "description": "Proof artifacts backing claims in the bid",
+          "items": {
+            "type": "object",
+            "required": ["evidence_id", "type", "description"],
+            "properties": {
+              "evidence_id": { "type": "string", "pattern": "^EV-\\d{3}$" },
+              "type": {
+                "type": "string",
+                "enum": ["SPECIFICATION_REFERENCE", "CASE_STUDY", "DIAGRAM", "DATA_SAMPLE", "CERTIFICATION", "TESTIMONIAL"]
+              },
+              "description": { "type": "string" },
+              "artifact": { "type": "string", "description": "File path or anchor reference" },
+              "linked_requirement_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_risk_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_mitigation_ids": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+
+        "evaluation_criteria": {
+          "type": "array",
+          "description": "Evaluation factors and subfactors with linked entities",
+          "items": {
+            "type": "object",
+            "required": ["factor_id", "name", "points"],
+            "properties": {
+              "factor_id": { "type": "string", "pattern": "^EVAL-\\d{2}$" },
+              "name": { "type": "string" },
+              "points": { "type": "number" },
+              "weight_percent": { "type": "number" },
+              "subfactors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "subfactor_id": { "type": "string", "pattern": "^EVAL-\\d{2}-\\d{2}$" },
+                    "name": { "type": "string" },
+                    "points": { "type": "number" },
+                    "linked_requirement_ids": { "type": "array", "items": { "type": "string" } },
+                    "bid_sections_serving": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              },
+              "linked_requirement_ids": { "type": "array", "items": { "type": "string" } },
+              "linked_bid_section_ids": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+
+    "chain_links": {
+      "type": "array",
+      "description": "Denormalized full traceability chains. Each entry = one requirement's complete path.",
+      "items": {
+        "type": "object",
+        "required": ["chain_id", "requirement", "status", "completeness_score"],
+        "properties": {
+          "chain_id": { "type": "string", "description": "Matches requirement ID e.g., CHAIN-001ENR" },
+          "rfp_source": { "type": ["string", "null"] },
+          "mandatory_items": { "type": "array", "items": { "type": "string" } },
+          "requirement": { "type": "string" },
+          "specifications": { "type": "array", "items": { "type": "string" } },
+          "risks": { "type": "array", "items": { "type": "string" } },
+          "mitigations": { "type": "array", "items": { "type": "string" } },
+          "bid_sections": { "type": "array", "items": { "type": "string" } },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "evaluation_factor": { "type": ["string", "null"] },
+          "status": {
+            "type": "string",
+            "enum": ["COMPLETE", "PARTIAL", "BROKEN"],
+            "description": "COMPLETE=all links present, PARTIAL=some links missing, BROKEN=critical link missing"
+          },
+          "completeness_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "0.0 (no links) to 1.0 (full chain)"
+          },
+          "missing_links": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Which links are missing e.g., ['bid_section', 'evidence']"
+          }
+        }
+      }
+    },
+
+    "verification": {
+      "type": "object",
+      "description": "Coverage metrics updated by Phase 8f RTM Verification",
+      "properties": {
+        "last_run": { "type": "string", "format": "date-time" },
+        "run_by_phase": { "type": "string" },
+        "forward_coverage": {
+          "type": "object",
+          "properties": {
+            "requirements_with_specs": { "type": "integer" },
+            "requirements_with_bid_sections": { "type": "integer" },
+            "requirements_with_risks": { "type": "integer" },
+            "requirements_total": { "type": "integer" },
+            "spec_coverage_pct": { "type": "number" },
+            "bid_coverage_pct": { "type": "number" }
+          }
+        },
+        "backward_coverage": {
+          "type": "object",
+          "properties": {
+            "bid_sections_with_requirements": { "type": "integer" },
+            "bid_sections_total": { "type": "integer" },
+            "orphaned_bid_content": { "type": "integer" }
+          }
+        },
+        "chain_completeness": {
+          "type": "object",
+          "properties": {
+            "complete_chains": { "type": "integer" },
+            "partial_chains": { "type": "integer" },
+            "broken_chains": { "type": "integer" },
+            "avg_completeness_score": { "type": "number" }
+          }
+        },
+        "compliance_alignment": {
+          "type": "object",
+          "properties": {
+            "mandatory_items_in_bid": { "type": "integer" },
+            "mandatory_items_total": { "type": "integer" },
+            "coverage_pct": { "type": "number" }
+          }
+        },
+        "query_results": {
+          "type": "array",
+          "description": "Results of each of the 14 verification queries",
+          "items": {
+            "type": "object",
+            "properties": {
+              "query_id": { "type": "string" },
+              "query_name": { "type": "string" },
+              "direction": { "type": "string", "enum": ["forward", "backward", "chain"] },
+              "passed": { "type": "boolean" },
+              "score": { "type": "number" },
+              "details": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "BidLocation": {
+      "type": ["object", "null"],
+      "properties": {
+        "file": { "type": "string", "description": "Bid section filename e.g., solution.md" },
+        "section_anchor": { "type": "string", "description": "Markdown heading anchor" },
+        "page_estimate": { "type": "integer" },
+        "verified": { "type": "boolean", "description": "Whether bid text was verified to address this item" },
+        "verification_method": { "type": "string", "enum": ["text_search", "semantic_match", "manual"] },
+        "verified_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

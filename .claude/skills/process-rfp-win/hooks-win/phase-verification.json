@@ -1,0 +1,61 @@
+{
+  "description": "Hooks for process-rfp-win phase verification",
+  "version": "1.0.0",
+
+  "hooks": {
+    "SubagentStop": [
+      {
+        "name": "phase-output-verification",
+        "description": "Verify phase outputs exist after subagent completes",
+        "type": "prompt",
+        "prompt": "Phase subagent completed. Verify all required outputs exist with expected content. Return {\"ok\": true} if verified, or {\"ok\": false, \"reason\": \"[Missing outputs description]\"} if outputs are missing or incomplete.",
+        "timeout": 30000
+      }
+    ],
+
+    "PreToolUse": {
+      "Task": [
+        {
+          "name": "phase-tracking",
+          "description": "Track phase execution for progress reporting",
+          "type": "command",
+          "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Phase execution started\" >> /tmp/rfp-pipeline.log",
+          "timeout": 5000
+        }
+      ]
+    },
+
+    "PostToolUse": {
+      "Task": [
+        {
+          "name": "phase-completion-check",
+          "description": "Check if phase completed successfully",
+          "type": "prompt",
+          "prompt": "Task agent completed. Check if all expected outputs were created. If missing outputs detected, log them for retry.",
+          "timeout": 15000
+        }
+      ]
+    }
+  },
+
+  "retry_config": {
+    "max_retries": 3,
+    "retry_delay_ms": 1000,
+    "exponential_backoff": false
+  },
+
+  "notifications": {
+    "on_retry": {
+      "message_template": "❌ Phase {phase_id} FAILED (attempt {attempt}/{max_attempts})\n   Missing: {missing_outputs}\n   Retrying...",
+      "color": "red"
+    },
+    "on_success": {
+      "message_template": "✅ Phase {phase_id} COMPLETED",
+      "color": "green"
+    },
+    "on_failure": {
+      "message_template": "🛑 Phase {phase_id} FAILED after {max_attempts} attempts\n   {error_details}",
+      "color": "red"
+    }
+  }
+}

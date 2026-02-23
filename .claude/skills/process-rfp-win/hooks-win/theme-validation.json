@@ -1,0 +1,157 @@
+{
+  "name": "theme-validation",
+  "description": "Validates that win themes are threaded through all bid sections after Stage 7 execution",
+  "version": "1.0.0",
+  "triggers": [
+    {
+      "event": "SubagentStop",
+      "conditions": {
+        "phase_id_pattern": "^8[a-e]?$|^8\\.[0-9]",
+        "description": "Triggers after any Stage 7 phase completes"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "validate_theme_threading",
+      "type": "script",
+      "description": "Verify all 5 win themes appear in all bid sections",
+      "script": {
+        "language": "python",
+        "code": "validate_theme_threading.py",
+        "inline": true,
+        "content": [
+          "import json",
+          "import os",
+          "import re",
+          "",
+          "def validate_themes(folder):",
+          "    \"\"\"Validate win themes appear in all bid sections.\"\"\"",
+          "    ",
+          "    # Load context bundle for themes",
+          "    bundle_path = f\"{folder}/shared/bid-context-bundle.json\"",
+          "    if not os.path.exists(bundle_path):",
+          "        return {'valid': False, 'error': 'Context bundle not found'}",
+          "    ",
+          "    with open(bundle_path, 'r') as f:",
+          "        bundle = json.load(f)",
+          "    ",
+          "    themes = [t['theme'] for t in bundle.get('win_themes', {}).get('themes', [])]",
+          "    if not themes:",
+          "        themes = ['Modern Architecture', 'Domain Expertise', 'Risk Mitigation', 'Compliance Excellence', 'Partnership Approach']",
+          "    ",
+          "    # Bid sections to check",
+          "    sections = {",
+          "        'title-page.md': {'min_themes': 5, 'path': f'{folder}/outputs/title-page.md'},",
+          "        'solution.md': {'min_themes': 5, 'path': f'{folder}/outputs/solution.md'},",
+          "        'timeline.md': {'min_themes': 3, 'path': f'{folder}/outputs/timeline.md'}",
+          "    }",
+          "    ",
+          "    results = {'valid': True, 'sections': {}, 'missing': []}",
+          "    ",
+          "    for section_name, config in sections.items():",
+          "        section_path = config['path']",
+          "        min_themes = config['min_themes']",
+          "        ",
+          "        if not os.path.exists(section_path):",
+          "            results['sections'][section_name] = {'exists': False}",
+          "            results['valid'] = False",
+          "            continue",
+          "        ",
+          "        with open(section_path, 'r') as f:",
+          "            content = f.read().lower()",
+          "        ",
+          "        found_themes = []",
+          "        missing_themes = []",
+          "        ",
+          "        for theme in themes:",
+          "            theme_lower = theme.lower()",
+          "            # Also check for common variations",
+          "            variations = [theme_lower, theme_lower.replace(' ', '-'), theme_lower.replace(' ', '_')]",
+          "            found = any(v in content for v in variations)",
+          "            if found:",
+          "                found_themes.append(theme)",
+          "            else:",
+          "                missing_themes.append(theme)",
+          "        ",
+          "        section_valid = len(found_themes) >= min_themes",
+          "        results['sections'][section_name] = {",
+          "            'exists': True,",
+          "            'found_themes': found_themes,",
+          "            'missing_themes': missing_themes,",
+          "            'valid': section_valid,",
+          "            'required': min_themes,",
+          "            'actual': len(found_themes)",
+          "        }",
+          "        ",
+          "        if not section_valid:",
+          "            results['valid'] = False",
+          "            for theme in missing_themes:",
+          "                results['missing'].append(f\"{theme} missing from {section_name}\")",
+          "    ",
+          "    return results",
+          "",
+          "# Execute validation",
+          "result = validate_themes(folder)",
+          "",
+          "# Report results",
+          "if result['valid']:",
+          "    print('\\n\\033[92m\\u2705 Theme Validation PASSED\\033[0m')",
+          "    print('All 5 win themes present in all bid sections')",
+          "else:",
+          "    print('\\n\\033[91m\\u26a0\\ufe0f Theme Validation FAILED\\033[0m')",
+          "    for missing in result.get('missing', []):",
+          "        print(f'   - {missing}')",
+          "    print('\\nAction required: Add missing themes to bid sections')"
+        ]
+      }
+    }
+  ],
+  "configuration": {
+    "themes_source": "shared/bid-context-bundle.json",
+    "fallback_themes": [
+      "Modern Architecture",
+      "Domain Expertise",
+      "Risk Mitigation",
+      "Compliance Excellence",
+      "Partnership Approach"
+    ],
+    "sections_to_validate": [
+      {
+        "name": "title-page.md",
+        "path": "outputs/title-page.md",
+        "min_themes": 5,
+        "description": "Executive summary must contain all 5 themes"
+      },
+      {
+        "name": "solution.md",
+        "path": "outputs/solution.md",
+        "min_themes": 5,
+        "description": "Solution description must contain all 5 themes"
+      },
+      {
+        "name": "timeline.md",
+        "path": "outputs/timeline.md",
+        "min_themes": 3,
+        "description": "Timeline section should reference at least 3 themes"
+      }
+    ],
+    "on_failure": {
+      "action": "warn",
+      "message_template": "Theme '{theme}' missing from {section}. Add explicit mention to strengthen bid coherence."
+    }
+  },
+  "integration": {
+    "mayor_integration": {
+      "call_after_phase": "8-hybrid",
+      "call_before_phase": "8d",
+      "block_on_failure": false,
+      "retry_allowed": true
+    }
+  },
+  "verification_command": {
+    "description": "Manual verification command",
+    "command": "grep -l -i '{theme}' {folder}/outputs/*.md",
+    "usage": "Run for each theme to verify presence"
+  }
+}

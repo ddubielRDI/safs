@@ -1,0 +1,339 @@
+---
+name: phase3d-demos-win
+expert-role: Demo Engineer
+domain-expertise: Proof of concept, test scenarios, workflows
+---
+
+# Phase 3d: Demo Scenarios
+
+## Expert Role
+
+You are a **Demo Engineer** with deep expertise in:
+- Proof of concept development
+- End-to-end workflow demonstrations
+- Test scenario design
+- Sample data preparation
+
+## Purpose
+
+Generate comprehensive demo scenarios with step-by-step scripts and test data.
+
+## Inputs
+
+- `{folder}/shared/requirements-normalized.json` - Normalized requirements
+- `{folder}/shared/workflow-extracted-reqs.json` - Workflow requirements
+- `{folder}/shared/sample-data-analysis.json` - Sample data specs
+- `{folder}/shared/domain-context.json` - Domain context
+
+## Required Outputs
+
+- `{folder}/outputs/DEMO_SCENARIOS.md` - Demo scenarios (>10KB)
+
+## Instructions
+
+### Step 1: Load Data
+
+```python
+requirements = read_json(f"{folder}/shared/requirements-normalized.json")
+workflows = read_json(f"{folder}/shared/workflow-extracted-reqs.json")
+sample_data = read_json(f"{folder}/shared/sample-data-analysis.json")
+domain_context = read_json(f"{folder}/shared/domain-context.json")
+```
+
+### Step 2: Identify Key Workflows
+
+```python
+def identify_demo_workflows(workflows, requirements):
+    """Identify high-priority workflows for demonstration."""
+    demo_workflows = []
+
+    # Get workflow categories with most requirements
+    categories = workflows.get("category_distribution", {})
+    top_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    for category, count in top_categories:
+        # Find representative workflow items
+        category_items = [
+            item for item in workflows.get("requirement_candidates", [])
+            if item.get("category") == category
+        ][:3]
+
+        demo_workflows.append({
+            "category": category,
+            "workflow_items": category_items,
+            "priority": "HIGH" if count > 10 else "MEDIUM"
+        })
+
+    return demo_workflows
+
+demo_workflows = identify_demo_workflows(workflows, requirements)
+```
+
+### Step 3: Generate Demo Scenarios
+
+```python
+def generate_demos_md(demo_workflows, domain_context, sample_data):
+    domain = domain_context.get("selected_domain", "Generic")
+
+    doc = f"""# Demo Scenarios
+
+**Domain:** {domain}
+**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+**Total Scenarios:** {len(demo_workflows) * 2}
+
+---
+
+## Overview
+
+This document provides detailed demo scenarios for key system workflows. Each scenario includes:
+- Pre-conditions and setup
+- Step-by-step walkthrough
+- Expected outcomes
+- Sample test data
+- Timing estimates
+
+---
+
+## Scenario Index
+
+| # | Scenario | Category | Duration | Priority |
+|---|----------|----------|----------|----------|
+"""
+
+    scenario_num = 1
+    for wf in demo_workflows:
+        doc += f"| {scenario_num} | {wf['category']} Workflow Demo | {wf['category']} | 10 min | {wf['priority']} |\n"
+        scenario_num += 1
+
+    doc += "\n---\n\n"
+
+    # Generate detailed scenarios
+    scenario_num = 1
+    for wf in demo_workflows:
+        doc += generate_scenario_detail(scenario_num, wf, sample_data, domain)
+        scenario_num += 1
+
+    # Add test data appendix
+    doc += generate_test_data_section(sample_data, domain)
+
+    return doc
+
+
+def generate_scenario_detail(num, workflow, sample_data, domain):
+    """Generate detailed scenario documentation."""
+    category = workflow["category"]
+
+    return f"""## Scenario {num}: {category} Workflow Demo
+
+### Overview
+Demonstrate the complete {category.lower()} workflow from start to finish.
+
+**Category:** {category}
+**Estimated Duration:** 10-15 minutes
+**Priority:** {workflow["priority"]}
+
+### Pre-Conditions
+- User logged in with appropriate permissions
+- Test data loaded (see Test Data section)
+- System in clean state
+
+### Workflow Steps
+
+#### Step 1: Navigate to Module
+**Action:** Click on "{category}" in the main navigation
+**Expected:** {category} dashboard displays with summary widgets
+
+**Timing:** 2 seconds
+**Screenshot:** dashboard-{category.lower()}.png
+
+---
+
+#### Step 2: Initiate New Record
+**Action:** Click "New" or "Create" button
+**Expected:** New record form opens with required fields highlighted
+
+**Fields to Complete:**
+| Field | Sample Value | Validation |
+|-------|--------------|------------|
+| Name | Test Record {num} | Required, 50 char max |
+| Date | {datetime.now().strftime('%Y-%m-%d')} | Required, valid date |
+| Status | Draft | Dropdown selection |
+
+**Timing:** 30 seconds
+
+---
+
+#### Step 3: Enter Data
+**Action:** Complete all required fields with test data
+**Expected:** Form validates in real-time, no errors
+
+**Sample Data:**
+```json
+{{
+  "name": "Demo {category} Record",
+  "created_date": "{datetime.now().strftime('%Y-%m-%d')}",
+  "status": "Draft",
+  "description": "Test record for demonstration"
+}}
+```
+
+**Timing:** 1 minute
+
+---
+
+#### Step 4: Save and Validate
+**Action:** Click "Save" button
+**Expected:**
+- Success message displays
+- Record appears in list
+- System assigns unique ID
+
+**Verification:**
+- [ ] Record saved successfully
+- [ ] ID generated (format: {category[:3]}-NNNN)
+- [ ] Audit trail created
+
+**Timing:** 3 seconds
+
+---
+
+#### Step 5: Edit Record
+**Action:** Click on record to open, modify a field, save
+**Expected:**
+- Edit mode enabled
+- Changes saved
+- Version incremented
+
+**Timing:** 30 seconds
+
+---
+
+#### Step 6: Generate Report
+**Action:** Select record(s), click "Export" or "Report"
+**Expected:**
+- Report options displayed
+- PDF/Excel generated
+- Download initiated
+
+**Timing:** 5 seconds
+
+---
+
+### Post-Conditions
+- New record exists in system
+- Audit trail complete
+- No errors in system log
+
+### Common Issues
+| Issue | Resolution |
+|-------|------------|
+| Validation error | Check required fields |
+| Save failed | Check network connection |
+| Permission denied | Verify user role |
+
+### Related Requirements
+"""
+
+    # Add related requirements
+    for item in workflow.get("workflow_items", [])[:3]:
+        doc += f"- {item.get('id', 'N/A')}: {item.get('description', '')[:80]}...\n"
+
+    doc += "\n---\n\n"
+
+    return doc
+
+
+def generate_test_data_section(sample_data, domain):
+    """Generate test data appendix."""
+    doc = """
+---
+
+## Appendix A: Test Data
+
+### Sample Records
+
+The following test data is pre-loaded for demonstrations:
+
+"""
+
+    entities = sample_data.get("entities", [])[:5]
+    for entity in entities:
+        doc += f"""#### {entity.get('name', 'Entity')}
+
+| Field | Sample Value |
+|-------|--------------|
+"""
+        # Generate sample values
+        doc += f"| ID | {entity.get('name', 'ENT')[:3].upper()}-0001 |\n"
+        doc += f"| Name | Test {entity.get('name', 'Record')} 1 |\n"
+        doc += f"| Status | Active |\n"
+        doc += f"| Created | {datetime.now().strftime('%Y-%m-%d')} |\n"
+        doc += "\n"
+
+    doc += """
+### Test User Accounts
+
+| Username | Role | Password |
+|----------|------|----------|
+| demo.admin | Administrator | Demo@2024! |
+| demo.manager | Manager | Demo@2024! |
+| demo.user | Standard User | Demo@2024! |
+| demo.viewer | Read-Only | Demo@2024! |
+
+### Environment Setup
+
+```bash
+# Load test data
+./scripts/load-demo-data.sh
+
+# Reset to clean state
+./scripts/reset-demo.sh
+
+# Verify data loaded
+./scripts/verify-demo-data.sh
+```
+
+---
+
+## Appendix B: Demo Checklist
+
+### Pre-Demo
+- [ ] Test data loaded
+- [ ] All test accounts working
+- [ ] System performance verified
+- [ ] Network connectivity confirmed
+- [ ] Projector/screen sharing tested
+
+### During Demo
+- [ ] Follow scenario steps
+- [ ] Explain each action
+- [ ] Show expected results
+- [ ] Handle questions
+- [ ] Note issues for follow-up
+
+### Post-Demo
+- [ ] Collect feedback
+- [ ] Document issues
+- [ ] Reset test environment
+- [ ] Send follow-up materials
+"""
+
+    return doc
+
+demos_md = generate_demos_md(demo_workflows, domain_context, sample_data)
+```
+
+### Step 4: Write Output
+
+```python
+write_file(f"{folder}/outputs/DEMO_SCENARIOS.md", demos_md)
+```
+
+## Quality Checklist
+
+- [ ] `DEMO_SCENARIOS.md` created in `outputs/`
+- [ ] File size > 10KB
+- [ ] 8+ demo scenarios included
+- [ ] Step-by-step instructions provided
+- [ ] Test data documented
+- [ ] Timing estimates included

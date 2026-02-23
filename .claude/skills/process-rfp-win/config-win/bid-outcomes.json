@@ -1,0 +1,6 @@
+{
+  "version": "1.0",
+  "last_updated": "",
+  "instructions": "This file stores historical bid outcomes for continuous improvement. After each bid submission, run Phase 9 to log the outcome. The pipeline uses this data (when 3+ entries exist) to surface winning patterns in Phase 8.0 positioning. Each outcome entry should include: bid_id (e.g., RFP-2026-001), rfp_name, domain (government-state|government-federal|government-local|commercial|education|healthcare|nonprofit), rfp_type (technology|consulting|construction|professional-services|staffing|mixed), date_submitted (ISO date), outcome (win|loss|no-decision|pending), score_received (numeric or null), our_score_predicted (from WIN_SCORECARD.json), themes_used (array), strengths_cited (array), weaknesses_cited (array), evaluator_feedback (string), competitive_position (string), lessons_learned (string), pipeline_mode (full|sprint), sva7_score (from gold team review).",
+  "outcomes": []
+}

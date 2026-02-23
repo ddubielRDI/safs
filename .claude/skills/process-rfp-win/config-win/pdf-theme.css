@@ -1,0 +1,333 @@
+/* PDF Theme for process-rfp-win
+ * Professional styling with corporate blue tables
+ */
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #1a1a1a;
+  max-width: 100%;
+}
+
+/* Headings */
+h1 {
+  color: #003366;
+  font-size: 24pt;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 1em;
+  padding-bottom: 0.3em;
+  border-bottom: 3px solid #003366;
+}
+
+h2 {
+  color: #003366;
+  font-size: 18pt;
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  padding-bottom: 0.2em;
+  border-bottom: 2px solid #4a90a4;
+}
+
+h3 {
+  color: #4a90a4;
+  font-size: 14pt;
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+h4 {
+  color: #2e7d32;
+  font-size: 12pt;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* ============================================
+   TABLES - Corporate Blue Theme
+   ============================================ */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 10pt;
+  page-break-inside: avoid;
+}
+
+/* Header row - Corporate Blue */
+thead tr,
+table tr:first-child {
+  background-color: #003366;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+thead th,
+table tr:first-child td,
+table tr:first-child th {
+  background-color: #003366;
+  color: #ffffff;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 9pt;
+  letter-spacing: 0.5px;
+}
+
+/* Alternating row colors */
+tbody tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f3f6f9;
+}
+
+/* Cell styling */
+td, th {
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Hover effect (for screen, ignored in print) */
+@media screen {
+  tbody tr:hover {
+    background-color: #e8f4f8;
+  }
+}
+
+/* ============================================
+   CODE BLOCKS
+   ============================================ */
+
+code {
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 9pt;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #c7254e;
+}
+
+pre {
+  background-color: #282c34;
+  color: #abb2bf;
+  padding: 1em;
+  border-radius: 5px;
+  overflow-x: auto;
+  font-size: 9pt;
+  line-height: 1.4;
+  page-break-inside: avoid;
+}
+
+pre code {
+  background-color: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+/* ============================================
+   LISTS
+   ============================================ */
+
+ul, ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+li {
+  margin: 0.25em 0;
+}
+
+/* Nested lists */
+li > ul,
+li > ol {
+  margin-top: 0.25em;
+  margin-bottom: 0;
+}
+
+/* ============================================
+   BLOCKQUOTES & CALLOUTS
+   ============================================ */
+
+blockquote {
+  border-left: 4px solid #4a90a4;
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  background-color: #f8f9fa;
+  color: #495057;
+  font-style: italic;
+}
+
+/* ============================================
+   IMAGES
+   ============================================ */
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+}
+
+/* Figure captions */
+img + em,
+.caption {
+  display: block;
+  text-align: center;
+  font-size: 10pt;
+  color: #6c757d;
+  margin-top: 0.5em;
+}
+
+/* ============================================
+   LINKS
+   ============================================ */
+
+a {
+  color: #003366;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #4a90a4;
+  text-decoration: underline;
+}
+
+/* ============================================
+   HORIZONTAL RULES
+   ============================================ */
+
+hr {
+  border: none;
+  border-top: 2px solid #e9ecef;
+  margin: 2em 0;
+}
+
+/* ============================================
+   PAGE BREAKS
+   ============================================ */
+
+.page-break {
+  page-break-after: always;
+}
+
+h1, h2 {
+  page-break-after: avoid;
+}
+
+table, figure, img {
+  page-break-inside: avoid;
+}
+
+/* ============================================
+   STATUS INDICATORS
+   ============================================ */
+
+.status-pass,
+.status-success {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.status-fail,
+.status-error {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.status-warning {
+  color: #f57c00;
+  font-weight: 600;
+}
+
+/* ============================================
+   PRIORITY BADGES
+   ============================================ */
+
+.priority-critical {
+  background-color: #c62828;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.priority-high {
+  background-color: #f57c00;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.priority-medium {
+  background-color: #4a90a4;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.priority-low {
+  background-color: #607d8b;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+/* ============================================
+   PRINT OPTIMIZATION
+   ============================================ */
+
+@media print {
+  body {
+    font-size: 10pt;
+  }
+
+  h1 {
+    font-size: 20pt;
+  }
+
+  h2 {
+    font-size: 16pt;
+  }
+
+  h3 {
+    font-size: 12pt;
+  }
+
+  pre {
+    background-color: #f5f5f5 !important;
+    color: #333 !important;
+    border: 1px solid #ddd;
+  }
+
+  a {
+    color: #003366 !important;
+  }
+
+  /* Ensure table headers print correctly */
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+}

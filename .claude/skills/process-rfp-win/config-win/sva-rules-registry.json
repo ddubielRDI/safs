@@ -1,0 +1,448 @@
+{
+  "version": "1.0.0",
+  "description": "Extensible rule definitions for all 7 Stage Validation Agents. Users can add custom rules to the custom_rules array.",
+
+  "disposition_rules": {
+    "BLOCK": "Any CRITICAL finding that fails triggers BLOCK disposition",
+    "ADVISORY": "Any HIGH finding that fails triggers ADVISORY (unless already BLOCK)",
+    "PASS": "All findings pass, or only MEDIUM/LOW failures"
+  },
+
+  "svas": {
+    "SVA-1": {
+      "name": "Intake Validator",
+      "stage_after": 1,
+      "color_team": null,
+      "subskill": "sva1-intake-validator-win.md",
+      "rules": [
+        {
+          "id": "SVA1-FLAT-COMPLETENESS",
+          "name": "Flattening Completeness",
+          "severity": "CRITICAL",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Every file in original/ has a corresponding .md in flattened/. Cross-reference source-manifest.json with flatten-results.json.",
+          "threshold": 1.0,
+          "auto_correctable": true,
+          "corrective_phase": "1"
+        },
+        {
+          "id": "SVA1-FLAT-QUALITY",
+          "name": "Flattening Quality",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Char count vs original file size ratio is reasonable (>10 chars/KB for PDF, >50 chars/KB for DOCX). No truncation markers. Table structures preserved for XLSX.",
+          "auto_correctable": true,
+          "corrective_phase": "1"
+        },
+        {
+          "id": "SVA1-DOMAIN-CONFIDENCE",
+          "name": "Domain Detection Confidence",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "domain-context.json confidence >= 0.8. Check detected compliance frameworks align with domain.",
+          "threshold": 0.8,
+          "auto_correctable": false
+        },
+        {
+          "id": "SVA1-EVAL-EXTRACTION",
+          "name": "Evaluation Criteria Extraction",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "EVALUATION_CRITERIA.json has at least 3 evaluation factors. Weights sum to ~100%. At least 1 factor has explicit (non-inferred) weight.",
+          "auto_correctable": true,
+          "corrective_phase": "1.6"
+        },
+        {
+          "id": "SVA1-COMPLIANCE-COVERAGE",
+          "name": "Compliance Extraction Depth",
+          "severity": "CRITICAL",
+          "category": "Content",
+          "enabled": true,
+          "description": "Ratio of mandatory items in COMPLIANCE_MATRIX.json to SHALL/MUST occurrences in flattened text > 0.7.",
+          "threshold": 0.7,
+          "auto_correctable": true,
+          "corrective_phase": "1.7"
+        },
+        {
+          "id": "SVA1-COMPLIANCE-CATEGORIES",
+          "name": "Compliance Category Distribution",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "Mandatory items span at least 3 different categories.",
+          "threshold": 3,
+          "auto_correctable": false
+        }
+      ]
+    },
+
+    "SVA-2": {
+      "name": "Pink Team Review",
+      "stage_after": 2,
+      "color_team": "pink",
+      "subskill": "sva2-pink-team-win.md",
+      "rules": [
+        {
+          "id": "SVA2-REQ-SOURCE-COVERAGE",
+          "name": "Requirement Source Coverage",
+          "severity": "CRITICAL",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Every flattened RFP document section containing SHALL/MUST language has at least one requirement traced to it."
+        },
+        {
+          "id": "SVA2-REQ-DEDUP-QUALITY",
+          "name": "Deduplication Quality",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Reduction ratio (raw to normalized) between 10-40%. Below 10% = duplicates remain. Above 40% = over-merged.",
+          "threshold_min": 0.10,
+          "threshold_max": 0.40
+        },
+        {
+          "id": "SVA2-REQ-PRIORITY-DIST",
+          "name": "Priority Distribution",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "CRITICAL 5-15%, HIGH 20-35%, MEDIUM 35-55%, LOW 10-25%."
+        },
+        {
+          "id": "SVA2-REQ-CATEGORY-COVERAGE",
+          "name": "Category Coverage",
+          "severity": "HIGH",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Requirements span at least 5 categories. Each compliance framework from domain-context.json has at least 1 requirement.",
+          "threshold": 5
+        },
+        {
+          "id": "SVA2-COMPLIANCE-REQ-MAPPING",
+          "name": "Compliance-to-Requirement Mapping",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every mandatory item in COMPLIANCE_MATRIX.json maps to at least one requirement in requirements-normalized.json."
+        },
+        {
+          "id": "SVA2-WORKFLOW-ALIGNMENT",
+          "name": "Workflow-Requirement Alignment Quality",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "For MEDIUM quality matches (0.6-0.8 similarity), verify semantic alignment."
+        },
+        {
+          "id": "SVA2-SAMPLE-DATA-INTEGRATION",
+          "name": "Sample Data Integration",
+          "severity": "MEDIUM",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Data entities from sample-data-analysis.json appear in requirements."
+        },
+        {
+          "id": "SVA2-STRATEGY-READINESS",
+          "name": "Strategy Readiness Check",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Minimum: 50+ requirements, 3+ categories, evaluation criteria extracted, compliance gate passed."
+        }
+      ]
+    },
+
+    "SVA-3": {
+      "name": "Specification Validator",
+      "stage_after": 3,
+      "color_team": null,
+      "subskill": "sva3-spec-validator-win.md",
+      "rules": [
+        {
+          "id": "SVA3-SPEC-REQ-COVERAGE",
+          "name": "Specification Requirement Coverage",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every CRITICAL and HIGH priority requirement is addressed by at least one specification document."
+        },
+        {
+          "id": "SVA3-SPEC-INTERNAL-CONSISTENCY",
+          "name": "Specification Internal Consistency",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Technology choices align across specs (architecture, security, interop)."
+        },
+        {
+          "id": "SVA3-SPEC-DOMAIN-ALIGNMENT",
+          "name": "Domain Alignment",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Specs reference domain-appropriate standards and technologies."
+        },
+        {
+          "id": "SVA3-RISK-SPEC-COVERAGE",
+          "name": "Risk-to-Specification Coverage",
+          "severity": "HIGH",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every HIGH severity risk mitigation reflected in at least one spec."
+        },
+        {
+          "id": "SVA3-ENTITY-COMPLETENESS",
+          "name": "Entity Definition Completeness",
+          "severity": "MEDIUM",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Every data entity from workflow requirements has a definition in ENTITY_DEFINITIONS.md."
+        },
+        {
+          "id": "SVA3-SPEC-DEPTH-RATIO",
+          "name": "Specification Depth Ratio",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "Spec size per requirement addressed is proportional. Minimum 200 bytes per requirement."
+        }
+      ]
+    },
+
+    "SVA-4": {
+      "name": "Red Team Review",
+      "stage_after": 4,
+      "color_team": "red",
+      "subskill": "sva4-red-team-win.md",
+      "rules": [
+        {
+          "id": "SVA4-TRACE-BIDIRECTIONAL",
+          "name": "Bidirectional Traceability Completeness",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Forward: every req in UNIFIED_RTM.json has spec links. Backward: every spec has requirements mapped."
+        },
+        {
+          "id": "SVA4-TRACE-QUALITY",
+          "name": "Traceability Quality Audit",
+          "severity": "HIGH",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Sample 20% of mappings and verify semantic alignment. Flag likely false positives."
+        },
+        {
+          "id": "SVA4-RED-TEAM-SCORING",
+          "name": "Red Team Evaluator Simulation",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Simulate evaluation using EVALUATION_CRITERIA.json weights. Produce mock score breakdown."
+        },
+        {
+          "id": "SVA4-COMPLIANCE-FORWARD-TRACE",
+          "name": "Compliance Forward Traceability",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every mandatory item traces through: item -> requirement -> specification. Any break = potential disqualification."
+        },
+        {
+          "id": "SVA4-ESTIMATION-CONSISTENCY",
+          "name": "Estimation Consistency",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Effort per requirement is reasonable. Total between 500-50,000 hours for typical RFP."
+        },
+        {
+          "id": "SVA4-ESTIMATION-RISK-ALIGNMENT",
+          "name": "Estimation Risk Alignment",
+          "severity": "MEDIUM",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "High-risk requirements should have higher effort estimates."
+        }
+      ]
+    },
+
+    "SVA-5": {
+      "name": "Documentation Validator",
+      "stage_after": 5,
+      "color_team": null,
+      "subskill": "sva5-doc-validator-win.md",
+      "rules": [
+        {
+          "id": "SVA5-MANIFEST-ACCURACY",
+          "name": "Manifest Accuracy",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Every file in MANIFEST.md exists with stated size. No missing files."
+        },
+        {
+          "id": "SVA5-EXEC-SUMMARY-STATS",
+          "name": "Executive Summary Statistics",
+          "severity": "MEDIUM",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Statistics in EXECUTIVE_SUMMARY.md match actual data in shared JSON files."
+        },
+        {
+          "id": "SVA5-NAV-GUIDE-LINKS",
+          "name": "Navigation Guide Link Validity",
+          "severity": "MEDIUM",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Every file referenced in NAVIGATION_GUIDE.md exists."
+        },
+        {
+          "id": "SVA5-CONTEXT-BUNDLE-COMPLETENESS",
+          "name": "Context Bundle Completeness",
+          "severity": "HIGH",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "bid-context-bundle.json aggregates 10+ source files. Critical sections populated."
+        }
+      ]
+    },
+
+    "SVA-6": {
+      "name": "Pre-Bid Gate (Red Team Final)",
+      "stage_after": 6,
+      "color_team": "red",
+      "subskill": "sva6-pre-bid-validator-win.md",
+      "rules": [
+        {
+          "id": "SVA6-PERSONA-INFORMED",
+          "name": "Persona Coverage Minimum",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "PERSONA_COVERAGE.json overall_score >= 80. Each persona coverage_score >= 70.",
+          "threshold": 80
+        },
+        {
+          "id": "SVA6-WIN-PROBABILITY",
+          "name": "Win Probability Threshold",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "WIN_SCORECARD.json win_probability >= 60%. Advisory only.",
+          "threshold": 60
+        },
+        {
+          "id": "SVA6-GAP-ANALYSIS-CLEAR",
+          "name": "Gap Analysis Review",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "GAP_ANALYSIS.md has no HIGH severity gaps remaining."
+        },
+        {
+          "id": "SVA6-RISK-MITIGATION-COMPLETE",
+          "name": "Risk Mitigation Completeness",
+          "severity": "CRITICAL",
+          "category": "Completeness",
+          "enabled": true,
+          "description": "Every HIGH/CRITICAL risk has: mitigation strategy, owner_role, verification_criteria."
+        },
+        {
+          "id": "SVA6-BID-CONTEXT-INTEGRITY",
+          "name": "Bid Context Integrity",
+          "severity": "CRITICAL",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "bid-context-bundle.json counts match source JSON files. No stale data."
+        },
+        {
+          "id": "SVA6-EVALUATION-ALIGNMENT-CHECK",
+          "name": "Evaluation Weight Coverage",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Each evaluation factor weighted >= 20% has at least one spec and one requirements category addressing it."
+        }
+      ]
+    },
+
+    "SVA-7": {
+      "name": "Gold Team Review",
+      "stage_after": 7,
+      "color_team": "gold",
+      "subskill": "sva7-gold-team-win.md",
+      "rules": [
+        {
+          "id": "SVA7-THEME-THREADING-DEPTH",
+          "name": "Win Theme Semantic Threading",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Each win theme appears in context with evidence, not just as headings. 2+ substantive paragraphs per bid section."
+        },
+        {
+          "id": "SVA7-RISK-BID-INTEGRATION",
+          "name": "Risk-to-Bid Traceability",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every HIGH risk mitigation from UNIFIED_RTM.json verified present in bid text."
+        },
+        {
+          "id": "SVA7-COMPLIANCE-BID-COVERAGE",
+          "name": "Compliance-to-Bid Verification",
+          "severity": "CRITICAL",
+          "category": "Traceability",
+          "enabled": true,
+          "description": "Every mandatory item from COMPLIANCE_MATRIX.json addressed in bid. Full chain verified."
+        },
+        {
+          "id": "SVA7-CROSS-DOC-ID-INTEGRITY",
+          "name": "Cross-Document ID Integrity",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "All requirement/risk IDs referenced in bid sections exist in source JSON files. No phantom references."
+        },
+        {
+          "id": "SVA7-PERSONA-SATISFACTION",
+          "name": "Evaluator Persona Satisfaction",
+          "severity": "HIGH",
+          "category": "Content",
+          "enabled": true,
+          "description": "Each evaluator persona's top 3 concerns are addressed in bid."
+        },
+        {
+          "id": "SVA7-FORMAT-COMPLIANCE",
+          "name": "Format Compliance",
+          "severity": "HIGH",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Page count estimate within page limits. Font/margin requirements met."
+        },
+        {
+          "id": "SVA7-CONSISTENCY-CHECK",
+          "name": "Statistic Consistency",
+          "severity": "MEDIUM",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "Numbers cited in bid match source data (requirement count, coverage percentage, etc.)."
+        },
+        {
+          "id": "SVA7-COMPETITIVE-CONTRAST",
+          "name": "Competitive Positioning Presence",
+          "severity": "MEDIUM",
+          "category": "Content",
+          "enabled": true,
+          "description": "Solution includes competitive contrast. Incumbent weaknesses from CLIENT_INTELLIGENCE.json referenced."
+        }
+      ]
+    }
+  },
+
+  "custom_rules": []
+}

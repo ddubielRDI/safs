@@ -1,0 +1,51 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#003366",
+    "primaryTextColor": "#ffffff",
+    "primaryBorderColor": "#002244",
+    "lineColor": "#607d8b",
+    "secondaryColor": "#4a90a4",
+    "tertiaryColor": "#2e7d32",
+    "background": "#ffffff",
+    "mainBkg": "#003366",
+    "textColor": "#1a1a1a",
+    "gridColor": "#e9ecef",
+    "todayLineColor": "#c62828",
+
+    "taskBkgColor": "#4a90a4",
+    "taskTextColor": "#ffffff",
+    "taskTextOutsideColor": "#1a1a1a",
+    "taskTextLightColor": "#ffffff",
+    "taskBorderColor": "#3a7a94",
+
+    "activeTaskBkgColor": "#003366",
+    "activeTaskBorderColor": "#002244",
+
+    "doneTaskBkgColor": "#2e7d32",
+    "doneTaskBorderColor": "#1e6d22",
+
+    "critBkgColor": "#c62828",
+    "critBorderColor": "#a01818",
+
+    "sectionBkgColor": "#f8f9fa",
+    "sectionBkgColor2": "#e9ecef",
+
+    "altSectionBkgColor": "#ffffff",
+
+    "titleColor": "#003366"
+  },
+  "gantt": {
+    "barHeight": 30,
+    "barGap": 4,
+    "topPadding": 50,
+    "sidePadding": 75,
+    "gridLineStartPadding": 35,
+    "fontSize": 14,
+    "sectionFontSize": 16,
+    "numberSectionStyles": 4,
+    "axisFormat": "%b %d",
+    "useMaxWidth": true
+  },
+  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+}

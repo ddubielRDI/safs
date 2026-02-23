@@ -1,0 +1,227 @@
+{
+  "company_name": "Resource Data, Inc.",
+  "legal_name": "Resource Data, Inc.",
+  "founded": 1986,
+  "years_in_business": 39,
+  "employees": "200+",
+  "tagline": "Rediscover the power of your technology",
+  "mission": "Your technology partner to get the job done so you can focus on what matters most.",
+  "website": "https://www.resourcedata.com",
+
+  "leadership": {
+    "president": "Jason Mancuso",
+    "directors": {
+      "Anchorage": "Ashley Rizor",
+      "Juneau": "Ariel Gibson",
+      "Houston": "Bill Fleming",
+      "Portland": "Dave Roberts",
+      "Boise": "Will Jensen"
+    },
+    "service_area_leads": {
+      "Data Engineering": "Rick Busch",
+      "GIS": "Tasha Jackson"
+    }
+  },
+
+  "locations": [
+    {
+      "city": "Anchorage",
+      "state": "AK",
+      "address": "560 E 34th Ave #100",
+      "zip": "99503",
+      "phone": "(907) 563-8100",
+      "primary": false
+    },
+    {
+      "city": "Boise",
+      "state": "ID",
+      "address": "1450 S Eagle Flight Way #150",
+      "zip": "83709",
+      "phone": "(208) 424-2203",
+      "primary": false
+    },
+    {
+      "city": "Houston",
+      "state": "TX",
+      "address": "15915 Katy Fwy #350",
+      "zip": "77094",
+      "phone": "(713) 468-3385",
+      "primary": false
+    },
+    {
+      "city": "Juneau",
+      "state": "AK",
+      "address": "One Sealaska Plaza #301",
+      "zip": "99801",
+      "phone": "(907) 519-0292",
+      "primary": false
+    },
+    {
+      "city": "Portland",
+      "state": "OR",
+      "address": "1220 SW Morrison St #210",
+      "zip": "97205",
+      "phone": "(503) 208-3693",
+      "primary": true
+    }
+  ],
+
+  "services": {
+    "data_and_ai": [
+      "Artificial Intelligence",
+      "Data Analytics",
+      "Data Science",
+      "Data Engineering",
+      "Data Services"
+    ],
+    "software_services": [
+      "Application Development",
+      "API Management & Microservices",
+      "Cloud Migrations",
+      "Mobile Applications",
+      "Software Modernization",
+      "System Integration",
+      "Websites"
+    ],
+    "gis": [
+      "Automation",
+      "Data Management",
+      "Enterprise Implementations",
+      "Mapping & Cartography",
+      "Solutions",
+      "Spatial Analysis"
+    ],
+    "it_consulting": [
+      "Business Analysis",
+      "IT Strategic Planning",
+      "COTS Implementation",
+      "Organizational Change Management",
+      "Project Management"
+    ],
+    "systems_engineering": [
+      "Cloud Computing",
+      "Cybersecurity",
+      "Infrastructure",
+      "System Architecture"
+    ]
+  },
+
+  "industries": [
+    "Education",
+    "Fisheries",
+    "Government",
+    "Manufacturing",
+    "Mining",
+    "Natural Resources",
+    "Oil & Gas",
+    "Transportation",
+    "Utilities"
+  ],
+
+  "capabilities_summary": [
+    "AI/ML including Meta Llama 3.1 for database migration",
+    "Cloud-native application development",
+    "Legacy system modernization",
+    "Enterprise GIS implementations",
+    "Cybersecurity and compliance",
+    "Organizational Change Management",
+    "Full-stack web and mobile development",
+    "Data engineering and analytics pipelines",
+    "System integration and API management"
+  ],
+
+  "core_philosophy": {
+    "people": "Creative problem-solving requires talented individuals at the company's core",
+    "technology": "Business strategy should guide technology solutions, not vice versa",
+    "results": "Lasting partnerships deliver high-value technology outcomes"
+  },
+
+  "bid_defaults": {
+    "authorized_signatory": {
+      "name": "[USER INPUT REQUIRED: Authorized signatory name]",
+      "title": "[USER INPUT REQUIRED: Authorized signatory title]",
+      "email": "[USER INPUT REQUIRED: Authorized signatory email]",
+      "phone": "[USER INPUT REQUIRED: Authorized signatory phone]"
+    },
+    "primary_contact": {
+      "name": "[USER INPUT REQUIRED: Primary contact name]",
+      "title": "[USER INPUT REQUIRED: Primary contact title]",
+      "email": "[USER INPUT REQUIRED: Primary contact email]",
+      "phone": "[USER INPUT REQUIRED: Primary contact phone]"
+    },
+    "certifications": [
+      "[USER INPUT REQUIRED: List certifications e.g., SOC 2 Type II, ISO 27001]"
+    ],
+    "mwbe_status": "[USER INPUT REQUIRED: MWBE status if applicable]",
+    "veteran_owned": false,
+    "business_registration": {
+      "ubi_number": "[USER INPUT REQUIRED: WA UBI number]",
+      "state": "OR"
+    }
+  },
+
+  "past_performance": {
+    "source_file": "Past_Projects.md",
+    "_note": "Case studies auto-selected from Past_Projects.md during bid generation. Phase 8.0 scores and ranks projects by domain/industry/technology match. Phases 8.1, 8.2, 8.3 consume matched_projects[] from POSITIONING_OUTPUT.json.",
+    "override_projects": [],
+    "_override_note": "Add specific project numbers from Past_Projects.md to force-include in any bid, regardless of scoring. Example: [1, 5, 12]",
+    "references": {
+      "business": [
+        {
+          "_note": "USER INPUT: Add bid-specific references here if different from Past_Projects.md clients"
+        }
+      ]
+    }
+  },
+
+  "financial_defaults": {
+    "_note": "Fill in with actual rates for cost proposals",
+    "labor_rates": {
+      "program_manager": { "hourly_rate": 0 },
+      "technical_architect": { "hourly_rate": 0 },
+      "senior_developer": { "hourly_rate": 0 },
+      "developer": { "hourly_rate": 0 },
+      "qa_engineer": { "hourly_rate": 0 },
+      "ocm_specialist": { "hourly_rate": 0 },
+      "data_engineer": { "hourly_rate": 0 },
+      "security_specialist": { "hourly_rate": 0 }
+    },
+    "overhead_rate_percent": 0,
+    "profit_margin_percent": 0,
+    "sales_tax_rate_percent": 0
+  },
+
+  "market_rate_defaults": {
+    "_note": "2026 baseline rates for government IT consulting. Used as FALLBACK when financial_defaults.labor_rates are $0. Company rates > $0 always override these. Update annually. Source: industry benchmarks.",
+    "_override_logic": "Phase 8.5 checks financial_defaults.labor_rates first. If hourly_rate == 0, falls back to market_rate_defaults. Output marks rate source as [MARKET DEFAULT] vs [COMPANY RATE].",
+    "labor_rates": {
+      "program_manager": { "hourly_rate": 185, "gsa_range": "165-210" },
+      "technical_architect": { "hourly_rate": 195, "gsa_range": "175-225" },
+      "senior_developer": { "hourly_rate": 165, "gsa_range": "145-190" },
+      "developer": { "hourly_rate": 135, "gsa_range": "115-155" },
+      "qa_engineer": { "hourly_rate": 130, "gsa_range": "110-150" },
+      "ocm_specialist": { "hourly_rate": 155, "gsa_range": "135-180" },
+      "data_engineer": { "hourly_rate": 170, "gsa_range": "150-195" },
+      "security_specialist": { "hourly_rate": 175, "gsa_range": "155-200" }
+    },
+    "overhead_rate_percent": 15,
+    "profit_margin_percent": 10,
+    "last_updated": "2026-01-01",
+    "rate_source": "GSA IT Schedule 70 / Industry benchmarks"
+  },
+
+  "key_personnel": {
+    "_note": "Fill in with proposed team members for each bid",
+    "team_members": [
+      {
+        "name": "[USER INPUT REQUIRED]",
+        "proposed_role": "Program Manager",
+        "qualifications": "",
+        "years_experience": 0,
+        "certifications": [],
+        "allocation_percent": 100,
+        "resume_file_path": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-02-21",
+  "instructions": "Add your organization's proof points below. Tags are matched against RFP domain keywords to select relevant evidence for each bid. Items with source 'company-profile' are auto-populated; add your own with source 'manual'.",
+  "categories": {
+    "metrics": [
+      {"id": "M001", "statement": "200+ IT professionals across 5 offices nationwide", "source": "company-profile", "tags": ["scale", "capacity", "staffing", "nationwide"]},
+      {"id": "M002", "statement": "39 years of continuous operation since 1986", "source": "company-profile", "tags": ["stability", "experience", "longevity", "reliability"]},
+      {"id": "M003", "statement": "Offices in Anchorage AK, Boise ID, Houston TX, Juneau AK, and Portland OR", "source": "company-profile", "tags": ["geographic", "distributed", "remote", "multi-office"]},
+      {"id": "M004", "statement": "28 documented case studies across government and commercial sectors", "source": "Past_Projects.md", "tags": ["past-performance", "experience", "track-record"]},
+      {"id": "M005", "statement": "[USER INPUT: Add quantified delivery metrics, e.g., '95% on-time delivery rate']", "source": "manual", "tags": ["delivery", "performance"]}
+    ],
+    "certifications": [
+      {"id": "C001", "certification": "[USER INPUT: e.g., ISO 27001, SOC 2 Type II, CMMI Level 3]", "issuer": "", "expiry": "", "tags": ["security", "compliance", "quality"]},
+      {"id": "C002", "certification": "[USER INPUT: e.g., FedRAMP Authorized, ITAR Compliant]", "issuer": "", "expiry": "", "tags": ["government", "federal", "compliance"]}
+    ],
+    "partnerships": [
+      {"id": "P001", "partner": "[USER INPUT: e.g., Microsoft Gold Partner, AWS Advanced Partner]", "level": "", "tags": ["cloud", "technology", "ecosystem"]},
+      {"id": "P002", "partner": "[USER INPUT: e.g., Esri Silver Partner]", "level": "", "tags": ["gis", "geospatial", "mapping"]}
+    ],
+    "testimonials": [
+      {"id": "T001", "quote": "[USER INPUT: Client quote about quality of work]", "attribution": "", "project": "", "tags": ["quality", "satisfaction"]},
+      {"id": "T002", "quote": "[USER INPUT: Client quote about on-time delivery]", "attribution": "", "project": "", "tags": ["delivery", "reliability"]}
+    ],
+    "awards": [
+      {"id": "A001", "award": "[USER INPUT: e.g., Alaska Top 49ers - Outstanding Business]", "year": "", "issuer": "", "tags": ["recognition", "excellence"]}
+    ],
+    "differentiators": [
+      {"id": "D001", "statement": "Dual AI-assisted development methodology combining human expertise with AI acceleration", "source": "company-profile", "tags": ["innovation", "ai", "efficiency", "modern"]},
+      {"id": "D002", "statement": "Multi-office resource flexibility enabling rapid team scaling", "source": "company-profile", "tags": ["scalability", "flexibility", "staffing"]},
+      {"id": "D003", "statement": "Deep Alaska and Pacific Northwest government technology expertise", "source": "company-profile", "tags": ["government", "alaska", "state", "regional"]}
+    ]
+  }
+}

@@ -10,7 +10,11 @@
 # -----------------------------------------------------------------------------
 # Claude Code & AI Tools (local settings, not for source control)
 # -----------------------------------------------------------------------------
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/process-rfp-win/
+!.claude/skills/process-rfp-screen/
 .playwright-mcp/
 
 # -----------------------------------------------------------------------------

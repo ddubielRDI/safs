@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "last_updated": "",
+  "instructions": "Pipeline execution metrics aggregated across runs. Updated automatically after each pipeline run. Use Phase post-run-metrics to generate a human-readable report.",
+  "runs": [],
+  "aggregates": {
+    "total_runs": 0,
+    "total_full_runs": 0,
+    "total_sprint_runs": 0,
+    "avg_total_duration_minutes": 0,
+    "phase_avg_durations": {},
+    "phase_failure_rates": {},
+    "sva_dispositions": {},
+    "outcomes_logged": 0
+  }
+}

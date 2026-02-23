@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-02-21",
+  "instructions": "Configure optional external tool integrations below. Set 'enabled' to true and fill in config details for any integration you want to activate. No integrations are required — the pipeline works fully standalone. API keys should be stored in environment variables, never in this file.",
+  "integrations": {
+    "crm": {
+      "enabled": false,
+      "description": "CRM system for client intelligence enrichment (enhances Phase 1.95)",
+      "when_useful": "When you have client relationship data in a CRM that could improve bid positioning",
+      "supported_providers": ["salesforce", "hubspot", "dynamics365", "custom"],
+      "config": {
+        "provider": "",
+        "api_endpoint": "",
+        "api_key_env_var": "CRM_API_KEY",
+        "client_lookup_field": "company_name",
+        "data_fields": ["contacts", "past_interactions", "contract_history", "notes"]
+      },
+      "hook_phase": "1.95",
+      "hook_type": "pre_phase",
+      "adapter_template": "See INTEGRATION_GUIDE section in skill-win.md"
+    },
+    "proposal_database": {
+      "enabled": false,
+      "description": "Proposal management system for content reuse (enhances Phase 8.0 positioning)",
+      "when_useful": "When you have a library of past proposals that could provide reusable content blocks",
+      "supported_providers": ["qvidian", "rfpio", "loopio", "custom"],
+      "config": {
+        "provider": "",
+        "api_endpoint": "",
+        "api_key_env_var": "PROPOSAL_DB_API_KEY",
+        "search_field": "keywords",
+        "max_results": 10
+      },
+      "hook_phase": "8.0",
+      "hook_type": "pre_phase",
+      "adapter_template": "See INTEGRATION_GUIDE section in skill-win.md"
+    },
+    "document_repository": {
+      "enabled": false,
+      "description": "Document management system for accessing past proposals and boilerplate",
+      "when_useful": "When past proposals are stored in SharePoint/Confluence and should be auto-retrieved",
+      "supported_providers": ["sharepoint", "confluence", "google_drive", "custom"],
+      "config": {
+        "provider": "",
+        "api_endpoint": "",
+        "api_key_env_var": "DOC_REPO_API_KEY",
+        "search_scope": "proposals",
+        "file_types": [".docx", ".pdf", ".md"]
+      },
+      "hook_phase": "0",
+      "hook_type": "post_phase",
+      "adapter_template": "See INTEGRATION_GUIDE section in skill-win.md"
+    },
+    "notification": {
+      "enabled": false,
+      "description": "Send notifications on pipeline events (completion, failures, human review needed)",
+      "when_useful": "When team members need to be alerted about pipeline status automatically",
+      "supported_providers": ["slack", "teams", "email", "webhook"],
+      "config": {
+        "provider": "",
+        "webhook_url_env_var": "NOTIFICATION_WEBHOOK_URL",
+        "channel": "",
+        "notify_on": ["pipeline_complete", "sva_block", "human_review_needed", "pipeline_failed"]
+      },
+      "hook_phase": "global",
+      "hook_type": "event",
+      "adapter_template": "See INTEGRATION_GUIDE section in skill-win.md"
+    }
+  }
+}

@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stage Validation Agent Report",
+  "description": "Canonical schema for all SVA validation reports. Each SVA produces one report per execution.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["validator", "validated_at", "disposition", "summary", "findings"],
+  "properties": {
+    "validator": {
+      "type": "string",
+      "pattern": "^SVA-[1-7]$",
+      "description": "Which validation agent produced this report"
+    },
+    "validated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stage_validated": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7,
+      "description": "Which stage was just completed before this SVA ran"
+    },
+    "disposition": {
+      "type": "string",
+      "enum": ["PASS", "ADVISORY", "BLOCK"],
+      "description": "PASS=continue to next stage, ADVISORY=continue with logged warnings, BLOCK=must fix before proceeding"
+    },
+    "color_team": {
+      "type": ["string", "null"],
+      "enum": ["pink", "red", "gold", null],
+      "description": "Shipley/APMP color team mapping. null for non-color-team SVAs."
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total_rules", "passed", "failed", "critical_failures", "high_failures", "overall_score"],
+      "properties": {
+        "total_rules": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "critical_failures": { "type": "integer", "minimum": 0 },
+        "high_failures": { "type": "integer", "minimum": 0 },
+        "overall_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Weighted score across all rules (0-100)"
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      }
+    },
+    "color_team_report": {
+      "type": ["object", "null"],
+      "description": "Color team specific summary. Present only for Pink/Red/Gold team SVAs.",
+      "properties": {
+        "team": { "type": "string", "enum": ["pink", "red", "gold"] },
+        "recommendation": {
+          "type": "string",
+          "enum": ["PROCEED", "PROCEED_WITH_CAUTION", "REVISE_AND_RESUBMIT", "STOP"]
+        },
+        "top_concerns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 5
+        },
+        "evaluator_simulation": {
+          "type": ["object", "null"],
+          "description": "Mock scoring using EVALUATION_CRITERIA.json weights (Red/Gold team only)",
+          "properties": {
+            "factors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "factor_name": { "type": "string" },
+                  "max_points": { "type": "number" },
+                  "estimated_score": { "type": "number" },
+                  "score_percentage": { "type": "number" },
+                  "notes": { "type": "string" }
+                }
+              }
+            },
+            "weighted_total": { "type": "number" },
+            "max_possible": { "type": "number" },
+            "percentage": { "type": "number" }
+          }
+        },
+        "traceability_integrity": {
+          "type": ["object", "null"],
+          "description": "Traceability chain health (Red/Gold team only)",
+          "properties": {
+            "forward_coverage_pct": { "type": "number" },
+            "backward_coverage_pct": { "type": "number" },
+            "false_positive_estimate_pct": { "type": "number" },
+            "compliance_chain_complete": { "type": "boolean" }
+          }
+        },
+        "theme_threading": {
+          "type": ["object", "null"],
+          "description": "Win theme threading analysis (Gold team only)",
+          "properties": {
+            "overall_score": { "type": "number", "minimum": 0, "maximum": 100 },
+            "themes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "theme": { "type": "string" },
+                  "sections_present": { "type": "integer" },
+                  "sections_total": { "type": "integer" },
+                  "depth": { "type": "string", "enum": ["surface", "moderate", "deep"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "corrective_actions_summary": {
+      "type": "array",
+      "description": "Aggregated list of corrective actions sorted by priority",
+      "items": {
+        "type": "object",
+        "properties": {
+          "priority": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+          "action": { "type": "string" },
+          "target_phase": { "type": "string" },
+          "auto_correctable": { "type": "boolean" },
+          "rule_id": { "type": "string" }
+        }
+      }
+    },
+    "execution_metadata": {
+      "type": "object",
+      "properties": {
+        "duration_ms": { "type": "integer" },
+        "files_analyzed": { "type": "integer" },
+        "data_sources_read": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Finding": {
+      "type": "object",
+      "required": ["rule_id", "rule_name", "category", "severity", "passed"],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^SVA[1-7]-[A-Z]+-[A-Z]+",
+          "description": "Unique rule ID (e.g., SVA2-REQ-COVERAGE)"
+        },
+        "rule_name": {
+          "type": "string",
+          "description": "Human-readable rule name"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Content", "Consistency", "Traceability", "Completeness"],
+          "description": "What aspect of quality this rule checks"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+          "description": "CRITICAL=blocks pipeline, HIGH=strong advisory, MEDIUM=notable, LOW=informational"
+        },
+        "passed": { "type": "boolean" },
+        "score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Quantitative score for this rule (null if binary pass/fail)"
+        },
+        "threshold": {
+          "type": ["number", "null"],
+          "description": "Required score threshold to pass"
+        },
+        "details": {
+          "type": "object",
+          "description": "Rule-specific detail data (flexible schema per rule)",
+          "additionalProperties": true
+        },
+        "corrective_action": {
+          "type": ["object", "null"],
+          "description": "What to do if this rule fails",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["retry_phase", "supplement_phase", "user_review", "no_action"],
+              "description": "retry_phase=re-run phase with enhanced instructions, supplement_phase=run additional extraction, user_review=present to user, no_action=log only"
+            },
+            "target_phase": {
+              "type": ["string", "null"],
+              "description": "Phase ID to retry/supplement (e.g., '2', '3a')"
+            },
+            "instruction": {
+              "type": "string",
+              "description": "Specific instruction for the corrective action"
+            },
+            "auto_correctable": {
+              "type": "boolean",
+              "description": "Whether the pipeline can automatically attempt correction"
+            }
+          }
+        }
+      }
+    }
+  }
+}
