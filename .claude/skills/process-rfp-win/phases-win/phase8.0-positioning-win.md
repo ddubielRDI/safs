@@ -126,13 +126,15 @@ Read `Past_Projects.md` and score each project against the RFP's domain, industr
 def select_matching_projects(past_projects_md, domain_context, requirements, company):
     """Score and rank past projects by relevance to this RFP.
 
-    Scoring dimensions:
+    Scoring dimensions (FAR 15.305 relevance factors):
     - Industry match:    exact = 10pts, related = 5pts
-    - Technology overlap: 3pts per matching technology
+    - Technology overlap: 3pts per matching technology (max 15)
     - Quantified metrics: 5pts if project has a metrics/results table
     - Client quote:       2pts if project includes a testimonial
     - Recency:           5pts (<3 years), 3pts (3-5 years), 1pt (>5 years)
     - Scale/impact:      3pts for large-scale projects ($1M+ or 1000+ users)
+    - Contract type:     3pts exact match, 1pt related (FFP/T&M/IDIQ/CPFF)
+    - Dollar proximity:  3pts same magnitude, 1pt within 5x range
 
     Returns top 5-8 ranked projects with score breakdowns.
     """
@@ -242,6 +244,71 @@ def select_matching_projects(past_projects_md, domain_context, requirements, com
         breakdown["scale"] = scale_score
         score += scale_score
 
+        # --- Contract Type Similarity (max 3pts) --- [FAR 15.305 relevance factor]
+        contract_type_score = 0
+        rfp_contract_type = domain_context.get("contract_type", "").upper()
+        project_desc_lower = (project.get("description", "") + " " + project.get("outcomes", "")).lower()
+
+        # Map of contract types and their related types
+        contract_type_families = {
+            "FFP": ["firm fixed", "fixed price", "ffp", "fixed-price"],
+            "T&M": ["time and material", "t&m", "time & material", "hourly"],
+            "IDIQ": ["idiq", "indefinite delivery", "task order", "blanket purchase"],
+            "CPFF": ["cost plus", "cpff", "cost-reimbursement", "cpaf"],
+            "BPA": ["bpa", "blanket purchase", "standing order"]
+        }
+        related_types = {
+            "FFP": ["CPFF", "BPA"],
+            "T&M": ["IDIQ", "BPA"],
+            "IDIQ": ["T&M", "BPA"],
+            "CPFF": ["FFP", "T&M"],
+            "BPA": ["IDIQ", "T&M"]
+        }
+
+        if rfp_contract_type:
+            # Check for exact contract type match in project description
+            exact_keywords = contract_type_families.get(rfp_contract_type, [rfp_contract_type.lower()])
+            if any(kw in project_desc_lower for kw in exact_keywords):
+                contract_type_score = 3
+            else:
+                # Check for related contract type match
+                for related in related_types.get(rfp_contract_type, []):
+                    related_kws = contract_type_families.get(related, [related.lower()])
+                    if any(kw in project_desc_lower for kw in related_kws):
+                        contract_type_score = 1
+                        break
+        breakdown["contract_type"] = contract_type_score
+        score += contract_type_score
+
+        # --- Dollar Value Proximity (max 3pts) --- [FAR 15.305 relevance factor]
+        dollar_score = 0
+        rfp_value = domain_context.get("estimated_value", 0)
+        if not rfp_value:
+            # Try extracting from requirements
+            rfp_value = (requirements or {}).get("estimated_value", 0)
+
+        # Extract project value from description (look for dollar amounts)
+        import re as _re
+        project_value = 0
+        value_match = _re.search(r'\$\s*([\d,.]+)\s*(million|m|k|thousand|billion|b)?', project_desc_lower)
+        if value_match:
+            val_str = value_match.group(1).replace(",", "")
+            multiplier_map = {"million": 1_000_000, "m": 1_000_000, "billion": 1_000_000_000, "b": 1_000_000_000, "thousand": 1_000, "k": 1_000}
+            multiplier = multiplier_map.get(value_match.group(2), 1)
+            try:
+                project_value = float(val_str) * multiplier
+            except ValueError:
+                project_value = 0
+
+        if rfp_value and project_value:
+            ratio = max(rfp_value, project_value) / max(min(rfp_value, project_value), 1)
+            if ratio <= 2:      # Same magnitude
+                dollar_score = 3
+            elif ratio <= 5:    # Within 5x range
+                dollar_score = 1
+        breakdown["dollar_proximity"] = dollar_score
+        score += dollar_score
+
         scored_projects.append({
             "project_number": project.get("project_number"),
             "client": project.get("client", ""),
@@ -285,8 +352,19 @@ def select_matching_projects(past_projects_md, domain_context, requirements, com
     for i, p in enumerate(final_projects):
         tech_matches = p["score_breakdown"].get("technology", {}).get("matches", [])
         p["rank"] = i + 1
+        # FAR 15.305 relevance rating based on score
+        if p['relevance_score'] >= 25:
+            relevance_rating = "Very Relevant"
+        elif p['relevance_score'] >= 15:
+            relevance_rating = "Relevant"
+        elif p['relevance_score'] >= 8:
+            relevance_rating = "Somewhat Relevant"
+        else:
+            relevance_rating = "Not Relevant"
+        p["relevance_rating"] = relevance_rating
+
         p["relevance_statement"] = (
-            f"Ranked #{i+1} match (score: {p['relevance_score']}). "
+            f"Ranked #{i+1} match (score: {p['relevance_score']}, {relevance_rating}). "
             f"Industry: {p['industry']}. "
             + (f"Technology overlap: {', '.join(tech_matches[:3])}. " if tech_matches else "")
             + (f"Key result: {p['key_metrics'][0]}. " if p.get('key_metrics') else "")
@@ -399,6 +477,94 @@ if evidence_library:
                         "relevance_score": 0  # fallback — no keyword match but included for minimum coverage
                     })
         log(f"Evidence fallback: padded to {len(matched_evidence)} items (minimum coverage)")
+```
+
+### Step 1d: Competitive Ghost Analysis
+
+Build ghost/counter strategies from available competitive intelligence. Ghost language subtly highlights competitor weaknesses without naming them. Counter narratives proactively address RDI's known weaknesses before evaluators discover them.
+
+```python
+# Step 1d: Competitive Ghost Analysis
+# Sources: CLIENT_INTELLIGENCE.json competitive data, company strengths,
+#          historical_patterns.recurring_weaknesses, Go/No-Go competitive position
+
+ghost_strategies = {"ghost_phrases": [], "counter_narratives": [], "competitive_context": {}}
+
+# 1. Extract competitive intelligence
+competitive = {}
+if client_intel:
+    intel_data = client_intel.get("intelligence", {})
+    competitive = intel_data.get("competitive_landscape", {})
+
+incumbent = competitive.get("incumbent", "Unknown")
+known_competitors = competitive.get("known_competitors", [])
+
+# 2. Identify our weaknesses from Go/No-Go risks and historical losses
+our_weaknesses = []
+
+# From Go/No-Go assessment areas (if available)
+gonogo_path = f"{folder}/shared/GO_NOGO_DECISION.json"
+if os.path.exists(gonogo_path):
+    gonogo = read_json_safe(gonogo_path)
+    for area in gonogo.get("assessment_areas", []):
+        for risk in area.get("risks", []):
+            our_weaknesses.append(risk)
+
+# From historical recurring weaknesses
+if historical_patterns.get("has_data"):
+    our_weaknesses.extend(historical_patterns.get("recurring_weaknesses", []))
+
+# 3. Build competitive context
+ghost_strategies["competitive_context"] = {
+    "incumbent": incumbent,
+    "known_competitors": known_competitors,
+    "our_weaknesses": our_weaknesses[:10],  # Cap at 10 most relevant
+    "positioning": "right-sized partner — agile execution + deep bench"
+}
+
+# 4. Generate ghost phrases and counter narratives via LLM
+# The executing agent should use the following prompt to generate ghost/counter strategies:
+#
+# GHOST PHRASE GENERATION PROMPT:
+# Given the following context, generate ghost phrases and counter narratives:
+#
+# Win Themes: {positioning["themes"]}
+# Incumbent: {incumbent}
+# Known Competitors: {known_competitors}
+# Our Weaknesses: {our_weaknesses}
+# Our Proof Points: {positioning["proof_points"]}
+# Matched Projects: {[mp["client"] + ": " + mp["relevance_statement"] for mp in matched_projects[:5]]}
+# Matched Evidence: {[e["content"] for e in matched_evidence[:5]]}
+#
+# RULES:
+# - Never name competitors directly
+# - Use "Unlike providers who..." / "Rather than..." / "Instead of..." framing
+# - Every ghost phrase must pair with a concrete proof point (not vague claims)
+# - Counter narratives must acknowledge the weakness honestly, then pivot to strength
+# - Generate 1-2 ghost phrases per win theme
+# - Generate counter narratives for each identified weakness
+# - Reference Lohfeld ghost phrase patterns
+#
+# OUTPUT FORMAT:
+# ghost_phrases: [{theme, ghost, target_weakness, proof_point}]
+# counter_narratives: [{weakness, counter, evidence}]
+
+# Example ghost phrase structure:
+# {
+#     "theme": "Local Expertise",
+#     "ghost": "Unlike providers who must relocate teams to serve your region...",
+#     "target_weakness": "competitor geographic distance",
+#     "proof_point": "Portland office, 108 miles from Salem, 3 active WA contracts"
+# }
+
+# Example counter narrative structure:
+# {
+#     "weakness": "No direct school apportionment experience",
+#     "counter": "While new to school apportionment specifically, RDI brings 15+ years of education data systems including Oregon OLDC and Alaska DMV financial calculations that share identical complexity patterns.",
+#     "evidence": "Oregon OLDC education data processing, AK DMV financial calculations"
+# }
+
+log(f"Ghost analysis: {len(known_competitors)} competitors identified, {len(our_weaknesses)} weaknesses to counter")
 ```
 
 ### Step 2: Map Win Themes to Evaluation Factors
@@ -599,6 +765,11 @@ def develop_positioning(domain, client_intel, eval_criteria):
         "39 years of continuous technology delivery since 1986",
         "200+ professionals across 5 offices"
     ])
+
+    # Ghost/Counter integration: attach ghost strategies to positioning
+    # The LLM should populate ghost_phrases and counter_narratives
+    # based on the ghost analysis from Step 1d
+    positioning["ghost_strategy"] = ghost_strategies
 
     return positioning
 
@@ -810,7 +981,16 @@ positioning_output = {
         "total_available": sum(len(items) for items in evidence_library.get("categories", {}).values()) if evidence_library else 0,
         "populated": len([e for e in matched_evidence]),
         "unpopulated": sum(1 for cat in evidence_library.get("categories", {}).values() for item in cat if "[USER INPUT" in str(item)) if evidence_library else 0
-    }
+    },
+    "ghost_strategy": positioning.get("ghost_strategy", {
+        "ghost_phrases": [],
+        "counter_narratives": [],
+        "competitive_context": {
+            "incumbent": "Unknown",
+            "known_competitors": [],
+            "positioning": "right-sized partner — agile execution + deep bench"
+        }
+    })
 }
 
 write_json(f"{folder}/shared/bid/POSITIONING_OUTPUT.json", positioning_output)
@@ -867,3 +1047,5 @@ Output: {folder}/shared/bid/POSITIONING_OUTPUT.json
 - [ ] Zero-match fallback handled (warning if <3 strong matches)
 - [ ] `matched_evidence` populated from `config-win/evidence-library.json`
 - [ ] `evidence_summary` includes total_available, populated, unpopulated counts
+- [ ] `ghost_strategy` populated with >=1 ghost phrase per win theme
+- [ ] Counter narratives address all HIGH risks from Go/No-Go assessment

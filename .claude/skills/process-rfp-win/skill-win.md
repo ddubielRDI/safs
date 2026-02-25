@@ -52,7 +52,7 @@ When a user requests "Stage 5", executing BOTH Stage 5 AND Stage 6 (or any other
 | **Stage 4** | 4, 5 | SVA-4 (Red Team) | Traceability + UNIFIED_RTM.json, effort estimation |
 | **Stage 5** | 6, 6b, 6c | SVA-5 (Doc Validator) | Manifest, executive summary, navigation guide, context bundle |
 | **Stage 6** | 7, 7c, 7d | SVA-6 (Pre-Bid Gate) | Validation + gap analysis, personas, win scorecard |
-| **Stage 7** | 8.0, 8.1-8.6, 8.4r, 8.4k, 8f, 8d, **8e** | SVA-7 (Gold Team) | Positioning, multi-volume bid, RTM verify, diagrams, **⚠️ MANDATORY PDFs** |
+| **Stage 7** | 8.0, 8.1-8.6, 8.4r, 8.4k, 8f, 8d, **8e** | SVA-0 (Blue Team) + SVA-7 (Gold Team) | Positioning, multi-volume bid, RTM verify, diagrams, **⚠️ MANDATORY PDFs** |
 
 ### Self-Check Before Execution
 
@@ -157,6 +157,8 @@ User: "lets do stage 5"
 | `shared/validation/sva4-red-team.json` | SVA-4 | Stage 4 |
 | `shared/validation/sva5-doc.json` | SVA-5 | Stage 5 |
 | `shared/validation/sva6-pre-bid.json` | SVA-6 | Stage 6 |
+| `shared/validation/sva0-blue-team.json` | SVA-0 | Stage 7 (pre-authoring gate) |
+| `outputs/BLUE_TEAM_READINESS.md` | SVA-0 | Stage 7 (human review) |
 | `shared/validation/sva7-gold-team.json` | SVA-7 | Stage 7 (pre-PDF) |
 | `outputs/GOLD_TEAM_CHECKLIST.md` | SVA-7 | Stage 7 (human review handoff) |
 
@@ -263,7 +265,10 @@ SPRINT_STAGES = {
     },
     "S7": {
         "name": "Sprint Bid Generation",
-        "phases": ["8.0", "8.1", "8.2", "8.3", "8.4", "8.4r", "8.4k", "8.5", "8.6", "8f"]
+        "phases": ["8.0", "8.1", "8.2", "8.3", "8.4", "8.4r", "8.4k", "8.5", "8.6", "8f"],
+        "pre_gate": "SVA-0",
+        "pre_gate_subskill": "sva0-blue-team-win.md",
+        "pre_gate_report": "sva0-blue-team.json"
     },
     "S8": {
         "name": "Sprint Assembly",
@@ -350,8 +355,9 @@ STAGE 6: Quality Assurance (4 phases + SVA-6)
   Phase 7d:   Bid Scoring Model         → phase7d-scoring-win.md
   [SVA-6]     PRE-BID GATE (Red Final)  → sva6-pre-bid-validator-win.md
 
-STAGE 7: Bid Generation (12 phases + SVA-7)
-  Phase 8.0:  Strategic Positioning     → phase8.0-positioning-win.md (+ theme_eval_mapping, section_theme_mandates)
+STAGE 7: Bid Generation (12 phases + SVA-0 + SVA-7)
+  [SVA-0]     BLUE TEAM GATE            → sva0-blue-team-win.md [BLOCKING PRE-GATE]
+  Phase 8.0:  Strategic Positioning     → phase8.0-positioning-win.md (+ theme_eval_mapping, section_theme_mandates, ghost_strategy)
   Phase 8.1:  Letter of Submittal       → phase8.1-submittal-win.md [NEW]
   Phase 8.2:  Management Proposal       → phase8.2-management-win.md [NEW]
   Phase 8.3:  Technical Approach        → phase8.3-technical-win.md [NEW]
@@ -366,7 +372,7 @@ STAGE 7: Bid Generation (12 phases + SVA-7)
   Phase 8e:   Multi-File PDF Assembly   → phase8e-pdf-win.md [RESTRUCTURED]
 ```
 
-**Total: 38 phases + 7 SVAs = 45 execution units (full mode)**
+**Total: 38 phases + 8 SVAs = 46 execution units (full mode)**
 **Sprint: ~14 execution units (see Sprint Mode below)**
 
 ---
@@ -463,12 +469,15 @@ STAGE_BOUNDARIES = {
     7: {
         "name": "Bid Generation",
         "phases": ["8.0", "8.1", "8.2", "8.3", "8.4", "8.4r", "8.4k", "8.5", "8.6", "8f"],
+        "pre_gate": "SVA-0",
+        "pre_gate_subskill": "sva0-blue-team-win.md",
+        "pre_gate_report": "sva0-blue-team.json",
         "sva": "SVA-7",
         "sva_subskill": "sva7-gold-team-win.md",
         "sva_report": "sva7-gold-team.json",
         "color_team": "gold",
         "post_sva_phases": ["8d", "8e"],  # These run AFTER SVA-7 passes
-        "notes": "Generates GOLD_TEAM_CHECKLIST.md for human review. Pipeline shows AWAITING_HUMAN_REVIEW status after SVA-7."
+        "notes": "SVA-0 Blue Team validates strategic readiness before authoring. SVA-7 Gold Team validates bid quality after. Generates GOLD_TEAM_CHECKLIST.md for human review."
     }
 }
 
@@ -1372,6 +1381,38 @@ def run_pipeline(folder, start_stage=1, end_stage=7, sprint_mode=False):
                         log(f"\033[91m⛔ Pipeline halted at blocking gate: Phase {phase_id}\033[0m")
                         return False
 
+            # Execute pre-gate if this sprint stage has one (e.g., SVA-0 Blue Team)
+            if sprint_stage.get("pre_gate"):
+                pre_gate_id = sprint_stage["pre_gate"]
+                pre_gate_report_file = f"{folder}/shared/validation/{sprint_stage['pre_gate_report']}"
+                log(f"\n🔵 {pre_gate_id}: Sprint pre-authoring gate")
+                pre_gate_prompt = f"""
+You are a **Pre-Gate Validator ({pre_gate_id})** in Sprint mode.
+
+Execute the subskill: {SKILLS_DIR}/{sprint_stage['pre_gate_subskill']}
+
+**Working folder:** {folder}
+**Report Output:** {pre_gate_report_file}
+
+Read the subskill file and execute all validation rules. Write the report JSON.
+"""
+                Task(
+                    prompt=pre_gate_prompt,
+                    subagent_type="general-purpose",
+                    description=f"{pre_gate_id}: Sprint Pre-Gate"
+                )
+                if exists(pre_gate_report_file):
+                    pre_report = read_json(pre_gate_report_file)
+                    pre_disposition = pre_report.get("disposition", "BLOCK")
+                    if pre_disposition == "BLOCK":
+                        log(f"\033[91m⛔ Sprint halted at {pre_gate_id} pre-gate\033[0m")
+                        return False
+                    elif pre_disposition == "ADVISORY":
+                        log(f"⚠️ {pre_gate_id} advisory. Proceeding with caution.")
+                else:
+                    log(f"\033[91m❌ {pre_gate_id} report not generated — halting sprint\033[0m")
+                    return False
+
             # Execute combined SVA if this sprint stage has one
             if sprint_stage.get("sva"):
                 sva_rules = sprint_stage.get("sva_rules", [])
@@ -1392,7 +1433,7 @@ def run_pipeline(folder, start_stage=1, end_stage=7, sprint_mode=False):
     log("🚀 STARTING RFP PROCESSING PIPELINE (WIN Edition v2)")
     log(f"📂 Folder: {folder}")
     log(f"📊 Stages: {start_stage} through {end_stage}")
-    log(f"📋 Total: 39 phases + 7 SVA gates = 46 execution units")
+    log(f"📋 Total: 38 phases + 8 SVA gates = 46 execution units")
     log("=" * 60)
 
     sva_results = {}  # Track SVA dispositions
@@ -1404,6 +1445,48 @@ def run_pipeline(folder, start_stage=1, end_stage=7, sprint_mode=False):
         log(f"\n{'='*60}")
         log(f"📋 STAGE {stage_num}: {stage['name']}{color_label}")
         log(f"{'='*60}")
+
+        # ---- PRE-GATE: Execute Blue Team or similar pre-gate before phases ----
+        if stage.get("pre_gate"):
+            pre_gate_id = stage["pre_gate"]
+            pre_gate_subskill = stage["pre_gate_subskill"]
+            pre_gate_report_file = f"{folder}/shared/validation/{stage['pre_gate_report']}"
+
+            log(f"\n🔵 {pre_gate_id}: Pre-authoring strategic readiness gate")
+            pre_gate_prompt = f"""
+You are a **Pre-Gate Validator ({pre_gate_id})** running before Stage {stage_num}: {stage['name']}.
+
+Execute the subskill: {SKILLS_DIR}/{pre_gate_subskill}
+
+**Working folder:** {folder}
+**Report Output:** {pre_gate_report_file}
+
+Read the subskill file and execute all validation rules. Write the report JSON to the output path.
+"""
+            Task(
+                prompt=pre_gate_prompt,
+                subagent_type="general-purpose",
+                description=f"{pre_gate_id}: Pre-Gate Validation"
+            )
+
+            # Check pre-gate disposition
+            if exists(pre_gate_report_file):
+                pre_report = read_json(pre_gate_report_file)
+                pre_disposition = pre_report.get("disposition", "BLOCK")
+                pre_score = pre_report.get("summary", {}).get("overall_score", 0)
+
+                if pre_disposition == "PASS":
+                    log(f"✅ {pre_gate_id} PASSED (score: {pre_score}/100) — Proceeding to phases")
+                elif pre_disposition == "ADVISORY":
+                    log(f"⚠️ {pre_gate_id} ADVISORY (score: {pre_score}/100) — Proceeding with caution")
+                else:  # BLOCK
+                    log(f"\033[91m⛔ {pre_gate_id} BLOCKED (score: {pre_score}/100)\033[0m")
+                    log(f"   Fix strategic readiness issues before Phase 8 authoring.")
+                    log(f"   See: outputs/BLUE_TEAM_READINESS.md for details.")
+                    return False
+            else:
+                log(f"\033[91m❌ {pre_gate_id} report not generated — halting\033[0m")
+                return False
 
         # Get phases for this stage (excluding post_sva phases)
         stage_phases = [p for p in PHASES
@@ -1658,6 +1741,11 @@ def final_verification(folder):
     log("\n🔍 SVA Validation Reports:")
     for stage_num in range(1, 8):
         stage = STAGE_BOUNDARIES[stage_num]
+        # Check pre-gate report if this stage has one
+        if stage.get("pre_gate"):
+            pre_path = f"{folder}/shared/validation/{stage['pre_gate_report']}"
+            result, ok = _check_output(pre_path, f"{stage['pre_gate']} Report", 1)
+            log(f"  {result}")
         report_path = f"{folder}/shared/validation/{stage['sva_report']}"
         result, ok = _check_output(report_path, f"{stage['sva']} Report", 1)
         log(f"  {result}")

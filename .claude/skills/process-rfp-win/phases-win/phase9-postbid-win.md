@@ -22,6 +22,8 @@ This phase can be invoked:
 - **Standalone** — after a bid decision is received, independent of the main pipeline
 - **As part of the pipeline** — as an optional post-pipeline step
 
+**Consumer:** Phase 8.0 (Strategic Positioning) reads `bid-outcomes.json` in Step 0 and surfaces `debrief_insights` (high/low impact themes, swing factors) to inform positioning strategy when 3+ outcomes contain `structured_debrief` data.
+
 ## Inputs
 
 - `{folder}/shared/bid-context-bundle.json` — Aggregated bid context (themes, domain, eval criteria)
@@ -151,6 +153,22 @@ Please provide the following information about the bid outcome:
 
 [USER INPUT REQUIRED: lessons_learned]
   Free text: What should we do differently next time?
+
+[USER INPUT REQUIRED: decision_announced_date]
+  Date the award decision was announced (e.g., 2026-03-15)
+  Leave blank if not yet announced
+
+[USER INPUT REQUIRED: swing_factors]
+  What were the 2-3 most important factors in the outcome?
+  Example: "pricing was 15% below competition", "incumbent relationship"
+
+[USER INPUT REQUIRED: winner_info] (if loss)
+  Who won the contract and what were their strengths?
+  Example: "Acme Corp — strong local presence, lower pricing"
+
+[USER INPUT REQUIRED: evaluator_quotes]
+  Any specific evaluator quotes or written feedback about our proposal?
+  Example: "Technical approach was thorough but pricing raised concerns"
 """)
 
 # Wait for user response and build outcome entry
@@ -160,6 +178,119 @@ Please provide the following information about the bid outcome:
 ### Step 3: Build Outcome Entry
 
 ```python
+def build_structured_debrief(user_input, context):
+    """Build structured debrief data from user input and bid context.
+
+    Captures decision timeline, theme performance, swing factors,
+    and competitive debrief data for pattern analysis.
+    Optional — returns empty dict if no debrief data available.
+    """
+    debrief = {}
+
+    # Decision timeline
+    decision_date = user_input.get("decision_announced_date", "")
+    submit_date = context.get("date_submitted", datetime.now().strftime("%Y-%m-%d"))
+    days_to_decision = None
+    if decision_date and submit_date:
+        try:
+            from datetime import datetime as dt
+            d1 = dt.strptime(submit_date, "%Y-%m-%d")
+            d2 = dt.strptime(decision_date, "%Y-%m-%d")
+            days_to_decision = (d2 - d1).days
+        except (ValueError, TypeError):
+            pass
+
+    debrief["decision_timeline"] = {
+        "date_submitted": submit_date,
+        "decision_announced": decision_date,
+        "days_to_decision": days_to_decision
+    }
+
+    # Standard debrief questions (Lohfeld/APMP best practice)
+    debrief["debrief_questions"] = [
+        "Were there specific weaknesses that affected our overall score?",
+        "How did our technical approach align with evaluation criteria?",
+        "Did our pricing raise cost realism or reasonableness concerns?",
+        "Were there requirements we failed to address adequately?",
+        "Were there areas of our proposal that lacked clarity?",
+        "What specific considerations determined the selection?"
+    ]
+    debrief["debrief_responses"] = {}  # User fills post-debrief meeting
+
+    # Theme performance assessment
+    theme_performance = []
+    themes_used = context.get("themes_used", [])
+    strengths = user_input.get("strengths_cited", [])
+    weaknesses = user_input.get("weaknesses_cited", [])
+    evaluator_quotes = user_input.get("evaluator_quotes", "")
+
+    for theme in themes_used:
+        theme_lower = theme.lower()
+        # Determine impact based on whether theme appears in strengths vs weaknesses
+        in_strengths = any(theme_lower in s.lower() for s in strengths)
+        in_weaknesses = any(theme_lower in w.lower() for w in weaknesses)
+
+        if in_strengths and not in_weaknesses:
+            impact = "positive"
+        elif in_weaknesses and not in_strengths:
+            impact = "negative"
+        else:
+            impact = "neutral"
+
+        theme_performance.append({
+            "theme": theme,
+            "evaluator_impact": impact,
+            "evidence_from_feedback": (
+                next((s for s in strengths if theme_lower in s.lower()), "") or
+                next((w for w in weaknesses if theme_lower in w.lower()), "") or
+                "No specific feedback on this theme"
+            )
+        })
+    debrief["theme_performance"] = theme_performance
+
+    # Swing factors
+    swing_factors = []
+    swing_input = user_input.get("swing_factors", "")
+    if swing_input:
+        # Parse user's swing factor input into structured entries
+        factors = [f.strip() for f in swing_input.split(",") if f.strip()]
+        for factor in factors:
+            outcome = user_input.get("outcome", "")
+            swing_factors.append({
+                "factor": factor,
+                "direction": "for_us" if outcome == "win" else "against_us",
+                "addressable": True,  # Default — user can override in debrief
+                "lesson": ""  # Populated during debrief review
+            })
+    debrief["swing_factors"] = swing_factors
+
+    # Competitive debrief
+    winner_info = user_input.get("winner_info", "")
+    competitive_debrief = {
+        "winner": "",
+        "winner_strengths": [],
+        "our_relative_position": "equivalent",
+        "price_competitiveness": "at"
+    }
+    if winner_info and user_input.get("outcome") == "loss":
+        # Parse winner info: "Company — strengths"
+        parts = winner_info.split("—") if "—" in winner_info else winner_info.split("-")
+        if len(parts) >= 1:
+            competitive_debrief["winner"] = parts[0].strip()
+        if len(parts) >= 2:
+            competitive_debrief["winner_strengths"] = [s.strip() for s in parts[1].split(",")]
+        competitive_debrief["our_relative_position"] = "weaker"
+    elif user_input.get("outcome") == "win":
+        competitive_debrief["our_relative_position"] = "stronger"
+    debrief["competitive_debrief"] = competitive_debrief
+
+    # Evaluator quotes
+    if evaluator_quotes:
+        debrief["evaluator_quotes"] = evaluator_quotes
+
+    return debrief
+
+
 def build_outcome_entry(user_input, context):
     """Build a structured outcome entry from user input and bid context."""
 
@@ -179,7 +310,8 @@ def build_outcome_entry(user_input, context):
         "competitive_position": user_input.get("competitive_position", ""),
         "lessons_learned": user_input.get("lessons_learned", ""),
         "pipeline_mode": context["pipeline_mode"],
-        "sva7_score": context["sva7_score"]
+        "sva7_score": context["sva7_score"],
+        "structured_debrief": build_structured_debrief(user_input, context)
     }
 
     return entry
@@ -343,6 +475,74 @@ def analyze_patterns(outcomes):
             f"Strongest domains: {', '.join(best_domains)}. Consider focusing pursuit efforts here."
         )
 
+    # --- Debrief insights (when 3+ outcomes have structured_debrief) ---
+    debriefed = [o for o in completed if o.get("structured_debrief")]
+    if len(debriefed) >= 3:
+        debrief_insights = {
+            "high_impact_themes": [],
+            "low_impact_themes": [],
+            "recurring_swing_factors": [],
+            "avg_days_to_decision": 0,
+            "competitor_win_rates": {}
+        }
+
+        # Identify high/low impact themes across debriefs
+        theme_impacts = {}  # theme -> {positive: N, negative: N, neutral: N}
+        for o in debriefed:
+            for tp in o["structured_debrief"].get("theme_performance", []):
+                theme = tp["theme"]
+                impact = tp["evaluator_impact"]
+                if theme not in theme_impacts:
+                    theme_impacts[theme] = {"positive": 0, "negative": 0, "neutral": 0}
+                theme_impacts[theme][impact] = theme_impacts[theme].get(impact, 0) + 1
+
+        for theme, impacts in theme_impacts.items():
+            total = sum(impacts.values())
+            if total >= 2:
+                pos_rate = impacts["positive"] / total
+                neg_rate = impacts["negative"] / total
+                if pos_rate >= 0.70:
+                    debrief_insights["high_impact_themes"].append(
+                        {"theme": theme, "positive_rate": round(pos_rate, 2), "occurrences": total}
+                    )
+                if neg_rate >= 0.50:
+                    debrief_insights["low_impact_themes"].append(
+                        {"theme": theme, "negative_rate": round(neg_rate, 2), "occurrences": total}
+                    )
+
+        # Recurring swing factors
+        swing_counts = {}
+        for o in debriefed:
+            for sf in o["structured_debrief"].get("swing_factors", []):
+                factor = sf["factor"].lower().strip()
+                swing_counts[factor] = swing_counts.get(factor, 0) + 1
+        debrief_insights["recurring_swing_factors"] = [
+            {"factor": f, "occurrences": c}
+            for f, c in sorted(swing_counts.items(), key=lambda x: x[1], reverse=True)
+            if c >= 2
+        ]
+
+        # Average days to decision
+        days_list = [
+            o["structured_debrief"]["decision_timeline"]["days_to_decision"]
+            for o in debriefed
+            if o["structured_debrief"].get("decision_timeline", {}).get("days_to_decision") is not None
+        ]
+        if days_list:
+            debrief_insights["avg_days_to_decision"] = round(sum(days_list) / len(days_list), 1)
+
+        # Competitor win rates (our record vs specific winners)
+        for o in debriefed:
+            if o.get("outcome") == "loss":
+                winner = o["structured_debrief"].get("competitive_debrief", {}).get("winner", "")
+                if winner:
+                    winner_lower = winner.lower().strip()
+                    if winner_lower not in debrief_insights["competitor_win_rates"]:
+                        debrief_insights["competitor_win_rates"][winner_lower] = {"losses_to": 0}
+                    debrief_insights["competitor_win_rates"][winner_lower]["losses_to"] += 1
+
+        analysis["debrief_insights"] = debrief_insights
+
     return analysis
 
 # Run analysis
@@ -491,6 +691,106 @@ def generate_report(outcome_entry, patterns, all_outcomes):
                 report.append(f"{i}. {rec}")
             report.append("")
 
+    # --- Structured Debrief Sections (if this bid has debrief data) ---
+    debrief = outcome_entry.get("structured_debrief", {})
+    if debrief:
+        report.append("---")
+        report.append("")
+        report.append("## Structured Debrief")
+        report.append("")
+
+        # Decision Timeline
+        timeline = debrief.get("decision_timeline", {})
+        if timeline.get("decision_announced") or timeline.get("days_to_decision"):
+            report.append("### Decision Timeline")
+            report.append("")
+            report.append(f"| Milestone | Date |")
+            report.append(f"|-----------|------|")
+            report.append(f"| Submitted | {timeline.get('date_submitted', 'N/A')} |")
+            report.append(f"| Decision | {timeline.get('decision_announced', 'N/A')} |")
+            if timeline.get("days_to_decision") is not None:
+                report.append(f"| Duration | {timeline['days_to_decision']} days |")
+            report.append("")
+
+        # Theme Performance Assessment
+        theme_perf = debrief.get("theme_performance", [])
+        if theme_perf:
+            report.append("### Theme Performance Assessment")
+            report.append("")
+            report.append("| Theme | Impact | Evidence |")
+            report.append("|-------|--------|----------|")
+            for tp in theme_perf:
+                impact_icon = {"positive": "✅", "negative": "❌", "neutral": "➖"}.get(tp["evaluator_impact"], "➖")
+                report.append(f"| {tp['theme']} | {impact_icon} {tp['evaluator_impact']} | {tp.get('evidence_from_feedback', '')[:80]} |")
+            report.append("")
+
+        # Swing Factors
+        swing_factors = debrief.get("swing_factors", [])
+        if swing_factors:
+            report.append("### Swing Factors")
+            report.append("")
+            report.append("| Factor | Direction | Addressable |")
+            report.append("|--------|-----------|-------------|")
+            for sf in swing_factors:
+                direction_icon = "✅" if sf["direction"] == "for_us" else "❌"
+                report.append(f"| {sf['factor']} | {direction_icon} {sf['direction']} | {'Yes' if sf.get('addressable') else 'No'} |")
+            report.append("")
+
+        # Competitive Position
+        comp = debrief.get("competitive_debrief", {})
+        if comp.get("winner") or comp.get("our_relative_position") != "equivalent":
+            report.append("### Competitive Position")
+            report.append("")
+            if comp.get("winner"):
+                report.append(f"**Winner:** {comp['winner']}")
+                if comp.get("winner_strengths"):
+                    report.append(f"**Winner Strengths:** {', '.join(comp['winner_strengths'])}")
+            report.append(f"**Our Position:** {comp.get('our_relative_position', 'Unknown')}")
+            report.append(f"**Price:** {comp.get('price_competitiveness', 'Unknown')}")
+            report.append("")
+
+    # --- Debrief Synthesis (if 3+ outcomes with debrief data) ---
+    if patterns and patterns.get("debrief_insights"):
+        insights = patterns["debrief_insights"]
+        report.append("---")
+        report.append("")
+        report.append("## Debrief Synthesis (Cross-Bid Patterns)")
+        report.append("")
+
+        if insights.get("high_impact_themes"):
+            report.append("### High-Impact Themes (>=70% positive)")
+            report.append("")
+            for t in insights["high_impact_themes"]:
+                report.append(f"- **{t['theme']}** — {t['positive_rate']:.0%} positive ({t['occurrences']} bids)")
+            report.append("")
+
+        if insights.get("low_impact_themes"):
+            report.append("### Low-Impact Themes (>=50% negative)")
+            report.append("")
+            for t in insights["low_impact_themes"]:
+                report.append(f"- **{t['theme']}** — {t['negative_rate']:.0%} negative ({t['occurrences']} bids)")
+            report.append("")
+
+        if insights.get("recurring_swing_factors"):
+            report.append("### Recurring Swing Factors")
+            report.append("")
+            for sf in insights["recurring_swing_factors"]:
+                report.append(f"- **{sf['factor']}** — appeared in {sf['occurrences']} bids")
+            report.append("")
+
+        if insights.get("avg_days_to_decision"):
+            report.append(f"**Average Decision Timeline:** {insights['avg_days_to_decision']} days")
+            report.append("")
+
+        if insights.get("competitor_win_rates"):
+            report.append("### Competitor Trends")
+            report.append("")
+            report.append("| Competitor | Losses To |")
+            report.append("|-----------|-----------|")
+            for comp_name, stats in insights["competitor_win_rates"].items():
+                report.append(f"| {comp_name} | {stats['losses_to']} |")
+            report.append("")
+
     return "\n".join(report)
 
 report_content = generate_report(outcome_entry, patterns, all_outcomes)
@@ -533,3 +833,10 @@ Outputs:
 - [ ] `BID_OUTCOME_REPORT.md` generated with this bid summary and historical patterns
 - [ ] Recommendations generated based on pattern data
 - [ ] Report is at least 2KB
+- [ ] `structured_debrief` populated in outcome entry (decision timeline, theme performance, swing factors)
+- [ ] Debrief questions include all 6 standard industry questions
+- [ ] Theme performance assessment maps each win theme to evaluator impact
+- [ ] Swing factors captured with direction and addressability
+- [ ] Competitive debrief captures winner info (if loss)
+- [ ] Debrief insights generated when 3+ outcomes have structured_debrief data
+- [ ] Backward compatible: existing outcomes without structured_debrief still load/process normally
