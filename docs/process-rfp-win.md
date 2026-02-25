@@ -62,12 +62,12 @@ The pipeline follows the **Shipley Business Development Lifecycle** structure, e
 | 1.6 | Procurement Specialist | Extract evaluation factors, weights, scoring methodology. Assign stable `factor_id` | `EVALUATION_CRITERIA.json` |
 | 1.7 | Compliance Officer | Extract all SHALL/MUST items, create compliance matrix. **BLOCKING GATE** | `COMPLIANCE_MATRIX.json` |
 | 1.8 | Procurement Analyst | Detect submission volume structure, naming conventions, page limits | `SUBMISSION_STRUCTURE.json` |
-| 1.9 | Bid Decision Analyst | Go/No-Go scoring (5 dimensions, 0–100). **ADVISORY GATE** | `GO_NOGO_DECISION.json` |
+| 1.9 | Bid Decision Analyst | Go/No-Go scoring (7 weighted areas, 0–100). **ADVISORY GATE** | `GO_NOGO_DECISION.json` |
 | 1.95 | Competitive Intelligence Analyst | Client research: incumbents, tech stack, decision-makers (max 15 web searches). **Conditional: GO only** | `CLIENT_INTELLIGENCE.json` |
 
 **Why Phase 1.7 is a blocking gate:** A compliance matrix with gaps means the proposal could be disqualified on a technicality. Every mandatory item must be identified before requirements engineering begins. Industry data shows that ~30% of proposal disqualifications are compliance-related.
 
-**Why Phase 1.9 is advisory (not blocking):** The Go/No-Go decision is ultimately a human business judgment. The pipeline provides a structured score (same 5-dimension model as the screening pipeline) but the user can override. Skipped entirely in Sprint mode where the bid decision is pre-approved.
+**Why Phase 1.9 is advisory (not blocking):** The Go/No-Go decision is ultimately a human business judgment. The pipeline provides a structured score (same 7-area weighted model as the screening pipeline) but the user can override. Skipped entirely in Sprint mode where the bid decision is pre-approved.
 
 **Why Phase 1.95 was relocated from Stage 7 to Stage 1:** Client intelligence informs requirements interpretation (Stage 2), architecture decisions (Stage 3), and positioning strategy (Stage 7). Having it available from the beginning produces better-informed analysis at every stage.
 
@@ -717,7 +717,7 @@ All integrations use environment variable references for API keys — never stor
 | Grok review | Skipped | Mandatory |
 | Validation gates | None | 7 SVAs with color teams |
 | Past project scoring | Same algorithm | Same algorithm + deeper integration |
-| Go/No-Go scoring | Same 5 dimensions | Same 5 dimensions |
+| Go/No-Go scoring | Same 7 weighted areas | Same 7 weighted areas |
 | Output | Single PDF report | Full multi-volume bid package |
 | Shared config | Reads `config-win/` | Owns `config-win/` |
 

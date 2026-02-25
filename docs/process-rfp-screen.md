@@ -29,6 +29,7 @@ The screening pipeline addresses the most expensive mistake in business developm
 | 2 | Go/No-Go Scoring | Shipley "Bid/No-Bid Decision Gate" | 2–4 min |
 | 3 | Client Intelligence | APMP "Customer Intimacy" | 4–6 min |
 | 4 | Compliance & Project Match | Shipley "Compliance Matrix" + "Past Performance" | 3–5 min |
+| 4.5 | Preliminary Win Themes | Shipley "Win Theme Development" (lightweight) | 1–2 min |
 | 5 | Risk Assessment & Recommendation | APMP "Risk-Adjusted Opportunity Evaluation" | 1–2 min |
 | 6 | PDF Report | — (deliverable generation) | 1–2 min |
 
@@ -88,71 +89,51 @@ The screening pipeline addresses the most expensive mistake in business developm
 
 ### Phase 2: Go/No-Go Scoring
 
-**What it does:** Scores the opportunity across 5 dimensions (0–20 each, total 0–100) and recommends GO (>=50), CONDITIONAL (40–49), or NO-GO (<40).
+**What it does:** Scores the opportunity across 7 weighted assessment areas using LLM narrative analysis with cited evidence. Each area is scored 0–100; the weighted sum produces an overall score (0–100). Recommends GO (>=50), CONDITIONAL (40–49), or NO-GO (<40).
 
 **Gold standard parallel:** This is the core of Shipley's **Bid/No-Bid Decision Gate** — the formal checkpoint where organizations decide whether to invest in proposal development. Every major BD methodology (Shipley, APMP, Lohfeld, KSI) includes a structured scoring gate at this point.
 
-**Why 5 dimensions, and why these 5:**
+**Why 7 assessment areas, and why these 7:**
 
-Industry bid/no-bid frameworks typically evaluate 8–15 factors. We consolidated to 5 because screening needs speed, not granularity. Each dimension maps to a cluster of industry-standard factors:
+Industry bid/no-bid frameworks typically evaluate 8–15 factors. We use 7 weighted areas scored via LLM narrative analysis, each mapping to a cluster of industry-standard factors. The weights reflect relative importance — Technical Capability (25%) carries the most weight because service alignment is the primary predictor of proposal viability:
 
-#### Dimension 1: Capability Match (0–20)
-
-**Industry parallel:** Shipley's "Solution Alignment" + "Technical Capability" factors.
-
-Assesses how well company services align with RFP scope. Flattens the company service catalog, matches against scope keywords and mandatory requirements, and checks industry alignment.
-
-**Scoring rubric:**
-- 20: >80% keyword match AND industry alignment
-- 15: >60% match AND industry alignment
-- 12: >60% match OR industry alignment
-- 10: >40% match
-- 5: >20% match
-- 0: <20% match
-
-#### Dimension 2: Competitive Position (0–20)
-
-**Industry parallel:** Shipley's "Competitive Assessment" + APMP's "Win Probability" analysis.
-
-Goes beyond simple capability matching to assess *relative* positioning. Detects:
-- **Advantage signals** in RFP language (innovation emphasis, best value evaluation, digital transformation)
-- **Disadvantage signals** (incumbent references, sole source language, restrictive set-asides)
-- **Competition headwinds** — prior proposal counts, preference point ineligibility, COTS/platform bias
-
-This dimension is where most simplistic screening tools fail. They check "can we do this?" but not "can we win this?" The competition headwind detection (preference points, COTS positioning, prior competition volume) was added after observing real bid outcomes where capability-aligned proposals still lost due to structural disadvantages.
-
-#### Dimension 3: Resource Availability (0–20)
-
-**Industry parallel:** Shipley's "Resource Availability" + "Key Personnel" assessment.
-
-Starts from a company-size baseline (larger bench = higher starting score), then adjusts for:
-- **Certification gaps** — RFP requires certs the company doesn't document
-- **Personnel complexity** — many distinct role references = complex staffing demand
-
-Placeholder certification data (common in early-stage company profiles) is treated as moderate risk rather than zero capability — a deliberate calibration to avoid false NO-GO signals from incomplete profile data.
-
-#### Dimension 4: Timeline Feasibility (0–20)
-
-**Industry parallel:** Shipley's "Proposal Preparation Time" assessment.
-
-Evaluates whether the submission deadline allows adequate proposal preparation. A detected deadline scores 15 (with manual verification advisory); no detected deadline scores 10 (unknown = risk).
-
-Deliberately simpler than the full pipeline's timeline analysis (Phase 8c) because screening doesn't need to build a detailed schedule — it just needs to flag obvious time constraints.
-
-#### Dimension 5: Strategic Alignment (0–20)
+#### Area 1: Strategic Fit (15%)
 
 **Industry parallel:** APMP's "Strategic Fit" + Shipley's "Customer Relationship" factors.
 
-The most organization-specific dimension. Evaluates:
-- **Geographic proximity** — including state adjacency mapping (e.g., Oregon office counts for Washington RFPs)
-- **State contract overlap** — existing contracts in the RFP's jurisdiction
-- **Growth industry alignment** — does this RFP match the company's target markets?
-- **Revenue potential** — is the value disclosed and significant?
-- **Repeat client** — past performance with this specific client
+Evaluates geographic proximity (including state adjacency mapping), industry alignment, existing state contracts, revenue significance, and repeat client potential. The state adjacency mapping captures proximity advantage for state/local procurements without requiring exact city-level matching.
 
-The state adjacency mapping is a non-obvious feature worth noting. Federal BD frameworks often ignore geography, but state/local procurements heavily favor regional presence. The adjacency map (e.g., OR neighbors WA/ID/CA/NV) captures proximity advantage without requiring exact city-level matching.
+#### Area 2: Technical Capability (25%)
 
-**Output:** `screen/go-nogo-score.json` — full dimensional breakdown with rationale, evidence, risk/opportunity factors.
+**Industry parallel:** Shipley's "Solution Alignment" + "Technical Capability" factors.
+
+Assesses service alignment against RFP scope, domain expertise from past projects, technology stack overlap, and mandatory requirement coverage. The highest-weighted area because capability match is the primary predictor of proposal viability.
+
+#### Area 3: Competitive Position (20%)
+
+**Industry parallel:** Shipley's "Competitive Assessment" + APMP's "Win Probability" analysis.
+
+Goes beyond capability matching to assess *relative* positioning. Detects advantage signals (innovation emphasis, best value), disadvantage signals (incumbent references, set-asides), and competition headwinds (prior proposal counts, preference point ineligibility, COTS/platform bias).
+
+#### Area 4: Resource Availability (15%)
+
+**Industry parallel:** Shipley's "Resource Availability" + "Key Personnel" + "Proposal Preparation Time."
+
+Consolidates staffing capacity, certification coverage, personnel complexity, and timeline feasibility into a single execution readiness assessment. Placeholder certification data is treated as moderate risk, not zero capability.
+
+#### Area 5: Financial Viability (10%)
+
+Evaluates contract value relative to company capacity, pricing structure constraints, rate ceilings, payment terms, and indirect cost limitations. Lower weight reflects that financial fit is rarely a decisive screening factor but can be a dealbreaker at extremes.
+
+#### Area 6: Risk Assessment (10%)
+
+Evaluates technical complexity, compliance burden, political risk, integration requirements, and data sensitivity. Higher score means lower risk. Compliance obligations (FedRAMP, HIPAA, Section 508) are assessed against company capabilities.
+
+#### Area 7: Win Probability (5%)
+
+Synthesizes all other areas into an estimated realistic win chance. Considers structural advantages/disadvantages, teaming opportunities, and overall competitive dynamics. Lowest weight because it's inherently speculative.
+
+**Output:** `screen/go-nogo-score.json` — 7-area weighted assessment with narrative rationale, evidence citations, per-area risks and mitigations.
 
 ---
 
@@ -219,9 +200,40 @@ Parses the `Past_Projects.md` case study library (28 projects) and scores each a
 
 ---
 
+### Phase 4.5: Preliminary Win Theme Derivation
+
+**What it does:** Derives 3–4 directional win themes from screening data so a GO result comes with positioning hints rather than leaving the team cold when starting the full pipeline.
+
+**Gold standard parallel:** A lightweight version of Shipley's **Win Theme Development** process. Full win theme development happens in the win pipeline's Phase 8.0 (Positioning) with evaluation factor mapping and CVD format. Phase 4.5 provides early directional guidance using only the data available at screening time.
+
+**Why this exists as a separate phase (not in Phase 5):**
+
+Phase 5 is already the heaviest phase — consolidating risks, checking historical patterns, generating recommendations, and assembling BID_SCREEN.json. Adding theme logic would overload it. More importantly, themes depend on Phase 4 outputs (compliance status, project matches) and Phase 5 should *consume* themes rather than generate them. The decimal numbering follows the convention established in the full pipeline (1.9, 1.95).
+
+**Algorithm — 4 category rule-based derivation:**
+
+| Category | Trigger | Max Score |
+|----------|---------|-----------|
+| **Domain Expertise** | Industry domain matches a template (education, healthcare, government, etc.) | 10 (2+ domain projects), 5 (1 project), 2 (baseline) |
+| **Technical Capability** | Scope keywords match modernization, data/analytics, or security patterns | 12 per sub-theme (3 pts per keyword match) |
+| **Organizational Strength** | Geographic proximity, quantified past results, or company longevity (always-on baseline at score 3) | 10 |
+| **Client Alignment** | Overlap between client tech stack/strategic initiatives and scope keywords. Requires Phase 3 intel — zero candidates when `--quick` | 10 |
+
+**Selection rules:**
+- Sort all candidates by score descending
+- Max 2 themes from any single category (enforces diversity)
+- Select top 3–4
+- Each theme includes: name, category, confidence (high/medium/low), score, evidence list, rationale
+
+**`--quick` mode handling:** No special logic needed. Category 4 (Client Alignment) simply produces zero candidates when `client-intel-snapshot.json` doesn't exist. The remaining 3 categories work without client intel. Output notes `"intel_available": false`.
+
+**Output:** `screen/preliminary-themes.json`
+
+---
+
 ### Phase 5: Risk Assessment & Recommendation
 
-**What it does:** Consolidates risks from all prior phases, checks historical bid patterns, identifies opportunities, and produces the final recommendation with rationale and next steps.
+**What it does:** Consolidates risks from all prior phases, checks historical bid patterns, identifies opportunities, and produces the final recommendation with rationale and next steps. Now also loads preliminary themes from Phase 4.5 and includes them in BID_SCREEN.json.
 
 **Gold standard parallel:** APMP's **Risk-Adjusted Opportunity Evaluation** — the synthesis step that integrates all assessment dimensions into a single decision framework. Shipley's "Black Hat Review" concept (understanding the competition's perspective) is partially captured in the competitive position and incumbent analysis.
 
@@ -249,16 +261,17 @@ Parses the `Past_Projects.md` case study library (28 projects) and scores each a
 
 ### Phase 6: PDF Generation
 
-**What it does:** Renders the consolidated `BID_SCREEN.json` into a professional 6–8 page PDF report with 7 sections.
+**What it does:** Renders the consolidated `BID_SCREEN.json` into a professional 6–8 page PDF report with 8 sections.
 
 **Report sections:**
 1. Recommendation banner (GO/CONDITIONAL/NO-GO with score)
 2. Quick Facts table (client, deadline, value, contract type, domain)
-3. Go/No-Go Scorecard (5 dimensions with scores and rationale)
+3. Go/No-Go Scorecard (7 weighted areas with scores, evidence, and rationale)
 4. Client Intelligence (conditional — omitted in `--quick` mode)
 5. Compliance Quick-Check (requirement-by-requirement status)
 6. Past Project Matches (top 5 ranked with score breakdowns)
-7. Risks, Opportunities, and Final Recommendation
+7. Preliminary Win Themes (3–4 directional themes from Phase 4.5)
+8. Risks, Opportunities, and Final Recommendation
 
 **Technical constraint:** Uses `markdown_pdf` (PyMuPDF `fitz.Story` renderer) which only supports an HTML4/CSS2 subset. CSS `border` properties and `background-color` on block elements are prohibited — they cause rendering artifacts (ghost fills that leak across pages). Elements are visually distinguished via font weight, color, and spacing instead.
 
@@ -304,6 +317,9 @@ Phase 3: Intel ──> client-intel-snapshot.json  [skipped with --quick]
 Phase 4: Compliance ──> compliance-check.json + past-projects-match.json
     |
     v
+Phase 4.5: Themes ──> preliminary-themes.json
+    |
+    v
 Phase 5: Risks ──> risk-assessment.json + BID_SCREEN.json (consolidated)
     |
     v
@@ -325,10 +341,11 @@ All outputs are written to `{rfp-folder}/screen/`. This isolation is deliberate 
 |------|-------|------|-------------|
 | `source-manifest.json` | 0 | ~1 KB | Document inventory with conversion status |
 | `rfp-summary.json` | 1 | ~2 KB | Extracted RFP metadata (20+ fields) |
-| `go-nogo-score.json` | 2 | ~3 KB | 5-dimension scoring with rationale and evidence |
+| `go-nogo-score.json` | 2 | ~3 KB | 7-area weighted scoring with narrative rationale and evidence |
 | `client-intel-snapshot.json` | 3 | ~2 KB | Web research results (skipped with --quick) |
 | `compliance-check.json` | 4 | ~2 KB | Requirement-by-requirement PASS/GAP/RISK |
 | `past-projects-match.json` | 4 | ~3 KB | Top 5 projects with relevance scores |
+| `preliminary-themes.json` | 4.5 | ~2 KB | 3–4 preliminary win themes with scores and evidence |
 | `risk-assessment.json` | 5 | ~2 KB | Consolidated risks, opportunities, dealbreakers |
 | `BID_SCREEN.json` | 5 | ~10 KB | All phase data consolidated (machine-readable) |
 | `BID_SCREEN.md` | 6 | ~8 KB | Full report in markdown |
@@ -344,7 +361,7 @@ The 50/40 thresholds were calibrated against the Shipley model's typical bid/no-
 - **CONDITIONAL (40–49)** corresponds to Shipley's "Bid with conditions" — the opportunity has potential but specific risks must be addressed before resource commitment.
 - **NO-GO (<40)** corresponds to a clear "No Bid" — fundamental alignment problems that additional effort won't overcome.
 
-The 5-dimension, 20-point-per-dimension structure ensures no single factor can push an opportunity to GO alone. A perfect score on capability (20) with zeros elsewhere still lands at NO-GO. This forces holistic assessment rather than single-dimension enthusiasm.
+The 7-area weighted structure ensures no single factor can push an opportunity to GO alone. A perfect score on Technical Capability (100 × 0.25 = 25) with zeros elsewhere still lands at NO-GO. The weights force holistic assessment — even the highest-weighted area (Technical Capability at 25%) cannot reach the GO threshold without support from other areas.
 
 ---
 
@@ -361,6 +378,7 @@ safs/
 │       ├── phase2-gonogo.md
 │       ├── phase3-intel.md
 │       ├── phase4-compliance.md
+│       ├── phase4.5-themes.md
 │       ├── phase5-recommendation.md
 │       └── phase6-pdf.md
 └── .claude/skills/process-rfp-win/config-win/    # Shared config (from full pipeline)

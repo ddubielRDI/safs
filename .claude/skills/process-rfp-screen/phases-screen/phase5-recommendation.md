@@ -36,6 +36,9 @@ go_nogo = read_json(f"{folder}/screen/go-nogo-score.json")
 client_intel = read_json_safe(f"{folder}/screen/client-intel-snapshot.json")
 compliance = read_json(f"{folder}/screen/compliance-check.json")
 past_matches = read_json(f"{folder}/screen/past-projects-match.json")
+
+# Phase 4.5 output (preliminary themes)
+preliminary_themes = read_json_safe(f"{folder}/screen/preliminary-themes.json")
 ```
 
 ### Step 2: Consolidate Risks
@@ -43,12 +46,12 @@ past_matches = read_json(f"{folder}/screen/past-projects-match.json")
 ```python
 risks = []
 
-# From Go/No-Go (Phase 2)
-for risk in go_nogo.get("risk_factors", []):
+# From Go/No-Go assessment area risks
+for risk in go_nogo.get("overall_risks", []):
     risks.append({
         "risk": risk,
         "source": "go_nogo_scoring",
-        "severity": "high" if go_nogo["total_score"] < 40 else "medium",
+        "severity": "high" if go_nogo.get("overall_score", 0) < 40 else "medium",
         "category": "scoring"
     })
 
@@ -80,8 +83,18 @@ if match_quality == "weak":
     })
 
 # Timeline risk
-timeline_score = go_nogo.get("dimensions", {}).get("timeline_feasibility", {}).get("score", 0)
-if timeline_score < 10:
+# Helper to find assessment area by name
+def find_area(areas, name_prefix):
+    for a in areas:
+        if a.get("name", "").lower().startswith(name_prefix.lower()):
+            return a
+    return {}
+
+assessment_areas = go_nogo.get("assessment_areas", [])
+resource_area = find_area(assessment_areas, "Resource Availability")
+resource_score = resource_area.get("score", 0)
+# Resource Availability now includes timeline feasibility assessment
+if resource_score < 40:  # 40/100 equivalent to old 10/20 threshold
     risks.append({
         "risk": "Tight or unknown deadline — may not allow adequate proposal preparation",
         "source": "timeline_analysis",
@@ -129,9 +142,17 @@ if os.path.exists(outcomes_path):
 ```python
 opportunities = []
 
-# From Go/No-Go
-for opp in go_nogo.get("opportunity_factors", []):
-    opportunities.append({"opportunity": opp, "source": "go_nogo_scoring"})
+# From Go/No-Go mitigations and high-scoring area evidence
+for mitigation in go_nogo.get("overall_mitigations", []):
+    opportunities.append({"opportunity": mitigation, "source": "go_nogo_scoring"})
+
+# High-scoring areas are opportunities
+for area in go_nogo.get("assessment_areas", []):
+    if area.get("score", 0) >= 70:
+        opportunities.append({
+            "opportunity": f"Strong {area['name']} (score: {area['score']}/100)",
+            "source": "go_nogo_scoring"
+        })
 
 # Strong project matches
 top_match = past_matches.get("matched_projects", [{}])[0] if past_matches.get("matched_projects") else {}
@@ -154,7 +175,7 @@ if client_intel and client_intel.get("status") == "complete":
 ### Step 5: Generate Final Recommendation
 
 ```python
-total_score = go_nogo.get("total_score", 0)
+total_score = go_nogo.get("overall_score", 0)
 recommendation = go_nogo.get("recommendation", "NO_GO")
 
 # Generate rationale
@@ -167,8 +188,12 @@ if recommendation == "GO":
     next_steps = [
         f"Run full pipeline: /process-rfp-win {folder}",
         "Estimated full pipeline time: 3-4 hours",
-        "Focus areas: " + ", ".join(go_nogo.get("opportunity_factors", [])[:3])
+        "Focus areas: " + ", ".join(go_nogo.get("overall_mitigations", [])[:3])
     ]
+    # Append top preliminary theme names to next steps
+    if preliminary_themes and preliminary_themes.get("themes"):
+        top_theme_names = [t["name"] for t in preliminary_themes["themes"][:3]]
+        next_steps.append("Preliminary win themes: " + "; ".join(top_theme_names))
 elif recommendation == "CONDITIONAL":
     rationale = f"Score {total_score}/100 in CONDITIONAL range. "
     if dealbreakers:
@@ -232,6 +257,7 @@ bid_screen = {
     "compliance": compliance,
     "past_projects": past_matches,
     "risk_assessment": risk_assessment,
+    "preliminary_themes": preliminary_themes or {"status": "not_generated"},
 
     "next_steps": next_steps
 }

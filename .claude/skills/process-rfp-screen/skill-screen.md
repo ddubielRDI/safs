@@ -27,6 +27,7 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 | `screen/client-intel-snapshot.json` | 3 | 1KB (skipped with --quick) |
 | `screen/compliance-check.json` | 4 | 1KB |
 | `screen/past-projects-match.json` | 4 | 1KB |
+| `screen/preliminary-themes.json` | 4.5 | 1KB |
 | `screen/risk-assessment.json` | 5 | 1KB |
 | `screen/BID_SCREEN.json` | 5 | 3KB |
 | `screen/BID_SCREEN.md` | 6 | 5KB |
@@ -94,6 +95,7 @@ Phase 1: RFP Summary Extraction             → phases-screen/phase1-summary.md
 Phase 2: Go/No-Go Scoring                   → phases-screen/phase2-gonogo.md
 Phase 3: Client Intelligence Snapshot        → phases-screen/phase3-intel.md       [SKIP if --quick]
 Phase 4: Compliance Check & Project Match    → phases-screen/phase4-compliance.md
+Phase 4.5: Preliminary Win Themes            → phases-screen/phase4.5-themes.md
 Phase 5: Risk Assessment & Recommendation    → phases-screen/phase5-recommendation.md
 Phase 6: PDF Generation                      → phases-screen/phase6-pdf.md         [MANDATORY]
 ```
@@ -202,6 +204,13 @@ phases = [
         "skip_condition": None
     },
     {
+        "id": 4.5,
+        "name": "Preliminary Win Theme Derivation",
+        "file": "phase4.5-themes.md",
+        "blocking": False,
+        "skip_condition": None
+    },
+    {
         "id": 5,
         "name": "Risk Assessment & Recommendation",
         "file": "phase5-recommendation.md",
@@ -254,6 +263,7 @@ required_outputs = [
     ("screen/go-nogo-score.json", "Go/No-Go Score", 1),
     ("screen/compliance-check.json", "Compliance Check", 1),
     ("screen/past-projects-match.json", "Past Project Matches", 1),
+    ("screen/preliminary-themes.json", "Preliminary Themes", 1),
     ("screen/risk-assessment.json", "Risk Assessment", 1),
     ("screen/BID_SCREEN.json", "Consolidated Data", 3),
     ("screen/BID_SCREEN.md", "Markdown Report", 5),

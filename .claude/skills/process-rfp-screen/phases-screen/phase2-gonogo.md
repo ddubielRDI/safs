@@ -8,7 +8,7 @@ domain-expertise: Bid/no-bid analysis, opportunity qualification, capture manage
 
 **Expert Role:** Bid Decision Analyst
 
-**Purpose:** Score the RFP opportunity across 5 dimensions (0-20 each, total 0-100) and recommend GO, CONDITIONAL, or NO-GO. Uses the combined RFP text and Phase 1 summary as inputs. Identical scoring rubric to the full pipeline's Phase 1.9.
+**Purpose:** Assess the RFP opportunity across 7 weighted assessment areas using LLM narrative analysis with cited evidence. Produce a weighted score (0-100) and recommend GO, CONDITIONAL, or NO_GO.
 
 **Inputs:**
 - Combined RFP text (in memory from Phase 0)
@@ -18,7 +18,7 @@ domain-expertise: Bid/no-bid analysis, opportunity qualification, capture manage
 **Required Output:**
 - `{folder}/screen/go-nogo-score.json` (>1KB)
 
-**Instructions:**
+---
 
 ## Step 1: Load Inputs
 
@@ -28,534 +28,337 @@ company = read_json(COMPANY_PROFILE)
 # combined_text available from Phase 0 (in memory)
 ```
 
-## Step 2: Score Dimension 1 — Capability Match (0-20)
-
-Assess how well RDI's services align with RFP scope.
+Prepare reference data for the assessment:
 
 ```python
 # Flatten company services (services is a DICT: {"data_and_ai": [...], ...})
 services_dict = company.get("services", {})
-rdi_services = [svc.lower() for cat in services_dict.values() for svc in cat]
-rdi_industries = [i.lower() for i in company.get("industries", [])]
+all_services = [svc for cat in services_dict.values() for svc in cat]
 
-# Get scope keywords from Phase 1 summary
-scope_keywords = [kw.lower() for kw in rfp_summary.get("scope_keywords", [])]
-rfp_domain = (rfp_summary.get("industry_domain") or "").lower()
+# Locations are dicts with city/state, not flat strings
+locations = company.get("locations", [])
+location_summary = [f"{loc.get('city', '')}, {loc.get('state', '')}" for loc in locations if isinstance(loc, dict)]
 
-# Count service matches against scope keywords
-matching_services = 0
-total_keywords = max(len(scope_keywords), 1)
-capability_evidence = []
-
-for keyword in scope_keywords:
-    for service in rdi_services:
-        if keyword in service.lower() or service.lower() in keyword:
-            matching_services += 1
-            capability_evidence.append(f"Service match: '{service}' aligns with scope keyword '{keyword}'")
-            break
-
-# Industry alignment
-industry_match = any(ind in rfp_domain for ind in rdi_industries) if rfp_domain else False
-if industry_match:
-    capability_evidence.append(f"Industry match: RDI serves '{rfp_domain}' domain")
-
-# Also check mandatory requirements from RFP text
-mandatory_reqs = rfp_summary.get("mandatory_requirements", [])
-for req in mandatory_reqs:
-    req_lower = req.lower()
-    for service in rdi_services:
-        if service.lower() in req_lower:
-            matching_services += 1
-            capability_evidence.append(f"Requirement match: '{service}' addresses '{req[:60]}'")
-            break
-
-match_ratio = matching_services / max(total_keywords + len(mandatory_reqs), 1)
-
-# Scoring rubric
-if match_ratio > 0.8 and industry_match:
-    capability_score = 20
-elif match_ratio > 0.6 and industry_match:
-    capability_score = 15
-elif match_ratio > 0.6 or industry_match:
-    capability_score = 12
-elif match_ratio > 0.4 or industry_match:
-    capability_score = 10
-elif match_ratio > 0.2:
-    capability_score = 5
-else:
-    capability_score = 0
-
-capability_rationale = f"{int(match_ratio*100)}% alignment ({matching_services} matches). Industry: {'Yes' if industry_match else 'No'}."
+industries = company.get("industries", [])
+certifications = company.get("bid_defaults", {}).get("certifications", [])
+past_performance = company.get("past_performance", {})
 ```
 
-## Step 3: Score Dimension 2 — Competitive Position (0-20)
+---
 
-Assess evaluation criteria alignment, advantage/disadvantage signals, competition level, preference points, and COTS positioning.
+## Step 2: LLM Narrative Assessment
+
+Read all three inputs thoroughly. For EACH of the 7 assessment areas below, produce a narrative assessment with:
+- **score** — integer 0-100 (no decimals, no qualitative labels — a number)
+- **rationale** — narrative with cited evidence from the inputs
+- **evidence** — list of specific citation strings
+- **risks** — list of identified risks with evidence
+- **mitigations** — list of proposed mitigations with evidence
+
+The area **name** must be EXACTLY one of: "Strategic Fit", "Technical Capability", "Competitive Position", "Resource Availability", "Financial Viability", "Risk Assessment", "Win Probability".
+
+### EVIDENCE REQUIREMENTS (MANDATORY)
+
+For every assessment area:
+
+1. NEVER ASSUME — if a capability, certification, or experience is not explicitly
+   documented in the company profile or past projects, treat it as absent.
+   Do not infer capabilities from company size or industry presence alone.
+
+2. CITE SOURCES — every claim in the rationale must reference a specific input:
+   - "company-profile.json services.data_and_ai includes 'Data Engineering'"
+   - "rfp-summary.json scope_keywords include 'modernization'"
+   - "Past project #5 (TCEQ GeoTAM) demonstrates dashboard delivery"
+   - "RFP Section B.21 requires insurance coverage — not verifiable from inputs"
+
+3. GAPS ARE EVIDENCE TOO — if the inputs don't contain evidence for a criterion,
+   say so explicitly: "No evidence found in company profile for [X]"
+   Score that criterion conservatively.
+
+4. NO FILLER — do not pad rationales with generic statements like "the company
+   is well-positioned" without citing what specifically positions them.
+
+---
+
+### Area 1: Strategic Fit (Weight: 15%)
+
+**What to evaluate:**
+- Geographic proximity between company office locations and the RFP's place of performance or issuing agency state
+- Industry alignment between company industries and the RFP domain
+- Existing contracts in the same state or with the same agency (repeat client potential)
+- Revenue significance relative to company size
+- Growth opportunity in the target market
+
+**Where to find evidence:**
+- `company-profile.json` locations (list of dicts with city/state), industries
+- `rfp-summary.json` client_name, client_location, industry_domain, estimated_value
+- `combined_text` for geographic requirements, place of performance clauses
+
+**Scoring guidance:**
+- **80-100:** Office in the same state, strong industry alignment, existing client relationship, significant revenue opportunity
+- **50-70:** Adjacent state or remote-eligible, partial industry overlap, new client in known sector
+- **20-40:** No geographic presence, weak industry fit, small or unclear revenue
+- **0-20:** Misaligned geography with on-site requirement, no industry relevance
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 2: Technical Capability (Weight: 25%)
+
+**What to evaluate:**
+- Service alignment: how many RFP scope keywords and mandatory requirements match company services
+- Domain expertise: relevant past project experience documented in company profile
+- Technology stack overlap: does the company offer the specific technologies the RFP demands
+- Mandatory requirement coverage: can each stated requirement be addressed by a documented capability
+- Depth vs breadth: does the company have deep expertise or only tangential coverage
+
+**Where to find evidence:**
+- `company-profile.json` services (DICT — flatten all categories), past_performance
+- `rfp-summary.json` scope_keywords, mandatory_requirements, technology_requirements
+- `combined_text` for detailed technical requirements, SOW specifics
+
+**Scoring guidance:**
+- **80-100:** Strong match on 80%+ of scope keywords, documented past projects in same domain, all mandatory requirements addressable
+- **50-70:** Moderate overlap (50-80%), some past experience, most requirements addressable with gaps noted
+- **20-40:** Limited overlap (<50%), few relevant past projects, significant capability gaps
+- **0-20:** Minimal alignment, no documented experience in the domain
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 3: Competitive Position (Weight: 20%)
+
+**What to evaluate:**
+- Evaluation criteria alignment: how well company strengths map to stated evaluation factors
+- Advantage signals: best value procurement, innovation emphasis, modern technology preference
+- Disadvantage signals: incumbent contractor, set-aside restrictions, sole-source history
+- Competition level: prior proposal counts, number of expected bidders, market saturation
+- Preference points: veteran-owned, small business, HUBZone eligibility vs requirements
+- COTS positioning: whether COTS/low-code is preferred (disadvantaging custom builders)
+
+**Where to find evidence:**
+- `rfp-summary.json` evaluation_criteria, evaluation_method, set_aside, prior_rfp_history
+- `company-profile.json` bid_defaults (veteran_owned, small_business, certifications)
+- `combined_text` for competition signals, preference language, incumbent references
+
+**Scoring guidance:**
+- **80-100:** Evaluation criteria favor company strengths, no set-aside barriers, few competitors expected, eligible for preference points
+- **50-70:** Neutral competitive landscape, some evaluation criteria align, moderate competition
+- **20-40:** Set-aside restrictions apply, incumbent advantage detected, high competition expected, preference points not available
+- **0-20:** Strong incumbent, restrictive set-aside excludes company, COTS preference with no platform offering
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 4: Resource Availability (Weight: 15%)
+
+**What to evaluate:**
+- Staffing capacity relative to personnel requirements (key personnel, team size)
+- Personnel qualification requirements (resumes, CVs, specific roles demanded)
+- Certification gaps: required certifications vs company's documented certifications
+- Proposal volume and complexity: how much effort the response will require
+- Timeline feasibility: is the proposal deadline achievable given scope
+
+**Where to find evidence:**
+- `company-profile.json` employees, bid_defaults.certifications
+- `rfp-summary.json` submission_deadline, period_of_performance, mandatory_requirements
+- `combined_text` for key personnel requirements, certification mandates, proposal page limits, clearance requirements
+
+**Scoring guidance:**
+- **80-100:** Company size supports staffing needs, all certifications documented, reasonable proposal timeline
+- **50-70:** Adequate staffing likely, minor certification gaps, tight but feasible timeline
+- **20-40:** Staffing strain likely, significant certification gaps, very tight deadline
+- **0-20:** Insufficient capacity, critical certifications missing, deadline likely infeasible
+
+**Note on placeholder data:** If company certifications contain "[USER INPUT" placeholders, treat as "not yet documented" and score with moderate caution — not as zero certifications, but not as confirmed either.
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 5: Financial Viability (Weight: 10%)
+
+**What to evaluate:**
+- Contract value relative to company size and revenue (is this appropriately scaled)
+- Cost formula or pricing structure requirements and their impact
+- Budget constraints, ceiling prices, or rate caps mentioned in the RFP
+- Payment terms (net-30, milestone-based, cost-reimbursable)
+- Indirect cost rate limitations or audit requirements
+
+**Where to find evidence:**
+- `rfp-summary.json` estimated_value, contract_type, pricing_structure
+- `company-profile.json` employees, revenue (if available), bid_defaults
+- `combined_text` for pricing clauses, rate ceilings, payment schedules, cost accounting standards
+
+**Scoring guidance:**
+- **80-100:** Contract value well-aligned with company capacity, favorable payment terms, no restrictive rate caps
+- **50-70:** Value is manageable, standard payment terms, some pricing constraints to work around
+- **20-40:** Value too large or too small for company, restrictive rate caps, unfavorable payment terms
+- **0-20:** Severe financial mismatch, cost accounting requirements company cannot meet
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 6: Risk Assessment (Weight: 10%)
+
+**What to evaluate:**
+- Technical complexity: scope ambiguity, integration requirements, legacy system dependencies
+- Compliance obligations: FedRAMP, FISMA, HIPAA, Section 508, state-specific regulations
+- Political risk: controversial project, agency leadership changes, funding uncertainty
+- Integration burden: number of external systems, data migration, interoperability requirements
+- Data sensitivity: PII, PHI, CUI, classified information handling requirements
+
+**Where to find evidence:**
+- `rfp-summary.json` mandatory_requirements, compliance_requirements, technology_requirements
+- `combined_text` for compliance clauses, security requirements, integration specifications, data handling rules
+- `company-profile.json` for relevant compliance certifications or clearances
+
+**Scoring guidance (NOTE: higher = LOWER risk = better):**
+- **80-100:** Straightforward scope, minimal compliance burden, low integration complexity, standard data handling
+- **50-70:** Moderate complexity, manageable compliance requirements, some integration work
+- **20-40:** High complexity, significant compliance burden, extensive integration, sensitive data
+- **0-20:** Extreme complexity, compliance requirements company cannot meet, critical security clearances needed
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+### Area 7: Win Probability (Weight: 5%)
+
+**What to evaluate:**
+- Estimated realistic win chance given all other factors
+- Structural advantages: existing relationship, geographic presence, unique capability
+- Structural disadvantages: incumbent lock, set-aside exclusion, late market entry
+- Teaming opportunities: could a teaming arrangement improve the bid
+- Overall competitive dynamics based on all signals gathered
+
+**Where to find evidence:**
+- Synthesize findings from all other assessment areas
+- `rfp-summary.json` prior_rfp_history, set_aside, evaluation_method
+- `combined_text` for teaming clauses, joint venture provisions, subcontracting goals
+
+**Scoring guidance:**
+- **80-100:** Multiple structural advantages, weak or no incumbent, high capability match, favorable evaluation criteria
+- **50-70:** Reasonable chance with solid proposal, no decisive disadvantages, competitive field
+- **20-40:** Significant headwinds but not disqualifying, teaming could help
+- **0-20:** Structural barriers make winning very unlikely without extraordinary circumstances
+
+**Do not assume — if evidence is not found in the inputs, score conservatively and note the gap.**
+
+---
+
+## Step 3: Compute Weighted Total
+
+After generating all 7 narrative assessments with scores:
 
 ```python
-# Check evaluation criteria from Phase 1
-eval_criteria = rfp_summary.get("evaluation_criteria", [])
-eval_method = rfp_summary.get("evaluation_method", "")
-
-competitive_evidence = []
-
-# Advantage signals in RFP text
-advantage_keywords = ["innovative", "creative", "modern", "agile", "cloud", "digital transformation", "best value"]
-disadvantage_keywords = ["incumbent", "existing contractor", "sole source", "set-aside", "8(a)", "hubzone"]
-
-advantages_found = [kw for kw in advantage_keywords if kw in combined_text.lower()]
-disadvantages_found = [kw for kw in disadvantage_keywords if kw in combined_text.lower()]
-
-for adv in advantages_found:
-    competitive_evidence.append(f"Advantage signal: '{adv}'")
-for dis in disadvantages_found:
-    competitive_evidence.append(f"Risk signal: '{dis}'")
-
-# Set-aside check
-set_aside = rfp_summary.get("set_aside")
-if set_aside:
-    competitive_evidence.append(f"Set-aside: {set_aside}")
-    disadvantages_found.append(f"set-aside: {set_aside}")
-
-# --- COMPETITION HEADWIND DETECTION ---
-competition_headwinds = 0
-
-# 1. Prior competition level — parse proposal counts from prior_rfp_history
-prior_history = rfp_summary.get("prior_rfp_history", "")
-if prior_history:
-    proposal_count_match = re.search(r'(\d+)\s+proposal', str(prior_history), re.IGNORECASE)
-    if proposal_count_match:
-        prior_proposals = int(proposal_count_match.group(1))
-        if prior_proposals >= 5:
-            competition_headwinds += 1
-            competitive_evidence.append(f"High competition: {prior_proposals} proposals in prior attempt")
-
-# 2. Preference point eligibility — veteran-owned, small business preferences
-pref_keywords = ["preference point", "veteran-owned", "small business preference",
-                  "veteran owned", "small business set-aside"]
-pref_found = False
-for pk in pref_keywords:
-    if pk in combined_text.lower():
-        pref_found = True
-        break
-if pref_found:
-    is_veteran_owned = company.get("bid_defaults", {}).get("veteran_owned", False)
-    if not is_veteran_owned:
-        competition_headwinds += 1
-        competitive_evidence.append("Structural disadvantage: preference points available but RDI not eligible")
-
-# 3. COTS/platform advantage detection — custom builders may be disadvantaged
-cots_keywords = ["commercial off-the-shelf", "cots", "configurable platform", "low-code",
-                  "no-code", "saas solution", "out of the box", "out-of-the-box"]
-cots_found = any(kw in combined_text.lower() for kw in cots_keywords)
-if cots_found:
-    competition_headwinds += 1
-    competitive_evidence.append("COTS/platform solutions accepted — custom builders may be disadvantaged")
-
-# --- SCORING ---
-advantage_net = len(advantages_found) - len(disadvantages_found) - competition_headwinds
-
-if len(eval_criteria) > 0 and advantage_net >= 2:
-    competitive_score = 15
-elif advantage_net >= 0:
-    competitive_score = 12
-elif advantage_net >= -2:
-    competitive_score = 10
-elif advantage_net >= -4:
-    competitive_score = 8
-else:
-    competitive_score = 5
-
-competitive_rationale = (
-    f"Eval criteria: {len(eval_criteria)} found. "
-    f"Advantage signals: {len(advantages_found)}. Risk signals: {len(disadvantages_found)}. "
-    f"Competition headwinds: {competition_headwinds}. Adjusted net: {advantage_net}."
-)
-```
-
-## Step 4: Score Dimension 3 — Resource Availability (0-20)
-
-Assess staffing requirements, certification gaps, scope size, and company capacity.
-
-```python
-resource_evidence = []
-
-# Check for key personnel/cert requirements in RFP text
-import re
-personnel_patterns = [
-    r'(?:key\s+personnel|project\s+manager|team\s+lead|senior\s+developer|architect)',
-    r'(?:resume|curriculum\s+vitae|cv|qualifications?\s+of\s+staff)',
-    r'(?:certif(?:ied|ication)|pmp|cissp|aws\s+certified|clearance|fedramp)'
-]
-
-personnel_refs = []
-cert_refs = []
-for pattern in personnel_patterns:
-    matches = re.findall(pattern, combined_text, re.IGNORECASE)
-    if matches:
-        if 'certif' in pattern or 'pmp' in pattern or 'clearance' in pattern:
-            cert_refs.extend(matches)
-        else:
-            personnel_refs.extend(matches)
-
-resource_evidence.append(f"Personnel references: {len(set(personnel_refs))}")
-resource_evidence.append(f"Certification references: {len(set(cert_refs))}")
-
-# --- COMPANY SIZE BASELINE ---
-# Larger companies have deeper bench strength; start from capacity baseline
-employees = str(company.get("employees", ""))
-if "200" in employees or (employees.isdigit() and int(employees) >= 200):
-    resource_baseline = 15
-    resource_evidence.append("Company size: 200+ employees — strong resource capacity")
-elif "100" in employees or (employees.isdigit() and int(employees) >= 100):
-    resource_baseline = 13
-elif "50" in employees or (employees.isdigit() and int(employees) >= 50):
-    resource_baseline = 12
-else:
-    resource_baseline = 10
-
-# --- CERTIFICATION GAP (REVISED) ---
-rdi_certs = company.get("bid_defaults", {}).get("certifications", [])
-real_certs = [c for c in rdi_certs if isinstance(c, str) and "[USER INPUT" not in c]
-certs_are_placeholder = len(real_certs) == 0 and len(rdi_certs) > 0
-
-if certs_are_placeholder:
-    # Placeholders mean "not yet documented" — treat as moderate risk, NOT zero certs
-    cert_adjustment = -2
-    resource_evidence.append("NOTE: Company certifications not yet documented (placeholder data) — moderate risk")
-elif len(set(cert_refs)) == 0:
-    # RFP doesn't require specific certs — no gap
-    cert_adjustment = 0
-else:
-    cert_gap = len(set(cert_refs)) - len(real_certs)
-    if cert_gap <= 0:
-        cert_adjustment = 0
-    elif cert_gap <= 2:
-        cert_adjustment = -3
-    else:
-        cert_adjustment = -6
-    resource_evidence.append(f"Cert gap: {max(cert_gap, 0)} (RFP refs: {len(set(cert_refs))}, company certs: {len(real_certs)})")
-
-# --- PERSONNEL GAP ADJUSTMENT ---
-# Few role references = simpler staffing; many = complex team required
-unique_personnel_refs = len(set(personnel_refs))
-if unique_personnel_refs > 5:
-    personnel_adjustment = -3  # Many distinct roles required — heavy staffing demand
-elif unique_personnel_refs > 3:
-    personnel_adjustment = -2
-elif unique_personnel_refs <= 1:
-    personnel_adjustment = 1   # Simple staffing — well within capacity
-else:
-    personnel_adjustment = 0
-
-resource_score = max(resource_baseline + cert_adjustment + personnel_adjustment, 3)
-resource_score = min(resource_score, 20)
-
-resource_rationale = (
-    f"Baseline: {resource_baseline} (company size). "
-    f"Cert adjustment: {cert_adjustment}. Personnel adjustment: {personnel_adjustment}. "
-    f"Personnel refs: {unique_personnel_refs}. Final: {resource_score}."
-)
-```
-
-## Step 5: Score Dimension 4 — Timeline Feasibility (0-20)
-
-Assess proposal deadline and project duration.
-
-```python
-timeline_evidence = []
-deadline = rfp_summary.get("submission_deadline")
-pop = rfp_summary.get("period_of_performance")
-
-if deadline:
-    timeline_evidence.append(f"Deadline: {deadline}")
-    # Try to parse days remaining
-    # Default to moderate if parsing fails
-    timeline_score = 15
-    timeline_rationale = f"Deadline: {deadline}. Manual verification recommended."
-else:
-    timeline_score = 10
-    timeline_evidence.append("No deadline detected — risk factor")
-    timeline_rationale = "No deadline detected. Unknown timeline adds risk."
-
-if pop:
-    timeline_evidence.append(f"Period of performance: {pop}")
-```
-
-## Step 6: Score Dimension 5 — Strategic Alignment (0-20)
-
-Assess geography (including state proximity), client relationship, growth industry match, state contract overlap, and revenue potential.
-
-```python
-strategic_evidence = []
-
-# --- GEOGRAPHIC MATCHING (ENHANCED with state adjacency) ---
-# Locations is a list of dicts: [{"city": "Anchorage", "state": "AK", ...}]
-rdi_location_objs = company.get("locations", [])
-rdi_locations_lower = []
-rdi_state_abbrs = []
-for loc in rdi_location_objs:
-    if isinstance(loc, dict):
-        for field in ["city", "state"]:
-            val = loc.get(field, "").lower().strip()
-            if val:
-                rdi_locations_lower.append(val)
-        state_val = loc.get("state", "").lower().strip()
-        if state_val:
-            rdi_state_abbrs.append(state_val)
-
-geographic_match = False
-
-# Direct city/state matching (existing logic)
-location_patterns = [
-    r'(?:location|state|city|office|headquarter|based\s+in)[:\s]+([^\n]{5,50})',
-    r'(?:alaska|anchorage|juneau|oregon|portland|idaho|boise|texas|houston)',
-]
-for pattern in location_patterns:
-    matches = re.findall(pattern, combined_text, re.IGNORECASE)
-    for match in matches:
-        match_lower = match.lower() if isinstance(match, str) else match
-        if any(loc in match_lower for loc in rdi_locations_lower):
-            geographic_match = True
-            strategic_evidence.append(f"Geographic match: '{match}'")
-            break
-
-# State adjacency — neighboring states count as proximity
-# Map of state abbreviations to their neighbors
-adjacent_states = {
-    "or": ["wa", "id", "ca", "nv"],
-    "ak": [],  # No land borders, but AK agencies often work with OR/WA vendors
-    "id": ["wa", "or", "mt", "wy", "nv", "ut"],
-    "tx": ["nm", "ok", "ar", "la"]
+weights = {
+    "Strategic Fit": 0.15,
+    "Technical Capability": 0.25,
+    "Competitive Position": 0.20,
+    "Resource Availability": 0.15,
+    "Financial Viability": 0.10,
+    "Risk Assessment": 0.10,
+    "Win Probability": 0.05,
 }
 
-# Extract RFP state from client location, agency name, or text signals
-# Common state abbreviation/name mapping for detection
-state_name_to_abbr = {
-    "washington": "wa", "oregon": "or", "idaho": "id", "alaska": "ak",
-    "texas": "tx", "montana": "mt", "california": "ca", "nevada": "nv",
-    "wyoming": "wy", "utah": "ut", "new mexico": "nm", "oklahoma": "ok",
-    "arkansas": "ar", "louisiana": "la", "hawaii": "hi", "colorado": "co"
-}
-rfp_state_abbr = ""
-# Check rfp_summary for client state
-client_location = rfp_summary.get("client_location", "")
-client_name = rfp_summary.get("client_name", "")
-rfp_state_text = f"{client_location} {client_name}".lower()
-
-# Try abbreviation match first (e.g., "WA" in "State of WA")
-for full_name, abbr in state_name_to_abbr.items():
-    if full_name in rfp_state_text or full_name in combined_text.lower()[:2000]:
-        rfp_state_abbr = abbr
-        break
-if not rfp_state_abbr:
-    # Try 2-letter abbreviations in client_location
-    import re as _re
-    state_match = _re.search(r'\b([A-Z]{2})\b', client_location)
-    if state_match:
-        rfp_state_abbr = state_match.group(1).lower()
-
-if not geographic_match and rfp_state_abbr:
-    for rdi_state in rdi_state_abbrs:
-        # Direct state match
-        if rfp_state_abbr == rdi_state:
-            geographic_match = True
-            strategic_evidence.append(f"State match: RDI has office in {rdi_state.upper()}")
-            break
-        # Adjacent state match
-        if rfp_state_abbr in adjacent_states.get(rdi_state, []):
-            geographic_match = True
-            strategic_evidence.append(
-                f"Adjacent state proximity: RDI {rdi_state.upper()} office neighbors RFP state {rfp_state_abbr.upper()}"
-            )
-            break
-
-# --- STATE CONTRACT OVERLAP ---
-# Check if RDI has existing contracts in the RFP's state (strong strategic signal)
-state_contract_match = False
-if rfp_state_abbr:
-    # Check Past_Projects.md references or company profile for state contracts
-    # Look for state name in rfp_summary contract/agency references
-    state_full = [name for name, abbr in state_name_to_abbr.items() if abbr == rfp_state_abbr]
-    state_search_terms = [rfp_state_abbr, rfp_state_abbr.upper()] + state_full
-    # Scan combined_text for references to existing contracts in that state
-    # Also check if client_name contains state agency patterns
-    state_agency_patterns = [f"state of {rfp_state_abbr}", f"{rfp_state_abbr} department",
-                             f"{rfp_state_abbr} office of", f"{rfp_state_abbr} state"]
-    if state_full:
-        state_agency_patterns.extend([
-            f"state of {state_full[0]}", f"{state_full[0]} department",
-            f"{state_full[0]} office of"
-        ])
-    for pattern in state_agency_patterns:
-        if pattern in combined_text.lower():
-            state_contract_match = True
-            strategic_evidence.append(f"State agency RFP: matches RDI's operating state/region ({rfp_state_abbr.upper()})")
-            break
-
-# --- GROWTH INDUSTRY MATCH ---
-rdi_industries = [i.lower() for i in company.get("industries", [])]
-rfp_domain = (rfp_summary.get("industry_domain") or "").lower()
-growth_match = False
-if rfp_domain:
-    growth_match = any(ind in rfp_domain for ind in rdi_industries)
-    if growth_match:
-        strategic_evidence.append(f"Growth industry match: RFP domain '{rfp_domain}' aligns with RDI industry focus")
-
-# --- REVENUE POTENTIAL ---
-estimated_value = rfp_summary.get("estimated_value")
-if estimated_value:
-    strategic_evidence.append(f"Estimated value: {estimated_value}")
-
-# --- REPEAT CLIENT CHECK ---
-repeat_client = False
-if client_name:
-    # Check if client_name appears in past_performance references or known clients
-    past_perf = company.get("past_performance", {})
-    past_source = str(past_perf.get("source_file", ""))
-    # Simple heuristic: if RFP client name keywords appear in combined context
-    # (Full check would read Past_Projects.md — here we flag as partial match)
-    client_keywords = [w.lower() for w in client_name.split() if len(w) > 3]
-    # Check if any non-trivial client keywords appear in the company's known references
-    if any(kw in str(past_perf).lower() for kw in client_keywords if kw not in ["state", "department", "office"]):
-        repeat_client = True
-        strategic_evidence.append(f"Potential repeat client: '{client_name}'")
-
-# --- SCORING ---
-strategic_factors = sum([
-    geographic_match,
-    growth_match or state_contract_match,
-    bool(estimated_value),
-    repeat_client
-])
-
-if strategic_factors >= 3:
-    strategic_score = 18
-elif strategic_factors >= 2:
-    strategic_score = 15
-elif strategic_factors == 1:
-    strategic_score = 10
-else:
-    strategic_score = 5  # Baseline — new opportunities still have value
-
-strategic_rationale = (
-    f"Geographic: {'Yes' if geographic_match else 'No'}. "
-    f"Industry match: {'Yes' if growth_match else 'No'}. "
-    f"State contract overlap: {'Yes' if state_contract_match else 'No'}. "
-    f"Value disclosed: {'Yes' if estimated_value else 'No'}. "
-    f"Repeat client: {'Yes' if repeat_client else 'TBD'}. "
-    f"Strategic factors: {strategic_factors}."
-)
+# assessment_areas is the list of 7 area dicts built from the LLM analysis above
+overall_score = round(sum(area["score"] * area["weight"] for area in assessment_areas))
 ```
 
-## Step 7: Calculate Total and Recommendation
+---
+
+## Step 4: Apply Thresholds
 
 ```python
-total_score = capability_score + competitive_score + resource_score + timeline_score + strategic_score
-
-if total_score >= 50:
+if overall_score >= 50:
     recommendation = "GO"
-elif total_score >= 40:
+    user_decision_required = False
+elif overall_score >= 40:
     recommendation = "CONDITIONAL"
+    user_decision_required = True
 else:
     recommendation = "NO_GO"
-
-# Compile risk/opportunity factors
-risk_factors = []
-opportunity_factors = []
-
-if capability_score < 10:
-    risk_factors.append("Low capability alignment")
-if competitive_score < 10:
-    risk_factors.append("Weak competitive positioning")
-if resource_score < 10:
-    risk_factors.append("Resource/certification gaps")
-if timeline_score < 10:
-    risk_factors.append("Timeline concerns")
-if strategic_score < 10:
-    risk_factors.append("Low strategic value")
-if set_aside:
-    risk_factors.append(f"Set-aside restriction: {set_aside}")
-
-if capability_score >= 15:
-    opportunity_factors.append("Strong service alignment")
-if geographic_match:
-    opportunity_factors.append("Geographic proximity")
-for adv in advantages_found:
-    opportunity_factors.append(f"Innovation signal: '{adv}'")
+    user_decision_required = True
 ```
 
-## Step 8: Write Output
+---
+
+## Step 5: Write Output
+
+Write `{folder}/screen/go-nogo-score.json` with this schema:
 
 ```python
 go_nogo = {
     "phase": "2",
     "phase_name": "Go/No-Go Scoring",
     "timestamp": datetime.now().isoformat(),
+    "rfp_number": rfp_summary.get("rfp_number", ""),
+    "rfp_title": rfp_summary.get("rfp_title", ""),
+    "issuing_agency": rfp_summary.get("client_name", ""),
+    "bidding_company": "Resource Data, Inc.",
     "recommendation": recommendation,
-    "total_score": total_score,
+    "overall_score": overall_score,
     "threshold": {
         "go": 50,
         "conditional": 40,
         "no_go": 0
     },
-    "dimensions": {
-        "capability_match": {
-            "score": capability_score,
-            "max": 20,
-            "rationale": capability_rationale,
-            "evidence": capability_evidence
+    "assessment_areas": [
+        {
+            "name": "Strategic Fit",
+            "weight": 0.15,
+            "score": strategic_fit_score,
+            "rationale": "Detailed narrative with SPECIFIC evidence citations...",
+            "evidence": ["cite 1", "cite 2"],
+            "risks": ["risk with evidence"],
+            "mitigations": ["mitigation with evidence"]
         },
-        "competitive_position": {
-            "score": competitive_score,
-            "max": 20,
-            "rationale": competitive_rationale,
-            "evidence": competitive_evidence
-        },
-        "resource_availability": {
-            "score": resource_score,
-            "max": 20,
-            "rationale": resource_rationale,
-            "evidence": resource_evidence
-        },
-        "timeline_feasibility": {
-            "score": timeline_score,
-            "max": 20,
-            "rationale": timeline_rationale,
-            "evidence": timeline_evidence
-        },
-        "strategic_alignment": {
-            "score": strategic_score,
-            "max": 20,
-            "rationale": strategic_rationale,
-            "evidence": strategic_evidence
-        }
-    },
-    "risk_factors": risk_factors,
-    "opportunity_factors": opportunity_factors,
-    "override_allowed": True
+        # ... repeat for all 7 areas
+    ],
+    "recommended_work_sections": [],
+    "overall_risks": ["aggregated risk strings"],
+    "overall_mitigations": ["aggregated mitigation strings"],
+    "override_allowed": True,
+    "user_decision_required": user_decision_required
 }
 write_json(f"{folder}/screen/go-nogo-score.json", go_nogo)
 ```
 
-## Step 9: Report
+---
+
+## Step 6: Report
 
 ```
 GO/NO-GO SCORING (Phase 2)
 ===========================
 Recommendation: {recommendation}
-Total Score: {total_score}/100
+Overall Score: {overall_score}/100
 
-  Capability Match:     {capability_score}/20
-  Competitive Position: {competitive_score}/20
-  Resource Availability:{resource_score}/20
-  Timeline Feasibility: {timeline_score}/20
-  Strategic Alignment:  {strategic_score}/20
+  Area                    Weight   Score   Weighted
+  ─────────────────────   ──────   ─────   ────────
+  Strategic Fit           15%      {s1}    {s1*0.15:.1f}
+  Technical Capability    25%      {s2}    {s2*0.25:.1f}
+  Competitive Position    20%      {s3}    {s3*0.20:.1f}
+  Resource Availability   15%      {s4}    {s4*0.15:.1f}
+  Financial Viability     10%      {s5}    {s5*0.10:.1f}
+  Risk Assessment         10%      {s6}    {s6*0.10:.1f}
+  Win Probability          5%      {s7}    {s7*0.05:.1f}
+  ─────────────────────   ──────   ─────   ────────
+  TOTAL                   100%             {overall_score}
 
 Thresholds: GO >= 50 | CONDITIONAL 40-49 | NO-GO < 40
 
-Risks: {len(risk_factors)}
-Opportunities: {len(opportunity_factors)}
+Top Risks:
+{bullet list of overall_risks}
+
+Top Mitigations:
+{bullet list of overall_mitigations}
+
 Output: screen/go-nogo-score.json
 ```
 
@@ -564,9 +367,11 @@ Output: screen/go-nogo-score.json
 ## Quality Checklist
 
 - [ ] `go-nogo-score.json` written (>1KB)
-- [ ] All 5 dimensions scored with rationale and evidence
+- [ ] All 7 assessment areas scored with rationale, evidence, risks, mitigations
 - [ ] Company profile loaded — services flattened correctly (DICT not list)
 - [ ] Locations handled as dicts with city/state
+- [ ] Every rationale cites specific evidence from inputs
+- [ ] No unsupported claims or assumptions
+- [ ] overall_score = sum(score * weight) for all 7 areas, rounded
 - [ ] Recommendation follows thresholds (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
-- [ ] Risk and opportunity factors documented
 - [ ] Output field is "recommendation" (not "decision")

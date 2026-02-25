@@ -6,7 +6,7 @@ domain-expertise: Market research, incumbent analysis, FPDS/USASpending, competi
 
 # Phase 1.95: Client Intelligence
 
-> **Conditional Execution:** This phase runs ONLY if `{folder}/shared/GO_NOGO_DECISION.json` exists and its `decision` field is `"GO"`, OR the user explicitly overrides with a NO-GO decision. If the decision is `"NO_GO"` and the user has NOT overridden, SKIP this phase and log: "Phase 1.95 skipped — Go/No-Go decision was NO_GO."
+> **Conditional Execution:** This phase runs ONLY if `{folder}/shared/GO_NOGO_DECISION.json` exists and its `recommendation` field is `"GO"`, OR the user explicitly overrides with a NO-GO decision. If the recommendation is `"NO_GO"` and the user has NOT overridden, SKIP this phase and log: "Phase 1.95 skipped — Go/No-Go decision was NO_GO."
 
 ## Expert Role
 

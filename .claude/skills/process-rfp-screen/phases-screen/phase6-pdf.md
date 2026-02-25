@@ -8,7 +8,7 @@ domain-expertise: Document layout, PDF generation, professional formatting
 
 **Expert Role:** Publication Specialist
 
-**Purpose:** Generate a professional BID_SCREEN.md from consolidated data, then render as BID_SCREEN.pdf (~6-8 pages). This is the final human-readable deliverable.
+**Purpose:** Generate a professional BID_SCREEN.md from consolidated data, then render as BID_SCREEN.pdf (~7-9 pages). This is the final human-readable deliverable.
 
 **Inputs:**
 - `{folder}/screen/BID_SCREEN.json` — Consolidated data from Phase 5
@@ -43,11 +43,12 @@ intel = bid_screen.get("client_intel", {})
 compliance = bid_screen["compliance"]
 projects = bid_screen["past_projects"]
 risk = bid_screen["risk_assessment"]
+themes = bid_screen.get("preliminary_themes", {})
 ```
 
 ### Step 2: Build BID_SCREEN.md
 
-Build the markdown document section by section. All 7 sections must be populated (Intel section omitted if --quick mode).
+Build the markdown document section by section. All 8 sections must be populated (Intel section omitted if --quick mode, themes section omitted if no themes generated).
 
 ```python
 from datetime import datetime
@@ -96,34 +97,46 @@ md = f"""# RFP Bid Screening Report
 
 ## Go/No-Go Scorecard
 
-| Dimension | Score | Max | Rating |
-|-----------|-------|-----|--------|
+| Area | Weight | Score | Weighted | Rating |
+|------|--------|-------|----------|--------|
 """
 
-# Build scorecard rows dynamically
-dimensions = gonogo.get("dimensions", {})
-dimension_order = [
-    ("capability_match", "Capability Match", 20),
-    ("competitive_position", "Competitive Position", 20),
-    ("resource_availability", "Resource Availability", 20),
-    ("timeline_feasibility", "Timeline Feasibility", 20),
-    ("strategic_alignment", "Strategic Alignment", 20)
-]
+# Build scorecard rows from assessment areas
+areas = gonogo.get("assessment_areas", [])
+for area in areas:
+    name = area.get("name", "")
+    weight = area.get("weight", 0)
+    score = area.get("score", 0)
+    weighted = score * weight
+    weight_pct = f"{weight*100:.0f}%"
+    rating = "Strong" if score >= 70 else "Moderate" if score >= 50 else "Weak"
+    md += f"| **{name}** | {weight_pct} | {score} | {weighted:.1f} | {rating} |\n"
 
-for dim_key, dim_label, dim_max in dimension_order:
-    dim = dimensions.get(dim_key, {})
-    score = dim.get("score", 0)
-    rating = "Strong" if score >= 15 else "Moderate" if score >= 10 else "Weak"
-    md += f"| **{dim_label}** | {score} | {dim_max} | {rating} |\n"
+md += f"| **TOTAL** | **100%** | | **{total_score}** | **{recommendation}** |\n"
 
-md += f"| **TOTAL** | **{total_score}** | **100** | **{recommendation}** |\n"
+# Assessment Area Details
+md += "\n### Assessment Area Details\n\n"
+for area in areas:
+    name = area.get("name", "")
+    score = area.get("score", 0)
+    weight_pct = f"{area.get('weight', 0)*100:.0f}%"
+    rationale = area.get("rationale", "No rationale provided.")
+    md += f"**{name} ({score}/100, weight: {weight_pct}):** {rationale}\n\n"
 
-# Dimension details
-md += "\n### Dimension Details\n\n"
-for dim_key, dim_label, dim_max in dimension_order:
-    dim = dimensions.get(dim_key, {})
-    rationale = dim.get("rationale", "No rationale provided.")
-    md += f"**{dim_label} ({dim.get('score', 0)}/{dim_max}):** {rationale}\n\n"
+    # Show key evidence and risks
+    evidence = area.get("evidence", [])
+    if evidence:
+        md += "Key evidence:\n"
+        for e in evidence[:3]:
+            md += f"- {e}\n"
+        md += "\n"
+
+    risks = area.get("risks", [])
+    if risks:
+        md += "Risks:\n"
+        for r in risks[:2]:
+            md += f"- {r}\n"
+        md += "\n"
 
 md += "\n---\n\n"
 ```
@@ -248,6 +261,49 @@ else:
     md += "*No matching past projects found.*\n\n"
 
 md += "\n---\n\n"
+```
+
+#### Section: Preliminary Win Themes
+
+```python
+# Include if themes were generated (Phase 4.5)
+theme_list = themes.get("themes", [])
+if theme_list:
+    md += "## Preliminary Win Themes\n\n"
+    md += "*Directional positioning hints from screening data. Full pipeline generates "
+    md += "production themes with evaluation factor mapping.*\n\n"
+
+    md += "| # | Theme | Category | Confidence | Key Evidence |\n"
+    md += "|---|-------|----------|------------|---------------|\n"
+
+    for t in theme_list:
+        rank = t.get("rank", "")
+        name = t.get("name", "Unnamed")
+        category = t.get("category", "").replace("_", " ").title()
+        confidence = t.get("confidence", "unknown").upper()
+        evidence_summary = "; ".join(t.get("evidence", [])[:2])[:120]
+        md += f"| {rank} | **{name}** | {category} | {confidence} | {evidence_summary} |\n"
+
+    md += "\n### Theme Details\n\n"
+    for t in theme_list:
+        rank = t.get("rank", "")
+        name = t.get("name", "Unnamed")
+        rationale = t.get("rationale", "No rationale provided.")
+        evidence = t.get("evidence", [])
+
+        md += f"**{rank}. {name}**\n"
+        md += f"*{rationale}*\n"
+        if evidence:
+            md += "Supporting evidence:\n"
+            for e in evidence:
+                md += f"- {e}\n"
+        md += "\n"
+
+    md += "\n---\n\n"
+elif themes.get("status") != "not_generated":
+    md += "## Preliminary Win Themes\n\n"
+    md += "*No preliminary themes generated for this screening.*\n\n"
+    md += "\n---\n\n"
 ```
 
 #### Section: Risks and Opportunities
@@ -448,7 +504,8 @@ Machine-readable: {folder}/screen/BID_SCREEN.json
 - [ ] No ghost fills — CSS has ZERO `background-color` on block elements (th, td, blockquote, pre, code)
 - [ ] No CSS `border` properties used anywhere
 - [ ] `hr` uses `height: 0; color: #ffffff; background-color: #ffffff;`
-- [ ] All 7 sections populated (Cover, Scorecard, Intel, Compliance, Projects, Risks, Recommendation)
+- [ ] All 8 sections populated (Cover, Scorecard, Intel, Compliance, Projects, Themes, Risks, Recommendation)
+- [ ] Scorecard renders 7 weighted assessment areas (not 5 equal dimensions)
 - [ ] If --quick mode, intel section omitted
 - [ ] QA check passed (file exists, > 10KB, page count > 0)
 - [ ] If PDF fails, BID_SCREEN.json still available as fallback
