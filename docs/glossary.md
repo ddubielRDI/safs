@@ -87,7 +87,7 @@ The Go/No-Go framework scores opportunities across 7 weighted assessment areas u
 |------|-----------|
 | **SVA** | Stage Validation Agent. Automated quality gates in the win pipeline that enforce integrity at stage boundaries. 7 SVAs map to Shipley's color team reviews. SVA-7 (Gold Team) has 13 validation rules. |
 | **Sprint Mode** | Win pipeline flag (`--sprint`) that pre-approves the bid decision, skips Go/No-Go, and combines SVAs into 4 sprint gates (S1=1+2, S2=3+4, S3=5+6, S4=7). Reduces runtime to ~1.5–2 hours. Runs highest SVA in combined set: `max(int(r.split("-")[1]))`. |
-| **CVD Format** | Capability → Value → Differentiator. The standard theme format in the win pipeline: what we can do → why it matters to the client → why we're uniquely positioned. |
+| **CVD Format** | Capability → Value → Differentiator. An industry-standard proposal writing framework consistent with Shipley/APMP principles (not attributable to a single source; Shipley's native framework is FBPD — Features-Benefits-Proofs-Discriminators). The standard theme format in the win pipeline: what we can do → why it matters to the client → why we're uniquely positioned. |
 | **NOSE Formula** | Need → Outcome → Solution → Evidence. Structuring framework for proposal narrative sections. |
 | **Evidence Library** | `evidence-library.json` — catalog of reusable proof points organized in 6 categories. Tag-overlap matching ensures >=60% section coverage when populating bid volumes. |
 | **RTM** | Requirements Traceability Matrix. Links every entity from RFP source text through requirements, specifications, risks, and bid sections into a single auditable chain. The pipeline's central integrity artifact. |
@@ -174,3 +174,4 @@ All pipeline outputs organized by source phase.
 - **Win Pipeline Skill:** `.claude/skills/process-rfp-win/skill-win.md`
 - **Security Audit:** `.claude/skills/process-rfp-win/SECURITY_AUDIT.md`
 - **Visual Guide:** `.claude/skills/process-rfp-win/PIPELINE_VISUAL_GUIDE.md`
+- **Gold Standard Reference:** [docs/process-gold-standard.md](process-gold-standard.md) — authoritative source validation for all framework claims

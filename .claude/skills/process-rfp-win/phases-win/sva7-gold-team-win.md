@@ -1281,6 +1281,34 @@ failed_count = len(findings) - passed_count
 critical_failures = sum(1 for f in findings if f["severity"] == "CRITICAL" and not f["passed"])
 high_failures = sum(1 for f in findings if f["severity"] == "HIGH" and not f["passed"])
 overall_score = sum(f["score"] for f in findings) / len(findings) if findings else 0
+
+# Enhancement: Lohfeld 7 Quality Measures Summary
+def build_lohfeld_summary(findings):
+    """Map SVA-7 findings to Lohfeld's 7 Quality Measures for winning proposals.
+    See docs/process-gold-standard.md Section 7 for full mapping rationale."""
+    lohfeld_mapping = {
+        "Compliant": {"rules": ["SVA7-COMPLIANCE-BID-COVERAGE"], "desc": "Addresses all requirements"},
+        "Responsive": {"rules": ["SVA7-RISK-BID-INTEGRATION"], "desc": "Answers the question asked"},
+        "Understandable": {"rules": ["SVA7-FORMAT-COMPLIANCE"], "desc": "Clear, well-organized"},
+        "Credible": {"rules": ["SVA7-CONSISTENCY-CHECK", "SVA7-CASE-STUDY-VALIDATION", "SVA7-PROOF-POINT-DENSITY"], "desc": "Claims supported by evidence"},
+        "Has Strengths": {"rules": ["SVA7-THEME-THREADING-DEPTH"], "desc": "Contains discriminating strengths"},
+        "Low Risk": {"rules": ["SVA7-RISK-BID-INTEGRATION", "SVA7-TECH-LIFECYCLE-VALIDATION"], "desc": "Risk awareness and mitigation"},
+        "Winning": {"rules": ["SVA7-COMPETITIVE-CONTRAST", "SVA7-PERSONA-SATISFACTION"], "desc": "Overall winning impression"}
+    }
+    findings_by_id = {f["rule_id"]: f for f in findings}
+    results = []
+    for measure, cfg in lohfeld_mapping.items():
+        mapped = [findings_by_id[r] for r in cfg["rules"] if r in findings_by_id]
+        avg_score = sum(f["score"] for f in mapped) / len(mapped) if mapped else 0
+        all_passed = all(f["passed"] for f in mapped) if mapped else False
+        results.append({
+            "measure": measure, "description": cfg["desc"],
+            "status": "PASS" if all_passed else "NEEDS ATTENTION",
+            "score": round(avg_score, 1), "mapped_rules": cfg["rules"]
+        })
+    return results
+
+lohfeld_summary = build_lohfeld_summary(findings)
 ```
 
 ### Step 4: Build Gold Team Report
@@ -1531,6 +1559,19 @@ def generate_gold_team_checklist(rules_results, evaluator_factors, theme_threadi
     else:
         checklist += "_No theme threading data available._\n\n---\n\n"
 
+    # Lohfeld 7 Quality Measures Assessment
+    lohfeld_measures = build_lohfeld_summary(rules_results)
+    checklist += "## Section 7: Lohfeld 7 Quality Measures Assessment\n\n"
+    checklist += "_Maps SVA-7 findings to Lohfeld Consulting's industry-standard 7 Quality Measures for winning proposals._\n\n"
+    checklist += "| Quality Measure | Description | Status | Score | SVA-7 Rules |\n"
+    checklist += "|----------------|-------------|--------|-------|-------------|\n"
+    for lm in lohfeld_measures:
+        rules_str = ", ".join(lm["mapped_rules"])
+        status_icon = "PASS" if lm["status"] == "PASS" else "NEEDS ATTENTION"
+        checklist += f"| {lm['measure']} | {lm['description']} | {status_icon} | {lm['score']}/100 | {rules_str} |\n"
+    lohfeld_pass_count = sum(1 for lm in lohfeld_measures if lm["status"] == "PASS")
+    checklist += f"\n**Lohfeld Summary:** {lohfeld_pass_count}/7 quality measures met.\n\n---\n\n"
+
     # Final sign-off
     checklist += f"""## Final Sign-Off
 
@@ -1594,6 +1635,7 @@ report = {
     },
     "findings": findings,
     "color_team_report": gold_team_report,
+    "lohfeld_quality_measures": lohfeld_summary,
     "corrective_actions_summary": corrective_actions,
     "execution_metadata": {
         "files_analyzed": len(bid_texts) + 7,
@@ -1648,6 +1690,10 @@ Submission Readiness:
   Estimated Pages: {pages}
   Structure Match: {"YES" if submission_structure else "N/A"}
 
+Lohfeld 7 Quality Measures:
+  {for each lohfeld_quality_measures: measure + status + score}
+  Summary: {pass_count}/7 measures met
+
 Final Verdict: {gold_team_report["final_verdict"]["recommendation_summary"]}
 
 Output: shared/validation/sva7-gold-team.json
@@ -1673,4 +1719,6 @@ Human Review Checklist: outputs/GOLD_TEAM_CHECKLIST.md
 - [ ] Statistical consistency verified
 - [ ] Corrective actions sorted by priority
 - [ ] SVA7-PROOF-POINT-DENSITY checked (>=60% of major sections contain quantified evidence)
+- [ ] Lohfeld 7 Quality Measures mapped from SVA-7 findings (Compliant, Responsive, Understandable, Credible, Has Strengths, Low Risk, Winning)
+- [ ] Lohfeld summary included in both `sva7-gold-team.json` and `GOLD_TEAM_CHECKLIST.md`
 - [ ] Final submission readiness verdict included

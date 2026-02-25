@@ -15,7 +15,7 @@
     {
       "name": "validate_theme_threading",
       "type": "script",
-      "description": "Verify all 5 win themes appear in all bid sections",
+      "description": "Verify all win themes (3-5) appear in all bid sections",
       "script": {
         "language": "python",
         "code": "validate_theme_threading.py",
@@ -42,8 +42,8 @@
           "    ",
           "    # Bid sections to check",
           "    sections = {",
-          "        'title-page.md': {'min_themes': 5, 'path': f'{folder}/outputs/title-page.md'},",
-          "        'solution.md': {'min_themes': 5, 'path': f'{folder}/outputs/solution.md'},",
+          "        'title-page.md': {'min_themes': len(themes), 'path': f'{folder}/outputs/title-page.md'},",
+          "        'solution.md': {'min_themes': len(themes), 'path': f'{folder}/outputs/solution.md'},",
           "        'timeline.md': {'min_themes': 3, 'path': f'{folder}/outputs/timeline.md'}",
           "    }",
           "    ",
@@ -97,7 +97,7 @@
           "# Report results",
           "if result['valid']:",
           "    print('\\n\\033[92m\\u2705 Theme Validation PASSED\\033[0m')",
-          "    print('All 5 win themes present in all bid sections')",
+          "    print('All win themes present in all bid sections')",
           "else:",
           "    print('\\n\\033[91m\\u26a0\\ufe0f Theme Validation FAILED\\033[0m')",
           "    for missing in result.get('missing', []):",
@@ -120,14 +120,14 @@
       {
         "name": "title-page.md",
         "path": "outputs/title-page.md",
-        "min_themes": 5,
-        "description": "Executive summary must contain all 5 themes"
+        "min_themes": 3,
+        "description": "Executive summary must contain all win themes (3-5)"
       },
       {
         "name": "solution.md",
         "path": "outputs/solution.md",
-        "min_themes": 5,
-        "description": "Solution description must contain all 5 themes"
+        "min_themes": 3,
+        "description": "Solution description must contain all win themes (3-5)"
       },
       {
         "name": "timeline.md",

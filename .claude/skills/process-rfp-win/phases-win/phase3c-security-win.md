@@ -86,6 +86,28 @@ DOMAIN_COMPLIANCE = {
 
 domain = domain_context.get("selected_domain", "default")
 compliance = DOMAIN_COMPLIANCE.get(domain, DOMAIN_COMPLIANCE["default"])
+
+# Enhancement: FedRAMP 20x awareness (March 2025+ modernization)
+# Check if FedRAMP appears in requirements or domain context
+fedramp_detected = False
+all_req_text = " ".join(r.get("text", "") for r in requirements.get("requirements", [])).lower()
+if "fedramp" in all_req_text or "fed-ramp" in all_req_text:
+    fedramp_detected = True
+if "fedramp" in str(domain_context).lower():
+    fedramp_detected = True
+
+if fedramp_detected:
+    compliance["requirements"].append(
+        "FedRAMP authorization (NOTE: 20x modernization effective March 2025 — "
+        "authorization reduced from 18+ months to ~3 months; Key Security Indicators "
+        "replace static checklists; continuous monitoring emphasis increased)"
+    )
+    compliance["fedramp_20x_note"] = (
+        "FedRAMP 20x program detected. Current levels: Low/Moderate/High. "
+        "20x changes: agile authorization (~3 months), KSIs replace static controls, "
+        "continuous monitoring is primary assurance mechanism. "
+        "Verify current authorization status and 20x program alignment."
+    )
 ```
 
 ### Step 3: Generate Security Document
@@ -124,6 +146,16 @@ This document defines the security architecture, controls, and compliance requir
 - SOC 2 Type II certification
 - Annual penetration testing
 - Vulnerability management program
+{"" if not fedramp_detected else '''
+### FedRAMP 20x Awareness
+> **Note:** FedRAMP 20x modernization (effective March 2025) significantly changes the authorization landscape:
+> - Authorization timeline reduced from 18+ months to approximately 3 months
+> - Key Security Indicators (KSIs) replace static security control checklists
+> - Continuous monitoring becomes the primary assurance mechanism
+> - Current authorization levels: Low / Moderate / High
+>
+> Verify current FedRAMP authorization status and 20x program alignment before proposal submission.
+'''}
 
 ---
 

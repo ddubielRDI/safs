@@ -148,7 +148,12 @@ if "font_size" in format_requirements:
 
 ```python
 def assess_coverage(item, domain_context):
-    """Determine if mandatory item can be addressed."""
+    """Determine if mandatory item can be addressed.
+
+    Status values: PLANNED, PARTIAL, ADDRESSED, GAP, WAIVED
+    PARTIAL indicates capability partially meets requirement — standard compliance
+    matrices use Compliant/Partial/Exception/Non-Compliant (FAR standard).
+    """
     # Default: addressable (will be updated in later phases)
     return {
         "status": "PLANNED",
@@ -180,7 +185,7 @@ for item in mandatory_items:
 ```python
 def calculate_gate_status(mandatory_items):
     total = len(mandatory_items)
-    addressed = sum(1 for item in mandatory_items if item["coverage"]["status"] in ["PLANNED", "ADDRESSED"])
+    addressed = sum(1 for item in mandatory_items if item["coverage"]["status"] in ["PLANNED", "ADDRESSED", "PARTIAL"])
     gaps = [item for item in mandatory_items if item["coverage"]["status"] == "GAP"]
 
     coverage_pct = (addressed / total * 100) if total > 0 else 100

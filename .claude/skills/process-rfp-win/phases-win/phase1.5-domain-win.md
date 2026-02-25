@@ -227,6 +227,30 @@ domain_context = {
     "custom_terminology": extract_custom_terms(combined_content, profile)
 }
 
+# Enhancement: Auto-include Section 508 for government domain (FAR 39.2 mandate)
+if selected_domain == "government":
+    compliance_frameworks = domain_context.get("profile", {}).get("compliance_frameworks", [])
+    if "Section 508" not in compliance_frameworks:
+        compliance_frameworks.append("Section 508")
+    domain_context["section_508_note"] = "Auto-included per FAR Subpart 39.2 — all federal ICT procurements require Section 508 accessibility compliance"
+
+# Enhancement: Auto-flag CMMC for DoD/defense domain (Phase 1 live Nov 2025)
+defense_signals = ["dod", "defense", "military", "army", "navy", "air force", "marines", "space force"]
+if any(signal in content_lower for signal in defense_signals):
+    domain_context["cmmc_flag"] = {
+        "detected": True,
+        "note": "DoD/defense domain detected — CMMC Level 1/2 likely required (Phase 1 live Nov 2025)",
+        "level_guidance": "Level 1 (self-assessment) for FCI, Level 2 (third-party assessment) for CUI"
+    }
+
+# Enhancement: FedRAMP 20x awareness
+fedramp_signals = ["fedramp", "fed-ramp", "federal risk and authorization"]
+if any(signal in content_lower for signal in fedramp_signals):
+    domain_context["fedramp_20x_note"] = (
+        "FedRAMP 20x modernization (March 2025+): authorization timelines changed from 18+ months to ~3 months; "
+        "Key Security Indicators (KSIs) replace static checklists; continuous monitoring emphasis increased"
+    )
+
 write_json(f"{folder}/shared/domain-context.json", domain_context)
 ```
 

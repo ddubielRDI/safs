@@ -292,6 +292,9 @@ if theme_list:
         evidence = t.get("evidence", [])
 
         md += f"**{rank}. {name}**\n"
+        framing = t.get("framing", "")
+        if framing:
+            md += f"\n{framing}\n\n"
         md += f"*{rationale}*\n"
         if evidence:
             md += "Supporting evidence:\n"

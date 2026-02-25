@@ -322,6 +322,45 @@ for i, theme in enumerate(selected, 1):
     theme["rank"] = i
 ```
 
+### Step 3b: Generate Compelling Framing
+
+For each selected theme, synthesize its evidence + rationale into a 1–2 sentence evaluator-facing pitch. This framing connects RDI's specific capabilities to the client's stated needs — it is the "elevator pitch" for the theme.
+
+```python
+# Build context for framing generation
+rfp_title = rfp_summary.get("rfp_title", "")
+client_name = rfp_summary.get("client_name", "Unknown")
+scope_summary = ", ".join(scope_keywords[:8])
+
+for theme in selected:
+    # Gather all available context for this theme
+    theme_evidence = theme.get("evidence", [])
+    theme_rationale = theme.get("rationale", "")
+    theme_name = theme.get("name", "")
+
+    # LLM prompt: generate compelling framing
+    framing_prompt = f"""Generate a 1-2 sentence compelling framing for this win theme.
+
+RFP: "{rfp_title}" for {client_name}
+Scope keywords: {scope_summary}
+Theme: {theme_name}
+Rationale: {theme_rationale}
+Evidence: {'; '.join(theme_evidence)}
+Matched projects: {', '.join(p.get('title', '') for p in matched_projects[:5])}
+
+Requirements:
+- Use SPECIFIC evidence (project names, metrics, numbers) — not generic claims
+- Address the CLIENT'S need, not just RDI's capability (connect to the RFP scope)
+- 1-2 sentences max, persuasive professional tone
+- Reference matched projects and concrete deliverables where possible
+- Do NOT use filler phrases like "uniquely positioned" or "best-in-class"
+
+Return ONLY the framing text, no labels or quotes."""
+
+    framing = llm(framing_prompt).strip()
+    theme["framing"] = framing
+```
+
 ### Step 4: Write Output
 
 ```python
@@ -365,7 +404,7 @@ Output:
 
 - [ ] `preliminary-themes.json` written (>1KB)
 - [ ] 3–4 themes selected with category diversity (max 2 per category)
-- [ ] Each theme has: name, category, confidence, score, evidence[], rationale
+- [ ] Each theme has: name, category, confidence, score, evidence[], rationale, framing
 - [ ] Category 4 (client alignment) gracefully handles missing intel (zero candidates, not errors)
 - [ ] Company profile loaded — services flattened (DICT not list) if used
 - [ ] `intel_available` field correctly reflects Phase 3 status

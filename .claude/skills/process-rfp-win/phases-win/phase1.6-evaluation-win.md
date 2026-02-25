@@ -80,7 +80,7 @@ SELECTION_METHODS = {
     },
     "Quality-Based": {
         "signals": ["quality based", "qualifications based", "qbs", "technical only"],
-        "description": "Quality-Based Selection - Technical merit primary"
+        "description": "Quality-Based Selection (FAR 36.6 / Brooks Act — separate from FAR Part 15) - Technical merit primary"
     }
 }
 

@@ -675,7 +675,7 @@ log(f"""
 
 ✅ title-page.md
    - Executive summary with value proposition
-   - All 5 win themes featured
+   - All win themes (3-5) featured
    - Compliance achievements highlighted
    - Evaluation criteria alignment table
 
@@ -712,9 +712,9 @@ log(f"""
 - [ ] `title-page.md` created (4KB+ minimum)
 - [ ] `solution.md` created (8KB+ minimum)
 - [ ] `timeline.md` created (5KB+ minimum)
-- [ ] All 5 win themes present in executive summary
-- [ ] All 5 win themes present in solution description
-- [ ] All 5 win themes referenced in timeline
+- [ ] All win themes (3-5) present in executive summary
+- [ ] All win themes (3-5) present in solution description
+- [ ] All win themes (3-5) referenced in timeline
 - [ ] Top 10 risks integrated into solution narrative
 - [ ] Competitive contrast table included
 - [ ] Evaluation criteria addressed in order of weight

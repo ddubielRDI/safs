@@ -442,7 +442,7 @@ def build_win_themes(positioning_data, domain_context):
     raw_themes = positioning_data.get("core_positioning", {}).get("themes", [])
     value_prop = positioning_data.get("core_positioning", {}).get("value_proposition", "")
 
-    # Ensure exactly 5 themes (industry best practice)
+    # Ensure 3-5 themes (3-4 optimal per industry consensus, 5 max)
     themes = []
     default_themes = [
         "Modern Architecture",
@@ -452,7 +452,8 @@ def build_win_themes(positioning_data, domain_context):
         "Partnership Approach"
     ]
 
-    for i in range(5):
+    target_count = max(3, min(len(raw_themes), 5))  # 3-5 themes, prefer actual count
+    for i in range(target_count):
         if i < len(raw_themes):
             theme_name = raw_themes[i]
         else:
@@ -661,7 +662,7 @@ def assemble_context_bundle():
         "content_priority_guide": content_priority_guide,
 
         "bid_author_instructions": {
-            "theme_threading": "Each of the 5 win themes MUST appear in every major section",
+            "theme_threading": "Each win theme (3-5) MUST appear in every major section",
             "risk_integration": "Top 10 risks with mitigations should be woven into solution narrative",
             "evaluation_alignment": "Structure sections by evaluation criteria weight",
             "competitive_contrast": "Include 'Why Us' comparisons against incumbent weaknesses",
@@ -752,7 +753,7 @@ Stage 7 bid author now has FULL CONTEXT for compelling bid generation.
 - [ ] Requirements summary includes priority breakdown
 - [ ] Top 10 risks extracted with mitigations
 - [ ] Evaluation criteria sorted by weight
-- [ ] 5 win themes defined
+- [ ] 3-5 win themes defined
 - [ ] Competitive contrasts populated
 - [ ] Compliance achievements summarized
 - [ ] Case study placeholder template included

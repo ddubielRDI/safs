@@ -106,7 +106,7 @@ Task(
     prompt="""
     You are a **Senior Proposal Writer** with access to ALL RFP processing outputs.
 
-    Your mission: Create a compelling bid that threads 5 win themes through
+    Your mission: Create a compelling bid that threads all win themes (3-5) through
     every section, integrates risk mitigations as confidence builders, and
     explicitly addresses evaluation criteria.
 
@@ -983,7 +983,7 @@ The implementation is complete. The final step is to run a full pipeline test on
 ```
 
 **Verification Criteria:**
-- [ ] All 5 win themes present in title-page.md, solution.md, timeline.md
+- [ ] All win themes (3-5) present in title-page.md, solution.md, timeline.md
 - [ ] bid-context-bundle.json contains all 15+ data sources
 - [ ] Top 10 risks integrated in solution.md with mitigations
 - [ ] [CASE STUDY PLACEHOLDER] markers present (minimum 3)
@@ -1184,7 +1184,7 @@ The implementation is complete. The final step is to run a full pipeline test on
 
 | File | Size | Description |
 |------|------|-------------|
-| `title-page.md` | 14.6KB | Executive summary, 5 win themes |
+| `title-page.md` | 14.6KB | Executive summary, win themes |
 | `solution.md` | 29.1KB | Technical narrative, top 10 risks |
 | `timeline.md` | 21.7KB | 5-phase implementation, team structure |
 | `Draft_Bid.md` | 64KB | Combined markdown |

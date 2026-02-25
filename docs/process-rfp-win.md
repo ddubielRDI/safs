@@ -65,7 +65,7 @@ The pipeline follows the **Shipley Business Development Lifecycle** structure, e
 | 1.9 | Bid Decision Analyst | Go/No-Go scoring (7 weighted areas, 0–100). **ADVISORY GATE** | `GO_NOGO_DECISION.json` |
 | 1.95 | Competitive Intelligence Analyst | Client research: incumbents, tech stack, decision-makers (max 15 web searches). **Conditional: GO only** | `CLIENT_INTELLIGENCE.json` |
 
-**Why Phase 1.7 is a blocking gate:** A compliance matrix with gaps means the proposal could be disqualified on a technicality. Every mandatory item must be identified before requirements engineering begins. Industry data shows that ~30% of proposal disqualifications are compliance-related.
+**Why Phase 1.7 is a blocking gate:** A compliance matrix with gaps means the proposal could be disqualified on a technicality. Every mandatory item must be identified before requirements engineering begins. Industry research consistently identifies compliance failures as a leading cause of proposal disqualification ([Euna Solutions](https://eunasolutions.com/), [Hinz Consulting](https://hinzconsulting.com/)).
 
 **Why Phase 1.9 is advisory (not blocking):** The Go/No-Go decision is ultimately a human business judgment. The pipeline provides a structured score (same 7-area weighted model as the screening pipeline) but the user can override. Skipped entirely in Sprint mode where the bid decision is pre-approved.
 

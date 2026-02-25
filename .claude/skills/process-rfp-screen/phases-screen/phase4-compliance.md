@@ -107,23 +107,83 @@ for item in compliance_items:
             break
 
     if not matched:
-        # Check if it's a hard gap or potential risk
+        # Check if it's a hard gap, partial match, or risk
         if item["category"] in ["set_aside", "insurance"]:
             item["status"] = "RISK"
             item["match_source"] = None
             item["match_detail"] = "Cannot verify — requires manual confirmation"
         else:
-            item["status"] = "GAP"
-            item["match_source"] = None
-            item["match_detail"] = "No matching capability found in company profile"
+            # Check for partial match — any service/capability words overlap
+            req_words = set(req_lower.split())
+            partial_match = False
+            for source_list in [rdi_services, rdi_capabilities]:
+                for source_item in source_list:
+                    if isinstance(source_item, str) and "[USER INPUT" not in source_item:
+                        source_words = set(source_item.lower().split())
+                        if len(req_words & source_words) >= 2:
+                            item["status"] = "PARTIAL"
+                            item["match_source"] = "partial_capability"
+                            item["match_detail"] = f"Partial overlap with: {source_item}"
+                            partial_match = True
+                            break
+                if partial_match:
+                    break
+            if not partial_match:
+                item["status"] = "GAP"
+                item["match_source"] = None
+                item["match_detail"] = "No matching capability found in company profile"
 ```
 
 ### Step 3: Write Compliance Output
 
 ```python
 pass_count = sum(1 for i in compliance_items if i["status"] == "PASS")
+partial_count = sum(1 for i in compliance_items if i["status"] == "PARTIAL")
 gap_count = sum(1 for i in compliance_items if i["status"] == "GAP")
 risk_count = sum(1 for i in compliance_items if i["status"] == "RISK")
+
+# Enhancement: Auto-include Section 508 for government domain (FAR 39.2 mandate)
+rfp_domain = (rfp_summary.get("industry_domain") or "").lower()
+if rfp_domain == "government":
+    has_508 = any("508" in item["requirement"] or "accessibility" in item["requirement"].lower() for item in compliance_items)
+    if not has_508:
+        compliance_items.append({
+            "requirement": "Section 508 accessibility compliance (FAR 39.2 — auto-included for federal ICT)",
+            "category": "certification",
+            "source": "auto_detected",
+            "status": "RISK",
+            "match_source": None,
+            "match_detail": "Auto-included per FAR Subpart 39.2 — verify WCAG 2.0 AA compliance capability"
+        })
+        risk_count += 1
+
+# Enhancement: Auto-flag CMMC for DoD/defense procurement
+combined_lower = combined_text.lower()
+defense_signals = ["dod", "defense", "military", "department of defense"]
+if any(signal in combined_lower for signal in defense_signals):
+    has_cmmc = any("cmmc" in item["requirement"].lower() for item in compliance_items)
+    if not has_cmmc:
+        compliance_items.append({
+            "requirement": "CMMC Level 1/2 certification (auto-flagged — DoD Phase 1 live Nov 2025)",
+            "category": "certification",
+            "source": "auto_detected",
+            "status": "RISK",
+            "match_source": None,
+            "match_detail": "DoD domain detected — all new solicitations include CMMC requirements. Verify required level."
+        })
+        risk_count += 1
+
+# Enhancement: FedRAMP 20x awareness
+if "fedramp" in combined_lower or "fed-ramp" in combined_lower:
+    compliance_items.append({
+        "requirement": "FedRAMP authorization — NOTE: 20x modernization (March 2025+) reduced timelines to ~3 months; KSIs replace static checklists",
+        "category": "certification",
+        "source": "auto_detected",
+        "status": "RISK",
+        "match_source": None,
+        "match_detail": "FedRAMP detected — verify current authorization status and 20x program alignment"
+    })
+    risk_count += 1
 
 compliance_check = {
     "phase": "4a",
@@ -131,6 +191,7 @@ compliance_check = {
     "total_items": len(compliance_items),
     "summary": {
         "pass": pass_count,
+        "partial": partial_count,
         "gap": gap_count,
         "risk": risk_count
     },
@@ -205,7 +266,7 @@ for i in range(1, len(project_sections)-1, 2):
 
 ### Step 6: Score Each Project
 
-Scoring algorithm: industry(10/5) + tech(3/match, max 15) + metrics(5) + quote(2) + recency(1-5) + scale(0-3) = 0-40 max
+Scoring algorithm (FAR 15.305 relevance factors): industry(10/5) + tech(3/match, max 15) + metrics(5) + quote(2) + recency(1-5) + scale(0-3) + contract_type(0-3) + dollar_proximity(0-3) = 0-46 max
 
 ```python
 rfp_summary = read_json(f"{folder}/screen/rfp-summary.json")
@@ -280,6 +341,59 @@ for project in projects:
         breakdown["scale"] = 0
     score += breakdown["scale"]
 
+    # Contract type similarity (max 3) [FAR 15.305 relevance factor]
+    contract_type_score = 0
+    rfp_contract_type = (rfp_summary.get("contract_type") or "").upper()
+    project_content_lower = (project.get("description") or "").lower()
+
+    contract_type_families = {
+        "FFP": ["firm fixed", "fixed price", "ffp", "fixed-price"],
+        "T&M": ["time and material", "t&m", "time & material", "hourly"],
+        "IDIQ": ["idiq", "indefinite delivery", "task order", "blanket purchase"],
+        "CPFF": ["cost plus", "cpff", "cost-reimbursement", "cpaf"],
+        "BPA": ["bpa", "blanket purchase", "standing order"]
+    }
+    related_types = {
+        "FFP": ["CPFF", "BPA"], "T&M": ["IDIQ", "BPA"],
+        "IDIQ": ["T&M", "BPA"], "CPFF": ["FFP", "T&M"], "BPA": ["IDIQ", "T&M"]
+    }
+
+    if rfp_contract_type:
+        exact_kws = contract_type_families.get(rfp_contract_type, [rfp_contract_type.lower()])
+        if any(kw in project_content_lower for kw in exact_kws):
+            contract_type_score = 3
+        else:
+            for related in related_types.get(rfp_contract_type, []):
+                rel_kws = contract_type_families.get(related, [related.lower()])
+                if any(kw in project_content_lower for kw in rel_kws):
+                    contract_type_score = 1
+                    break
+    breakdown["contract_type"] = contract_type_score
+    score += contract_type_score
+
+    # Dollar value proximity (max 3) [FAR 15.305 relevance factor]
+    dollar_score = 0
+    rfp_value = rfp_summary.get("estimated_value", 0)
+    import re as _re
+    project_value = 0
+    val_match = _re.search(r'\$\s*([\d,.]+)\s*(million|m|k|thousand|billion|b)?', project_content_lower)
+    if val_match:
+        val_num = val_match.group(1).replace(",", "")
+        mult_map = {"million": 1e6, "m": 1e6, "billion": 1e9, "b": 1e9, "thousand": 1e3, "k": 1e3}
+        try:
+            project_value = float(val_num) * mult_map.get(val_match.group(2), 1)
+        except ValueError:
+            project_value = 0
+
+    if rfp_value and project_value:
+        ratio = max(rfp_value, project_value) / max(min(rfp_value, project_value), 1)
+        if ratio <= 2:
+            dollar_score = 3
+        elif ratio <= 5:
+            dollar_score = 1
+    breakdown["dollar_proximity"] = dollar_score
+    score += dollar_score
+
     scored_projects.append({
         "project_number": project["project_number"],
         "title": project["title"],
@@ -309,8 +423,19 @@ top_5 = scored_projects[:5]
 for i, p in enumerate(top_5):
     p["rank"] = i + 1
     tech_matches = p["score_breakdown"].get("technology", {}).get("matches", [])
+    # FAR 15.305 relevance rating based on score
+    if p['relevance_score'] >= 25:
+        relevance_rating = "Very Relevant"
+    elif p['relevance_score'] >= 15:
+        relevance_rating = "Relevant"
+    elif p['relevance_score'] >= 8:
+        relevance_rating = "Somewhat Relevant"
+    else:
+        relevance_rating = "Not Relevant"
+    p["relevance_rating"] = relevance_rating
+
     p["relevance_statement"] = (
-        f"#{i+1} match (score: {p['relevance_score']}). "
+        f"#{i+1} match (score: {p['relevance_score']}, {relevance_rating}). "
         f"Industry: {p['industry']}. "
         + (f"Tech overlap: {', '.join(tech_matches[:3])}. " if tech_matches else "")
         + (f"Key result: {p['key_metrics'][0]}. " if p.get('key_metrics') else "")

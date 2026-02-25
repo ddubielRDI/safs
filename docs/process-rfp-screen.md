@@ -14,7 +14,7 @@
 
 ## Why a Screening Pipeline Exists
 
-Industry data consistently shows that **50–70% of proposals submitted are non-competitive** — they consume resources but have negligible win probability. The Shipley Business Development Lifecycle, APMP Body of Knowledge, and Lohfeld Consulting all recommend formal gate reviews before committing to full proposal development.
+Industry research consistently shows that **a significant proportion of proposals are non-competitive** — with average win rates of 30-45% ([Loopio](https://www.loopio.com/rfp-response-benchmarks/), [RWCO](https://www.rwcoinc.com/)), the majority of proposal investments do not result in awards. The Shipley Business Development Lifecycle, APMP Body of Knowledge, and Lohfeld Consulting all recommend formal gate reviews before committing to full proposal development.
 
 The screening pipeline addresses the most expensive mistake in business development: investing 80–200 labor-hours in a proposal that should never have been pursued. By front-loading analysis into a 15–30 minute automated assessment, the team gets structured data to make that call before committing.
 
@@ -357,7 +357,7 @@ All outputs are written to `{rfp-folder}/screen/`. This isolation is deliberate 
 
 The 50/40 thresholds were calibrated against the Shipley model's typical bid/no-bid gate criteria:
 
-- **Shipley recommends GO when 60–70% of evaluation factors are favorable.** Our 50/100 threshold (50%) is slightly more permissive because screening has less information fidelity than a full capture assessment.
+- **Shipley's Pwin methodology uses multi-factor qualitative scoring where 50-70% represents a decent pursuit opportunity and >70% indicates strong probability.** Our 50/100 GO threshold is calibrated to capture viable opportunities at the screening stage, where information fidelity is lower than a full capture assessment. See [docs/process-gold-standard.md](process-gold-standard.md) for detailed Shipley Pwin analysis.
 - **CONDITIONAL (40–49)** corresponds to Shipley's "Bid with conditions" — the opportunity has potential but specific risks must be addressed before resource commitment.
 - **NO-GO (<40)** corresponds to a clear "No Bid" — fundamental alignment problems that additional effort won't overcome.
 
