@@ -78,6 +78,24 @@ For every assessment area:
 4. NO FILLER — do not pad rationales with generic statements like "the company
    is well-positioned" without citing what specifically positions them.
 
+### DEADLINE-NEUTRAL SCORING (MANDATORY)
+
+**Deadline status MUST NOT penalize area scores.** RFPs may be evaluated:
+- Retroactively for learning and portfolio analysis
+- In anticipation of reissuance (common in government procurement)
+- To establish baseline positioning for future similar opportunities
+
+**Rules:**
+1. If the submission deadline has passed, note it as a **risk observation** in the
+   overall_risks array — do NOT reduce individual area scores because of it
+2. Score every area as if the opportunity were still open (evaluate capability,
+   fit, competition, resources on their merits)
+3. If the submission deadline has passed, add this to overall_risks:
+   "NOTE: Submission deadline has passed ({deadline}). Scores reflect capability
+   assessment independent of deadline status."
+4. The deadline status DOES appear in the final recommendation rationale as context,
+   but the recommendation threshold (GO/CONDITIONAL/NO-GO) is based on merit scores only
+
 ---
 
 ### Area 1: Strategic Fit (Weight: 15%)
