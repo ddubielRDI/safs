@@ -2,16 +2,17 @@
   "company_name": "Resource Data, Inc.",
   "legal_name": "Resource Data, Inc.",
   "founded": 1986,
-  "years_in_business": 39,
-  "employees": "200+",
+  "years_in_business": 40,
+  "employees": "~200",
   "tagline": "Rediscover the power of your technology",
   "mission": "Your technology partner to get the job done so you can focus on what matters most.",
   "website": "https://www.resourcedata.com",
+  "ownership": "employee-owned",
 
   "leadership": {
     "president": "Jason Mancuso",
     "directors": {
-      "Anchorage": "Ashley Rizor",
+      "Anchorage": "Ashley Sosa",
       "Juneau": "Ariel Gibson",
       "Houston": "Bill Fleming",
       "Portland": "Dave Roberts",
@@ -19,7 +20,8 @@
     },
     "service_area_leads": {
       "Data Engineering": "Rick Busch",
-      "GIS": "Tasha Jackson"
+      "GIS": "Tasha Jackson",
+      "AI": "Jason Child"
     }
   },
 
