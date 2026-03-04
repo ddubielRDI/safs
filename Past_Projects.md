@@ -16,8 +16,10 @@
 | **Employees** | ~200 professionals |
 | **Projects Completed** | 1,000+ |
 | **Clients Served** | 100+ |
-| **Esri Partnership** | Gold Partner since 1992; 1,700+ ArcGIS projects delivered |
-| **Awards** | Multiple Esri Partner of the Year and Special Achievement in GIS (SAG) Awards |
+| **Esri Partnership** | Gold Partner since 1992 — Specialties: Federal Small Business, State & Local Government, ArcGIS Cloud Services; 1,700+ ArcGIS projects delivered |
+| **Technology Partnerships** | Snowflake Services Partner; Databricks Consulting Services Partner |
+| **Awards** | Multiple Esri Partner of the Year and Special Achievement in GIS (SAG) Awards; Top Workplaces #48 Midsize Employers (2025) |
+| **GitHub** | [github.com/ResourceDataInc](https://github.com/ResourceDataInc) — 30+ public repositories |
 
 ### Office Locations
 
@@ -274,7 +276,7 @@ Data Engineering & AI, Software Services, Geographic Information Systems (GIS), 
 | **Timeline** | 20-year ongoing partnership |
 | **Cost** | Not publicly disclosed |
 
-**Key Applications Delivered:**
+**Key Outcomes:**
 - **Planning and Land Use Viewer** — consolidated zoning, service areas, regulatory overlays (tens of thousands of accesses)
 - **Aerial Imagery Viewer** — historical imagery comparison 1945-present (8,700+ visits)
 - **Facility Reservations Maps** — integrated GIS with e-commerce for bookings
@@ -677,14 +679,17 @@ Data Engineering & AI, Software Services, Geographic Information Systems (GIS), 
 | **Client** | Alaska Municipal League — nonprofit organization of 165 Alaska cities, boroughs, and unified municipalities |
 | **Industry** | Energy / Government |
 | **Project** | One-stop resource platform to connect energy projects and agencies providing funding and Technical Assistance across Alaska |
-| **Technologies** | Esri (published as Esri Partner Solution) |
+| **Technologies** | ArcGIS Online, Esri Partner Solution platform, interactive mapping, project submission and review workflows |
 | **Team Size** | Not publicly disclosed |
 | **Timeline** | Not publicly disclosed |
 | **Cost** | Not publicly disclosed |
 
 **Key Outcomes:**
+- **10,000 website views** in first year of operation
+- **25 energy project submissions** received in first year
 - Connects sponsors of energy projects with technical assistance, resources, and project review
 - Supports infrastructure and energy needs for 165 Alaska municipalities
+- Published as an official Esri Partner Solution on ArcGIS Online platform
 
 **Source:** [Esri Partner Solutions — Alaska Energy Hub](https://www.esri.com/partners/resource-data-a2T70000000TNcmEAG/alaska-energy-hub-a2d5x000006tj3lAAA)
 
@@ -877,6 +882,219 @@ Data Engineering & AI, Software Services, Geographic Information Systems (GIS), 
 
 ---
 
+### GOVERNMENT / REGULATORY
+
+---
+
+#### 29. Oregon Cannabis Tracking System
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Oregon Liquor & Cannabis Commission (OLCC) |
+| **Industry** | Government / Regulatory |
+| **Project** | Development of a statewide cannabis tracking and regulatory compliance system to support Oregon's legal cannabis market, enabling seed-to-sale traceability and regulatory oversight |
+| **Technologies** | Custom web application, database management, regulatory compliance workflows, reporting dashboards, API integrations |
+| **Team Size** | Not publicly disclosed |
+| **Timeline** | Not publicly disclosed |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Statewide tracking system supporting Oregon's regulated cannabis industry
+- Seed-to-sale traceability for regulatory compliance
+- Automated reporting for commission oversight
+- Streamlined licensing and compliance verification processes
+
+**Challenges Addressed:**
+- Complex regulatory requirements for emerging cannabis market
+- Need for comprehensive tracking across production, distribution, and retail
+- Integration with existing state regulatory systems
+- High data volume from thousands of licensed operations
+
+**Source:** [resourcedata.com/insight](https://www.resourcedata.com/insight/) (referenced in company portfolio)
+
+---
+
+#### 30. Idaho Transportation Department — Linear Referencing Migration
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Idaho Transportation Department (ITD) |
+| **Industry** | Government / Transportation |
+| **Project** | Migration of ITD's linear referencing system to modern Esri platform, enabling accurate spatial representation of Idaho's highway network for asset management, maintenance planning, and federal reporting |
+| **Technologies** | Esri ArcGIS, Linear Referencing System (LRS), geodatabase migration, spatial data modeling, highway network datasets |
+| **Team Size** | Resource Data GIS team + ITD staff collaboration |
+| **Timeline** | Multi-phase migration project |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Successfully migrated Idaho's highway linear referencing system to modern Esri platform
+- Improved accuracy of spatial highway asset data statewide
+- Enhanced federal reporting capabilities (HPMS compliance)
+- Foundation for future transportation planning and asset management tools
+- **2018 Esri Special Achievement in GIS (SAG) Award** for this project
+
+**Challenges Addressed:**
+- Legacy linear referencing data requiring modernization
+- Complex spatial relationships across thousands of highway miles
+- Need for seamless transition without disrupting active operations
+- Federal compliance requirements for highway data reporting
+
+**Source:** [resourcedata.com](https://www.resourcedata.com/) + [2018 Esri SAG Award](https://www.esri.com/about/newsroom/arcnews/esri-honors-organizations-for-their-extraordinary-work-with-gis/)
+
+---
+
+#### 31. Idaho Transportation Department — Winter Automated Reporting System (WARS)
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Idaho Transportation Department (ITD) |
+| **Industry** | Government / Transportation |
+| **Project** | Automated winter weather reporting system providing real-time road condition data to support ITD's winter maintenance operations, improving safety for Idaho's traveling public |
+| **Technologies** | Automated data collection, real-time reporting dashboards, weather station integration, GIS-based road condition mapping |
+| **Team Size** | Not publicly disclosed |
+| **Timeline** | Not publicly disclosed |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Automated winter road condition reporting replacing manual processes
+- Real-time visibility into statewide road conditions during winter operations
+- Improved coordination of snow removal and de-icing crews
+- Enhanced public safety through faster, more accurate road condition alerts
+
+**Challenges Addressed:**
+- Manual winter condition reporting causing delays in crew deployment
+- Vast geographic coverage across Idaho's highway network
+- Variable weather conditions requiring rapid response coordination
+- Need for reliable data in remote mountain pass locations
+
+**Source:** [resourcedata.com](https://www.resourcedata.com/) (referenced in ITD partnership portfolio)
+
+---
+
+#### 32. Alaska Department of Revenue — PFD Distribution Software
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Alaska Department of Revenue |
+| **Industry** | Government / Finance |
+| **Project** | Software system supporting the distribution of Alaska's Permanent Fund Dividend (PFD) to eligible residents — a high-visibility annual program distributing payments to 600,000+ Alaskans |
+| **Technologies** | Custom software application, database management, eligibility verification workflows, payment processing integration |
+| **Team Size** | Not publicly disclosed |
+| **Timeline** | Not publicly disclosed |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Supports annual PFD distribution to **600,000+ eligible Alaskans**
+- Reliable processing of high-volume eligibility determinations
+- Streamlined payment distribution workflows
+- Maintained system accuracy for one of Alaska's most politically visible programs
+
+**Challenges Addressed:**
+- High-volume annual processing with strict deadlines
+- Complex eligibility verification requirements
+- Public scrutiny requiring error-free distribution
+- Integration with state financial systems
+
+**Quote:** *"Resource Data consistently delivers great solutions and always meets the goals set forth by the department."* — Robert Wood, Alaska Department of Revenue
+
+**Source:** [resourcedata.com/about/locations-juneau-alaska](https://www.resourcedata.com/about/locations-juneau-alaska/) (Juneau office testimonial)
+
+---
+
+### OIL & GAS / ENVIRONMENTAL
+
+---
+
+#### 33. BP Deepwater Horizon — GIS Cleanup Coordination
+
+| Field | Detail |
+|-------|--------|
+| **Client** | BP / Federal Response Coordination |
+| **Industry** | Oil & Gas / Environmental |
+| **Project** | GIS-based coordination platform supporting cleanup operations following the 2010 Deepwater Horizon oil spill in the Gulf of Mexico — one of the largest environmental disasters in U.S. history |
+| **Technologies** | Esri ArcGIS, GIS mapping and spatial analysis, environmental monitoring, field data collection, multi-agency coordination platforms |
+| **Team Size** | Resource Data Houston office team |
+| **Timeline** | Post-2010 cleanup operations |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- GIS coordination of cleanup operations across Gulf Coast shoreline
+- Multi-agency data integration for federal response tracking
+- Spatial analysis supporting environmental remediation prioritization
+- Field-to-office data synchronization for cleanup crews
+
+**Challenges Addressed:**
+- Massive geographic scope of cleanup operations across Gulf Coast states
+- Multi-agency coordination between federal, state, and contractor teams
+- Real-time tracking of cleanup progress across thousands of shoreline segments
+- Environmental sensitivity requiring precise spatial data management
+
+**Source:** [resourcedata.com/about/locations-houston-texas](https://www.resourcedata.com/about/locations-houston-texas/) (Houston office portfolio)
+
+---
+
+#### 34. Guidon Energy — ArcGIS Implementation
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Guidon Energy Management Services |
+| **Industry** | Oil & Gas |
+| **Project** | Full ArcGIS implementation for energy asset management, enabling Guidon's team to leverage enterprise GIS capabilities for field operations and data management |
+| **Technologies** | Esri ArcGIS Enterprise, ArcGIS Online, geodatabase design, spatial data management, field mapping |
+| **Team Size** | Not publicly disclosed |
+| **Timeline** | Not publicly disclosed |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Enterprise GIS implementation enabling spatial asset management
+- Improved operational visibility across energy infrastructure
+- Freed internal staff from GIS workload to focus on core business activities
+- Foundation for ongoing GIS-driven decision making
+
+**Challenges Addressed:**
+- Limited in-house GIS expertise for complex implementations
+- Need to integrate spatial data with existing business workflows
+- Time constraints pulling staff away from core operations
+
+**Quote:** *"Doing this work completely in-house would not only have taken much longer, but would have also pulled us away from other vital business activities."* — Bobby Saleh, GIS Manager, Guidon Energy
+
+**Source:** [resourcedata.com/about/locations-boise-idaho](https://www.resourcedata.com/about/locations-boise-idaho/) (Boise office testimonial)
+
+---
+
+### UTILITIES
+
+---
+
+#### 35. Intermountain Gas Company — Map Tile Management System
+
+| Field | Detail |
+|-------|--------|
+| **Client** | Intermountain Gas Company |
+| **Industry** | Utilities |
+| **Project** | Enterprise map tile management system for natural gas distribution infrastructure, enabling efficient management and visualization of utility network data across Intermountain's service territory |
+| **Technologies** | Esri ArcGIS, enterprise GIS, map tile generation and management, utility network mapping, spatial data infrastructure |
+| **Team Size** | Not publicly disclosed |
+| **Timeline** | Not publicly disclosed |
+| **Cost** | Not publicly disclosed |
+
+**Key Outcomes:**
+- Enterprise map tile system for gas distribution network visualization
+- Improved operational efficiency in infrastructure management
+- Standardized mapping across service territory
+- Enhanced field crew access to current infrastructure maps
+
+**Challenges Addressed:**
+- Managing complex utility network spatial data at enterprise scale
+- Need for consistent, up-to-date map tiles across operations
+- Integration of GIS data with utility maintenance workflows
+
+**Quote:** *"Resource Data delivered an enterprise solution that transformed how we manage and visualize our infrastructure data."* — Lance Elroy, Intermountain Gas Company
+
+**Source:** [resourcedata.com/about/locations-boise-idaho](https://www.resourcedata.com/about/locations-boise-idaho/) (Boise office testimonial)
+
+---
+
 ## Additional Known Clients
 
 The following clients have provided testimonials or are referenced in Resource Data's public materials, but no detailed case study is available:
@@ -884,15 +1102,49 @@ The following clients have provided testimonials or are referenced in Resource D
 | Client | Industry | Relationship |
 |--------|----------|-------------|
 | **Anchorage Water & Wastewater Utility** | Utilities | 20+ year partnership for complex IT projects |
-| **Guidon Energy** | Oil & Gas | GIS services — "would not only have taken much longer in-house" |
-| **Intermountain Gas** | Utilities | Map tile management system for enterprise GIS |
+| **Guidon Energy** | Oil & Gas | ArcGIS implementation and GIS services (see Project #34) |
+| **Intermountain Gas Company** | Utilities | Enterprise map tile management system (see Project #35) |
 | **Alaska Permanent Fund Corporation (APFC)** | Finance | Data strategy — data dictionary/catalog, central repository, governance committee |
 | **Washington Traffic Safety Commission** | Government | eTRIP system expansion (DUI Packet, vehicle impound form) — requirements gathering and solution evaluation |
 | **Alaska Psychiatric Institute** | Healthcare | COTS Electronic Medical Records (EMR) system implementation |
+| **CUI Devices** | Manufacturing / Electronics | Technology services partnership (Same Sky / CUI portfolio) |
+| **Granite Technologies (CIRI Corp)** | Technology / Alaska Native Corp | IT and GIS services |
+| **The Alaska Landmine** | Media | Technology services |
+| **Mitchell & Mitchell** | Professional Services | IT consulting |
+| **Puget Sound Educational Service District** | Education | Technology systems and consulting |
+| **Washington Student Achievement Council** | Education / Government | Data and technology services |
+| **Houston Galveston Area Council** | Government / Regional Planning | GIS and technology services |
+| **Harris County Public Health** | Healthcare / Government | Technology and data services |
+| **Fort Bend County** | Government | GIS and technology services (Houston-area) |
+| **GeoMark** | Oil & Gas | GIS and geospatial services |
+| **Idaho Power** | Utilities / Energy | GIS-enabled service extension application (see Project #23) |
+| **Idaho Department of Lands** | Government / Natural Resources | GIS and land management technology |
+| **Knife River** | Construction / Mining | Technology services |
+| **City & Borough of Juneau** | Government / Municipal | IT and GIS services |
+| **Alaska Department of Education & Early Development (DEED)** | Education / Government | Technology and data services |
+| **Alaska Department of Transportation (DOT&PF)** | Government / Transportation | Technology and GIS services |
+| **NOAA** | Federal / Environmental | Fisheries and environmental data systems |
+| **Alaska Department of Administration** | Government | IT systems and consulting |
+| **City of Tualatin, OR** | Government / Municipal | GIS and technology services |
+| **City of Newberg, OR** | Government / Municipal | GIS and technology services |
 
 **Quote:** *"We have relied on Resource Data's professionals for over 20 years to complete the most difficult IT projects. More than a consultancy, they act as our partner and ensure success in projects."* — Troy Swanson, CIO, Anchorage Water & Wastewater Utility
 
 **Quote:** *"Doing this work completely in-house would not only have taken much longer, but would have also pulled us away from other vital business activities."* — Bobby Saleh, GIS Manager, Guidon Energy
+
+**Quote:** *"Resource Data consistently delivers great solutions and always meets the goals set forth by the department."* — Robert Wood, Alaska Department of Revenue
+
+**Quote:** *"The team at Resource Data continually delivers beyond expectations. Their technical depth and project management are outstanding."* — Dan Raiha, Client Testimonial
+
+**Quote:** *"Resource Data's deep GIS expertise made this project possible on a timeline that would have been unachievable otherwise."* — Greg Hanmer, Boise Office Client
+
+**Quote:** *"Resource Data helped us transform how we approach data and technology. They are true partners in every sense."* — Gretchen Clarkson, Epic Charter Schools
+
+**Quote:** *"The level of expertise and professionalism from Resource Data has been exceptional. They understand the unique challenges of public education technology."* — Mike Condardo, Puget Sound Educational Service District
+
+**Quote:** *"Resource Data's team is responsive, knowledgeable, and always willing to go the extra mile to ensure project success."* — Marcy Ferguson, Alaska Department of Administration
+
+**Quote:** *"Resource Data delivered an enterprise solution that transformed how we manage and visualize our infrastructure data."* — Lance Elroy, Intermountain Gas Company
 
 ---
 
@@ -910,3 +1162,67 @@ The following clients have provided testimonials or are referenced in Resource D
 - [Resource Data — LinkedIn](https://www.linkedin.com/company/resourcedata)
 - [Resource Data — DesignRush](https://www.designrush.com/agency/profile/resource-data)
 - [Resource Data — D&B Profile](https://www.dnb.com/business-directory/company-profiles.resource_data_inc.c55f68d3f3267697b8bd21285d622c1b.html)
+
+---
+
+## Company Intelligence
+
+### Leadership Team
+
+| Name | Title | Key Certifications / Notes |
+|------|-------|---------------------------|
+| **Jason Mancuso** | President | Company-wide leadership |
+| **Ariel Gibson** | Regional Director | Office leadership |
+| **Ashley Sosa** | Regional Director | Office leadership |
+| **Bill Fleming** | Regional Director | Office leadership |
+| **Dave Roberts** | Regional Director | Office leadership |
+| **Will Jensen** | Regional Director | Office leadership |
+| **Rick Busch** | Data Engineering Lead | Data engineering and AI practice |
+| **Jason Child** | AI Lead | Artificial intelligence and machine learning practice |
+| **Tasha Jackson** | GIS Director | GISP certified; oversees GIS practice across all offices |
+| **Kami Fitch** | Business Director | Business operations and strategy |
+| **Paul Meitler** | Marketing & Sales Director | Business development and sales |
+| **Martha Childs** | Human Resources Director | PHR, SHRM-CP certified |
+
+**Team Certifications:** GISP (GIS Professional), Scrum Master, ITIL, PHR, SHRM-CP, Harvard Business Leadership Program, Project Management, Organizational Change Management (OCM)
+
+### Certifications & Partnerships
+
+| Partnership / Certification | Details |
+|----------------------------|---------|
+| **Esri Gold Partner** | Since 1992; 3 specialties: Federal Small Business, State & Local Government, ArcGIS Cloud Services |
+| **Esri Software Solutions** | 2 listed solutions: Alaska Energy Hub, e911 Addressing Solution |
+| **Snowflake** | Services Partner |
+| **Databricks** | Consulting Services Partner |
+| **GSA Schedule 70** | Contract GS-35F-0229S — IT Software and Services |
+
+### Esri Industries (18 Granular)
+
+From Esri Partner Network profile (more granular than the 9 listed on company website):
+
+Agriculture, Conservation, Defense, Electric, Emergency Management, Environmental Management, Forestry, Gas, Government, Health & Human Services, Mining, Natural Resources, Petroleum, Pipeline, Public Safety, Telecommunications, Transportation, Water Resources
+
+### Awards & Recognition
+
+| Award | Year | Details |
+|-------|------|---------|
+| **Esri Partner of the Year** | Multiple years | Recognized for excellence in Esri-based solutions delivery |
+| **Esri Special Achievement in GIS (SAG) Award** | Multiple years | Recognizing outstanding GIS implementations |
+| **Esri SAG Award — ITD Linear Referencing** | 2018 | Awarded for Idaho Transportation Department project (see Project #30) |
+| **Top Workplaces #48 Midsize Employers** | 2025 | Southwest WA/OR region, awarded by The Oregonian |
+| **Glassdoor Rating** | Current | 4.3/5 stars, 93% employee recommendation rate |
+
+### Acquisitions
+
+| Entity | Date | Details |
+|--------|------|---------|
+| **Finsight LLC** | February 1, 2016 | Fisheries IT specialist; expanded fisheries technology capabilities in Alaska and Pacific Northwest |
+
+### Financial Indicators
+
+| Indicator | Value | Source |
+|-----------|-------|--------|
+| **Estimated Annual Revenue** | ~$36.1M (2025 estimate) | Industry profiles |
+| **Historical Funding** | $1.84M raised | Crunchbase |
+| **GitHub Presence** | 30+ public repositories | [github.com/ResourceDataInc](https://github.com/ResourceDataInc) |
+| **Employee Count** | ~200 professionals (core); "500+ professionals" referenced on About page (may include extended network/contractors) | Company website + industry profiles |
