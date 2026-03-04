@@ -15,7 +15,7 @@ domain-expertise: Procurement compliance, proposal past performance, project mat
 - `{folder}/screen/rfp-summary.json` — Extracted metadata
 - `{folder}/screen/go-nogo-score.json` — Scoring context
 - Company profile: `config-win/company-profile.json`
-- `Past_Projects.md` — 28 case studies in repo root
+- `Past_Projects.md` — 35 case studies + Government Contracts Summary + Additional Known Clients + Company Intelligence in repo root
 
 **Required Outputs:**
 - `{folder}/screen/compliance-check.json` (>1KB)
@@ -134,6 +134,177 @@ for item in compliance_items:
                 item["match_detail"] = "No matching capability found in company profile"
 ```
 
+### Step 2b: Contract Vehicle Matching (from Past_Projects.md)
+
+Parse the Government Contracts Summary from Past_Projects.md and check if the RFP's state or agency matches an existing contract vehicle. An existing vehicle is a major compliance advantage.
+
+```python
+# Parse Government Contracts from Past_Projects.md
+# These appear in the "Government Contracts Summary" section with tables for Federal, State, and Local
+
+contract_vehicles = []
+
+# Federal contracts
+if "GSA Schedule 70" in past_projects_md or "GS-35F-0229S" in past_projects_md:
+    contract_vehicles.append({
+        "vehicle": "GSA Schedule 70 (GS-35F-0229S)",
+        "scope": "federal",
+        "type": "IT Software and Services",
+        "states": ["federal"]
+    })
+
+# State contracts — parse from markdown table rows
+state_contracts_section = ""
+state_match = re.search(r'### State Contracts(.*?)(?=###|\Z)', past_projects_md, re.DOTALL)
+if state_match:
+    state_contracts_section = state_match.group(1)
+
+state_contract_patterns = [
+    (r'\*\*Alaska\*\*.*?TOPS.*?Task Order Procurement', "Alaska", "TOPS", "Task Order Procurement System"),
+    (r'\*\*Minnesota\*\*.*?MNSITE.*?Professional.*?Technical', "Minnesota", "MNSITE", "Professional and Technical Services"),
+    (r'\*\*Oregon\*\*.*?MPSA.*?IT Professional', "Oregon", "MPSA", "IT Professional Business Services"),
+    (r'\*\*Washington\*\*.*?ITPS.*?#08215', "Washington", "ITPS #08215", "IT Professional Services"),
+    (r'\*\*Washington\*\*.*?#14822.*?Project Management', "Washington", "#14822", "IT Project Management Services"),
+    (r'\*\*Washington\*\*.*?#16322.*?IT Development', "Washington", "#16322", "IT Development"),
+    (r'\*\*Texas\*\*.*?DIR-CPO-6036.*?GIS', "Texas", "DIR-CPO-6036", "GIS Hardware, Software and Services"),
+    (r'\*\*Texas\*\*.*?DIR-CPO-6069.*?DBITS', "Texas", "DIR-CPO-6069", "Deliverables Based IT Services (DBITS)"),
+]
+
+for pattern, state, contract_id, desc in state_contract_patterns:
+    if re.search(pattern, past_projects_md, re.IGNORECASE | re.DOTALL):
+        contract_vehicles.append({
+            "vehicle": f"{state} — {contract_id}",
+            "scope": "state",
+            "type": desc,
+            "states": [state.lower()]
+        })
+
+# Local contracts
+local_contracts_section = ""
+local_match = re.search(r'### Local Contracts(.*?)(?=---|\Z)', past_projects_md, re.DOTALL)
+if local_match:
+    local_contracts_section = local_match.group(1)
+    if "City of Portland" in local_contracts_section:
+        contract_vehicles.append({
+            "vehicle": "City of Portland On-Call Contracts",
+            "scope": "local",
+            "type": "Web Dev, GIS, IT PM, App Dev, IT Planning",
+            "states": ["oregon"]
+        })
+    if "Washington County" in local_contracts_section:
+        contract_vehicles.append({
+            "vehicle": "Washington County IT Consulting",
+            "scope": "local",
+            "type": "PM, BA, GIS, SQL, Web Dev",
+            "states": ["oregon"]
+        })
+
+# Match contract vehicles against RFP state/agency
+rfp_state = ""
+client_name_lower = (rfp_summary.get("client_name") or "").lower()
+# Try to extract state from client name or location
+for state_name in ["alaska", "minnesota", "oregon", "washington", "texas", "idaho"]:
+    if state_name in client_name_lower or state_name in combined_text[:5000].lower():
+        rfp_state = state_name
+        break
+
+# Also check for federal
+is_federal = any(kw in client_name_lower for kw in ["federal", "faa", "gsa", "dod", "department of defense", "epa", "usda", "doi", "noaa"])
+
+matching_vehicles = []
+for cv in contract_vehicles:
+    if is_federal and cv["scope"] == "federal":
+        matching_vehicles.append(cv)
+    elif rfp_state and rfp_state in cv["states"]:
+        matching_vehicles.append(cv)
+
+if matching_vehicles:
+    compliance_items.append({
+        "requirement": f"Contract vehicle availability ({len(matching_vehicles)} existing vehicle(s) in {rfp_state or 'federal'})",
+        "category": "contract_vehicle",
+        "source": "past_projects_md",
+        "status": "PASS",
+        "match_source": "government_contracts",
+        "match_detail": "; ".join(cv["vehicle"] for cv in matching_vehicles)
+    })
+```
+
+### Step 2c: Existing Client Relationship Detection
+
+Parse the Additional Known Clients section and all 35 project clients to detect if the RFP issuer is an existing client.
+
+```python
+# Build list of ALL known clients from Past_Projects.md
+known_clients = set()
+
+# From the 35 detailed projects
+for project in projects:
+    client = (project.get("client") or "").strip()
+    if client:
+        known_clients.add(client.lower())
+
+# From the Additional Known Clients table
+additional_clients_match = re.search(r'## Additional Known Clients(.*?)(?=##|\Z)', past_projects_md, re.DOTALL)
+if additional_clients_match:
+    additional_section = additional_clients_match.group(1)
+    # Parse table rows: | **Client Name** | Industry | Relationship |
+    client_rows = re.findall(r'\|\s*\*\*(.+?)\*\*\s*\|', additional_section)
+    for client_name in client_rows:
+        known_clients.add(client_name.strip().lower())
+
+# Check if RFP client matches any known client
+rfp_client = (rfp_summary.get("client_name") or "").strip()
+rfp_client_lower = rfp_client.lower()
+existing_relationship = None
+
+for kc in known_clients:
+    # Fuzzy match: check if RFP client name is contained in known client or vice versa
+    if kc in rfp_client_lower or rfp_client_lower in kc:
+        existing_relationship = kc
+        break
+    # Also check key words (e.g., "City of Portland" matches "Portland")
+    kc_words = set(kc.split()) - {"of", "the", "and", "&", "department", "state"}
+    rfp_words = set(rfp_client_lower.split()) - {"of", "the", "and", "&", "department", "state"}
+    if len(kc_words & rfp_words) >= 2 and len(kc_words & rfp_words) / max(len(kc_words), 1) >= 0.5:
+        existing_relationship = kc
+        break
+```
+
+### Step 2d: Company Intelligence for Compliance
+
+Extract partnerships, certifications, and awards from Past_Projects.md Company Intelligence section for additional compliance evidence.
+
+```python
+# Parse Certifications & Partnerships from Company Intelligence section
+intelligence_match = re.search(r'## Company Intelligence(.*?)(?=## Sources|\Z)', past_projects_md, re.DOTALL)
+intelligence_section = intelligence_match.group(1) if intelligence_match else ""
+
+partnerships = []
+if "Esri Gold Partner" in intelligence_section or "Esri Gold Partner" in past_projects_md:
+    partnerships.append("Esri Gold Partner (since 1992)")
+if "Snowflake" in intelligence_section:
+    partnerships.append("Snowflake Services Partner")
+if "Databricks" in intelligence_section:
+    partnerships.append("Databricks Consulting Services Partner")
+
+# Parse Awards
+awards = []
+awards_match = re.findall(r'\*\*(.+?Award.*?)\*\*', intelligence_section)
+for award in awards_match:
+    awards.append(award.strip())
+
+# Check compliance items for partnership/certification matches
+for item in compliance_items:
+    if item["status"] in ["GAP", "RISK"]:
+        req_lower = item["requirement"].lower()
+        for partnership in partnerships:
+            if any(kw in req_lower for kw in partnership.lower().split()[:2]):
+                item["status"] = "PASS"
+                item["match_source"] = "partnerships"
+                item["match_detail"] = partnership
+                break
+```
+
 ### Step 3: Write Compliance Output
 
 ```python
@@ -196,7 +367,22 @@ compliance_check = {
         "risk": risk_count
     },
     "compliance_items": compliance_items,
-    "overall_status": "PASS" if gap_count == 0 else ("RISK" if gap_count <= 2 else "CONCERN")
+    "overall_status": "PASS" if gap_count == 0 else ("RISK" if gap_count <= 2 else "CONCERN"),
+
+    # Enriched data from Past_Projects.md
+    "contract_vehicles": {
+        "total_available": len(contract_vehicles),
+        "matching_rfp": [cv["vehicle"] for cv in matching_vehicles],
+        "rfp_state": rfp_state,
+        "is_federal": is_federal
+    },
+    "existing_relationship": {
+        "found": existing_relationship is not None,
+        "matched_client": existing_relationship,
+        "rfp_client": rfp_client
+    },
+    "partnerships": partnerships,
+    "awards": awards
 }
 write_json(f"{folder}/screen/compliance-check.json", compliance_check)
 ```
@@ -247,7 +433,34 @@ for i in range(1, len(project_sections)-1, 2):
     # Extract title (first line)
     title = content.split('\n')[0].strip()
 
-    # Extract fields from the content
+    # Extract fields from the content (enriched for 35-project Past_Projects.md)
+    # Extract quote text and attribution if present
+    quote_match = re.search(r'\*["""](.+?)["""]\*\s*(?:—|–|-)\s*(.+?)$', content, re.MULTILINE)
+    quote_text = quote_match.group(1).strip() if quote_match else None
+    quote_attribution = quote_match.group(2).strip() if quote_match else None
+
+    # Extract team size
+    team_size_match = re.search(r'\|\s*\*\*Team Size\*\*\s*\|\s*(.+?)\s*\|', content)
+    team_size = team_size_match.group(1).strip() if team_size_match else None
+
+    # Extract cost info
+    cost_match = re.search(r'\|\s*\*\*Cost\*\*\s*\|\s*(.+?)\s*\|', content)
+    cost_info = cost_match.group(1).strip() if cost_match else None
+
+    # Extract key outcomes as list (lines starting with "- " under Key Outcomes)
+    outcomes_section = re.search(r'\*\*Key Outcomes:\*\*(.*?)(?=\*\*Challenges|\*\*Source|\*\*Quote|\*\*Approach|\Z)', content, re.DOTALL)
+    key_outcomes = []
+    if outcomes_section:
+        key_outcomes = re.findall(r'-\s+(.+?)(?:\n|$)', outcomes_section.group(1))
+        key_outcomes = [o.strip() for o in key_outcomes if o.strip()]
+
+    # Extract challenges addressed
+    challenges_section = re.search(r'\*\*Challenges Addressed:\*\*(.*?)(?=\*\*Source|\*\*Quote|\*\*Note|\Z)', content, re.DOTALL)
+    challenges = []
+    if challenges_section:
+        challenges = re.findall(r'-\s+(.+?)(?:\n|$)', challenges_section.group(1))
+        challenges = [c.strip() for c in challenges if c.strip()]
+
     project = {
         "project_number": proj_num,
         "title": title,
@@ -257,8 +470,14 @@ for i in range(1, len(project_sections)-1, 2):
         "technologies": extract_technologies(content),
         "timeline": extract_field(content, "Timeline|Duration|Period"),
         "key_metrics": extract_metrics(content),
+        "key_outcomes": key_outcomes[:5],  # Top 5 outcomes
+        "challenges": challenges[:3],  # Top 3 challenges
+        "team_size": team_size,
+        "cost_info": cost_info,
         "has_metrics_table": bool(re.search(r'\|.*\|.*\|', content)),
-        "has_quote": bool(re.search(r'["""]', content) or re.search(r'testimonial', content, re.I)),
+        "has_quote": quote_text is not None,
+        "quote_text": quote_text,
+        "quote_attribution": quote_attribution,
         "description": content[:500]
     }
     projects.append(project)
@@ -407,7 +626,13 @@ for project in projects:
         "score_breakdown": breakdown,
         "technologies": project.get("technologies", []),
         "key_metrics": project.get("key_metrics", []),
+        "key_outcomes": project.get("key_outcomes", []),
+        "challenges": project.get("challenges", []),
+        "team_size": project.get("team_size"),
+        "cost_info": project.get("cost_info"),
         "timeline": project.get("timeline", ""),
+        "quote_text": project.get("quote_text"),
+        "quote_attribution": project.get("quote_attribution"),
         "description_summary": (project.get("description") or "")[:300]
     })
 
@@ -458,7 +683,18 @@ past_match = {
     "rfp_keywords": rfp_keywords,
     "matched_projects": top_5,
     "match_quality": "strong" if top_5 and top_5[0]["relevance_score"] > 15 else
-                     "moderate" if top_5 and top_5[0]["relevance_score"] > 8 else "weak"
+                     "moderate" if top_5 and top_5[0]["relevance_score"] > 8 else "weak",
+
+    # Enriched relationship data from Past_Projects.md
+    "existing_relationship": {
+        "found": existing_relationship is not None,
+        "matched_client": existing_relationship,
+        "rfp_client": rfp_client
+    },
+    "contract_vehicles_in_state": [cv["vehicle"] for cv in matching_vehicles],
+    "total_known_clients": len(known_clients),
+    "partnerships": partnerships,
+    "awards": awards[:5]  # Top 5 awards
 }
 write_json(f"{folder}/screen/past-projects-match.json", past_match)
 ```
@@ -472,9 +708,12 @@ Compliance:
   Items checked: {total_items}
   PASS: {pass_count} | GAP: {gap_count} | RISK: {risk_count}
   Status: {overall_status}
+  Contract Vehicles: {len(contract_vehicles)} total, {len(matching_vehicles)} match RFP state
+  Existing Relationship: {"YES — " + existing_relationship if existing_relationship else "None found"}
+  Partnerships: {', '.join(partnerships) if partnerships else 'None parsed'}
 
 Past Projects:
-  Evaluated: {total_projects_evaluated}
+  Evaluated: {total_projects_evaluated} (from 35 case studies)
   Top 5 Matches:
   {for each in top_5: f"  #{rank}. {title} ({industry}) — Score: {relevance_score}"}
   Match Quality: {match_quality}
@@ -491,8 +730,15 @@ Outputs:
 - [ ] `compliance-check.json` written (>1KB) with PASS/GAP/RISK per item
 - [ ] `past-projects-match.json` written (>1KB) with top 5 projects
 - [ ] Company profile loaded — services flattened (DICT not list)
-- [ ] Past_Projects.md parsed — projects scored by algorithm
+- [ ] Past_Projects.md parsed — ALL 35 case studies scored by algorithm
 - [ ] Technology matching uses required_technologies (with fallback to scope_keywords)
 - [ ] Override projects from company-profile.json applied
 - [ ] Related industry mapping used for partial matches
 - [ ] Each project has score_breakdown and relevance_statement
+- [ ] Contract vehicles parsed from Government Contracts Summary section
+- [ ] Matching vehicles identified for RFP state/federal scope
+- [ ] Existing client relationship checked against 35 projects + 26 Additional Known Clients
+- [ ] Partnerships & certifications parsed from Company Intelligence section
+- [ ] Enriched project fields extracted: key_outcomes, challenges, quote_text, quote_attribution, team_size
+- [ ] compliance-check.json includes contract_vehicles, existing_relationship, partnerships, awards
+- [ ] past-projects-match.json includes existing_relationship, contract_vehicles_in_state, partnerships

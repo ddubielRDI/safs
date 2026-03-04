@@ -14,6 +14,7 @@ domain-expertise: Bid/no-bid analysis, opportunity qualification, capture manage
 - Combined RFP text (in memory from Phase 0)
 - `{folder}/screen/rfp-summary.json` — Phase 1 metadata extraction
 - Company profile: `config-win/company-profile.json`
+- `Past_Projects.md` — 35 case studies + Government Contracts + Additional Known Clients + Company Intelligence (for Strategic Fit, Competitive Position, and Financial Viability evidence)
 
 **Required Output:**
 - `{folder}/screen/go-nogo-score.json` (>1KB)
@@ -71,18 +72,29 @@ For every assessment area:
    documented in the company profile or past projects, treat it as absent.
    Do not infer capabilities from company size or industry presence alone.
 
-2. CITE SOURCES — every claim in the rationale must reference a specific input:
-   - "company-profile.json services.data_and_ai includes 'Data Engineering'"
-   - "rfp-summary.json scope_keywords include 'modernization'"
-   - "Past project #5 (TCEQ GeoTAM) demonstrates dashboard delivery"
-   - "RFP Section B.21 requires insurance coverage — not verifiable from inputs"
+2. GROUND EVERY CLAIM — every claim in the rationale must be traceable to a specific input.
+   Describe the evidence naturally without referencing internal file names:
+   - GOOD: "GIS services include Enterprise Implementations, Data Management"
+   - GOOD: "TCEQ GeoTAM project demonstrates dashboard delivery"
+   - GOOD: "Two active Texas DIR contracts: DIR-CPO-6036, DIR-CPO-6069"
+   - BAD: "company-profile.json services.data_and_ai includes 'Data Engineering'"
+   - BAD: "Past_Projects.md Company Intelligence shows..."
+   - BAD: "rfp-summary.json scope_keywords include..."
+
+   **NEVER include file names** (*.json, *.md) **in rationale, evidence, risks, or mitigations.**
+   These outputs feed human-readable PDF reports. Internal file paths are meaningless
+   to reviewers.
 
 3. GAPS ARE EVIDENCE TOO — if the inputs don't contain evidence for a criterion,
-   say so explicitly: "No evidence found in company profile for [X]"
+   say so explicitly: "No documented evidence for [X]"
    Score that criterion conservatively.
 
 4. NO FILLER — do not pad rationales with generic statements like "the company
    is well-positioned" without citing what specifically positions them.
+
+5. NO PARROTED VALUES — do not include raw field values as "evidence" when they
+   add no insight. Example: "'Not applicable'" is not evidence. Instead, state what
+   the absence means: "Qualifications-only submission -- no pricing risk."
 
 ### DEADLINE-NEUTRAL SCORING (MANDATORY)
 
@@ -110,13 +122,16 @@ For every assessment area:
 - Geographic proximity between company office locations and the RFP's place of performance or issuing agency state
 - Industry alignment between company industries and the RFP domain
 - Existing contracts in the same state or with the same agency (repeat client potential)
-- Revenue significance relative to company size
+- **Existing contract vehicles in the RFP's state** (GSA Schedule 70, state ITPS/TOPS/MNSITE/MPSA/DIR contracts — see Government Contracts Summary in Past_Projects.md)
+- **Existing client relationships** — check if the RFP client appears in Past_Projects.md (35 case studies + 26 Additional Known Clients)
+- Revenue significance relative to company size (~$36.1M estimated annual revenue per Company Intelligence section)
 - Growth opportunity in the target market
 
 **Where to find evidence:**
 - `company-profile.json` locations (list of dicts with city/state), industries
 - `rfp-summary.json` client_name, client_location, industry_domain, estimated_value
 - `combined_text` for geographic requirements, place of performance clauses
+- `Past_Projects.md` Government Contracts Summary (Federal/State/Local contract vehicles), Additional Known Clients section, Company Intelligence financial indicators
 
 **Scoring guidance:**
 - **80-100:** Office in the same state, strong industry alignment, existing client relationship, significant revenue opportunity
@@ -163,11 +178,14 @@ For every assessment area:
 - Preference points: veteran-owned, small business, HUBZone eligibility vs requirements
 - COTS positioning: whether COTS/low-code is preferred (disadvantaging custom builders)
 - **Buyer priority differentiation:** HIGH buyer priorities where the company has a differentiator = significant advantage. Where the company merely meets the bar = neutral. Where there's a gap = disadvantage
+- **Awards and recognition** — Multiple Esri Partner of the Year and SAG Awards, Top Workplaces #48 (2025) provide competitive differentiation evidence (see Company Intelligence in Past_Projects.md)
+- **Technology partnerships** — Esri Gold Partner since 1992 (34 years), Snowflake Services Partner, Databricks Consulting Services Partner — strong differentiators for relevant technology stacks
 
 **Where to find evidence:**
 - `rfp-summary.json` evaluation_criteria, evaluation_method, set_aside, prior_rfp_history
 - `company-profile.json` bid_defaults (veteran_owned, small_business, certifications)
 - `combined_text` for competition signals, preference language, incumbent references
+- `Past_Projects.md` Company Intelligence section: Awards & Recognition, Certifications & Partnerships
 
 **Scoring guidance:**
 - **80-100:** Evaluation criteria favor company strengths, no set-aside barriers, few competitors expected, eligible for preference points
@@ -217,6 +235,7 @@ For every assessment area:
 **Where to find evidence:**
 - `rfp-summary.json` estimated_value, contract_type, pricing_structure
 - `company-profile.json` employees, revenue (if available), bid_defaults
+- `Past_Projects.md` Company Intelligence: ~$36.1M estimated annual revenue (2025), ~200 employees, employee-owned
 - `combined_text` for pricing clauses, rate ceilings, payment schedules, cost accounting standards
 
 **Scoring guidance:**

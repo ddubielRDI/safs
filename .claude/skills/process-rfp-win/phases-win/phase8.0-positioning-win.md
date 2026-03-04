@@ -460,12 +460,18 @@ if evidence_library:
     # Sort by relevance
     matched_evidence.sort(key=lambda x: x["relevance_score"], reverse=True)
 
-    # Fallback: if fewer than 3 matches, include all pre-populated metrics and differentiators
+    # Fallback: if fewer than 3 matches, include pre-populated metrics and differentiators
+    # BUT only items that have substantive content (not raw field values or "N/A" entries)
     if len(matched_evidence) < 3 and evidence_library:
         for category in ["metrics", "differentiators"]:
             for item in evidence_library.get("categories", {}).get(category, []):
                 item_text = item.get("statement", "")
                 if "[USER INPUT" in str(item_text):
+                    continue
+                # Skip meaningless/parroted values
+                skip_patterns = ["not applicable", "n/a", "none", "request for qualifications only",
+                                 "not disclosed", "not specified", "unknown"]
+                if any(p in item_text.lower().strip("' \"") for p in skip_patterns):
                     continue
                 if not any(e["id"] == item.get("id") for e in matched_evidence):
                     matched_evidence.append({
@@ -474,7 +480,7 @@ if evidence_library:
                         "content": item_text,
                         "tags": item.get("tags", []),
                         "relevance_tags": [],
-                        "relevance_score": 0  # fallback — no keyword match but included for minimum coverage
+                        "relevance_score": 0  # fallback -- no keyword match but included for minimum coverage
                     })
         log(f"Evidence fallback: padded to {len(matched_evidence)} items (minimum coverage)")
 ```
@@ -971,7 +977,7 @@ positioning_output = {
         "total_projects_evaluated": len(scored_projects) if 'scored_projects' in dir() else 0,
         "projects_selected": len(matched_projects),
         "match_warning": match_warning,
-        "source_file": "Past_Projects.md",
+        "_internal_source": "Past_Projects.md",  # internal only -- NEVER include in bid output
         "rfp_domain": domain_context.get("selected_domain", "default"),
         "rfp_industry": domain_context.get("industry", "")
     },

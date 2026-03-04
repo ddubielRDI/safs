@@ -94,20 +94,29 @@ For every assessment area:
    documented in the company profile or past projects, treat it as absent.
    Do not infer capabilities from company size or industry presence alone.
 
-2. CITE SOURCES — every claim in the rationale must reference a specific input:
-   - "company-profile.json services.data_and_ai includes 'Data Engineering'"
-   - "EVALUATION_CRITERIA.json lists 'Technical Approach' at 40% weight"
-   - "COMPLIANCE_MATRIX.json mandatory_items includes insurance requirement"
-   - "SUBMISSION_STRUCTURE.json requires 3 volumes with 50-page limit"
-   - "domain-context.json industry is 'healthcare' with HIPAA framework"
-   - "RFP Section B.21 requires insurance coverage — not verifiable from inputs"
+2. GROUND EVERY CLAIM — every claim in the rationale must be traceable to a specific input.
+   Describe the evidence naturally without referencing internal file names:
+   - GOOD: "GIS services include Enterprise Implementations, Data Management"
+   - GOOD: "Evaluation criteria list Technical Approach at 40% weight"
+   - GOOD: "Two active Texas DIR contracts: DIR-CPO-6036, DIR-CPO-6069"
+   - BAD: "company-profile.json services.data_and_ai includes 'Data Engineering'"
+   - BAD: "Past_Projects.md Company Intelligence shows..."
+   - BAD: "EVALUATION_CRITERIA.json lists..."
+
+   **NEVER include file names** (*.json, *.md) **in rationale, evidence, risks, or mitigations.**
+   These outputs feed human-readable reports and PDFs. Internal file paths are meaningless
+   to evaluators and reviewers.
 
 3. GAPS ARE EVIDENCE TOO — if the inputs don't contain evidence for a criterion,
-   say so explicitly: "No evidence found in company profile for [X]"
+   say so explicitly: "No documented evidence for [X]"
    Score that criterion conservatively.
 
 4. NO FILLER — do not pad rationales with generic statements like "the company
    is well-positioned" without citing what specifically positions them.
+
+5. NO PARROTED VALUES — do not include raw field values as "evidence" when they
+   add no insight. Example: "'Not applicable'" is not evidence. Instead, state what
+   the absence means: "Qualifications-only submission -- no pricing risk."
 
 ### DEADLINE-NEUTRAL SCORING (MANDATORY)
 

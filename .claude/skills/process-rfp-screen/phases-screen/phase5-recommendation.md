@@ -162,6 +162,30 @@ if top_match.get("relevance_score", 0) > 15:
         "source": "past_project_matching"
     })
 
+# Contract vehicle advantage (from Phase 4 enrichment)
+matching_vehicles = compliance.get("contract_vehicles", {}).get("matching_rfp", [])
+if matching_vehicles:
+    opportunities.append({
+        "opportunity": f"Existing contract vehicle(s) in RFP state: {'; '.join(matching_vehicles[:2])}",
+        "source": "contract_vehicles"
+    })
+
+# Existing client relationship (from Phase 4 enrichment)
+existing_rel = compliance.get("existing_relationship", {})
+if existing_rel.get("found"):
+    opportunities.append({
+        "opportunity": f"Existing client relationship: {existing_rel.get('matched_client', 'identified')} — incumbent knowledge advantage",
+        "source": "existing_relationship"
+    })
+
+# Partnership differentiation (from Phase 4 enrichment)
+partnerships = compliance.get("partnerships", [])
+if partnerships:
+    opportunities.append({
+        "opportunity": f"Technology partnerships: {'; '.join(partnerships[:3])}",
+        "source": "partnerships"
+    })
+
 # Client intel opportunities (if available)
 if client_intel and client_intel.get("status") == "complete":
     tech_stack = client_intel.get("intelligence", {}).get("technology_stack", [])

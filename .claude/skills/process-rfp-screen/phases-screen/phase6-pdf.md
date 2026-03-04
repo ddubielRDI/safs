@@ -245,6 +245,21 @@ if intel and intel.get("status") == "complete":
 
 ```python
 md += "## Compliance Quick-Check\n\n"
+
+# Contract vehicles and existing relationships (enriched from Past_Projects.md)
+contract_info = compliance.get("contract_vehicles", {})
+matching_vehicles = contract_info.get("matching_rfp", [])
+if matching_vehicles:
+    md += f"**Existing Contract Vehicles:** {'; '.join(matching_vehicles)}\n\n"
+
+existing_rel = compliance.get("existing_relationship", {})
+if existing_rel.get("found"):
+    md += f"**Existing Client Relationship:** {existing_rel.get('matched_client', 'Identified')}\n\n"
+
+comp_partnerships = compliance.get("partnerships", [])
+if comp_partnerships:
+    md += f"**Technology Partnerships:** {'; '.join(comp_partnerships)}\n\n"
+
 md += "| Requirement | Category | Status |\n"
 md += "|-------------|----------|--------|\n"
 
@@ -295,19 +310,40 @@ if matched:
         md += f"#### {i}. {proj.get('title', 'Untitled')}\n\n"
         md += f"**Client:** {proj.get('client', 'N/A')}\n"
         md += f"**Industry:** {proj.get('industry', 'N/A')}\n"
-        md += f"**Relevance Score:** {proj.get('relevance_score', 0)}\n"
+        md += f"**Relevance Score:** {proj.get('relevance_score', 0)} ({proj.get('relevance_rating', 'N/A')})\n"
 
-        tech = proj.get("technology_matches", [])
+        if proj.get("team_size"):
+            md += f"**Team Size:** {proj.get('team_size')}\n"
+        if proj.get("timeline"):
+            md += f"**Timeline:** {proj.get('timeline')}\n"
+
+        tech = proj.get("technology_matches", []) or proj.get("technologies", [])
         if tech:
-            md += f"**Technology Overlap:** {', '.join(tech)}\n"
+            md += f"**Technologies:** {', '.join(tech[:6])}\n"
+
+        # Key outcomes (enriched from Past_Projects.md)
+        outcomes = proj.get("key_outcomes", [])
+        if outcomes:
+            md += "**Key Outcomes:**\n"
+            for outcome in outcomes[:3]:
+                md += f"- {outcome}\n"
 
         metrics = proj.get("key_metrics", [])
-        if metrics:
+        if metrics and not outcomes:
             md += f"**Key Metrics:** {'; '.join(metrics[:3])}\n"
+
+        # Client quote (enriched from Past_Projects.md)
+        quote = proj.get("quote_text")
+        attribution = proj.get("quote_attribution")
+        if quote:
+            md += f"\n*\"{quote}\"*"
+            if attribution:
+                md += f" — {attribution}"
+            md += "\n"
 
         relevance = proj.get("relevance_statement", "")
         if relevance:
-            md += f"**Relevance:** {relevance}\n"
+            md += f"\n**Relevance:** {relevance}\n"
 
         md += "\n"
 else:

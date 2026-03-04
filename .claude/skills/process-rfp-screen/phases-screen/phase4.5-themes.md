@@ -239,21 +239,56 @@ if projects_with_metrics:
         "rationale": f"{len(projects_with_metrics)} past projects with quantified results demonstrate ability to deliver measurable outcomes."
     })
 
-# Partnership/Longevity — always-on baseline
+# Partnership/Longevity — enriched from Past_Projects.md Company Intelligence
 company_name = company.get("company_name", "Resource Data, Inc.")
 years = company.get("years_in_business", 39)
 employees = company.get("employees", "200+")
+
+# Gather enriched evidence from past-projects-match.json (parsed from Past_Projects.md)
+partnerships = past_matches.get("partnerships", [])
+awards = past_matches.get("awards", [])
+contract_vehicles = past_matches.get("contract_vehicles_in_state", [])
+existing_rel = past_matches.get("existing_relationship", {})
+total_known_clients = past_matches.get("total_known_clients", 0)
+
+longevity_evidence = [
+    f"{company_name}: {years} years in business, employee-owned",
+    f"{employees} employees, 1,000+ projects completed, 100+ clients served"
+]
+longevity_score = 5  # Elevated baseline due to enriched evidence
+
+if partnerships:
+    longevity_evidence.append(f"Technology partnerships: {'; '.join(partnerships[:3])}")
+    longevity_score += 2
+if awards:
+    longevity_evidence.append(f"Awards: {'; '.join(awards[:2])}")
+    longevity_score += 1
+if existing_rel.get("found"):
+    longevity_evidence.append(f"Existing client relationship: {existing_rel.get('matched_client', '')}")
+    longevity_score += 2
+if contract_vehicles:
+    longevity_evidence.append(f"Contract vehicles in RFP state: {'; '.join(contract_vehicles[:2])}")
+    longevity_score += 2
+
 candidates.append({
     "name": "Established Partnership & Organizational Stability",
     "category": "organizational_strength",
-    "score": 3,  # Low priority baseline
-    "confidence": "low",
-    "evidence": [
-        f"{company_name}: {years} years in business",
-        f"{employees} employees"
-    ],
-    "rationale": f"Long-standing organization with {years} years of continuous operation and a deep bench. Always-available baseline theme."
+    "score": min(longevity_score, 12),
+    "confidence": "high" if longevity_score >= 8 else "medium" if longevity_score >= 5 else "low",
+    "evidence": longevity_evidence,
+    "rationale": f"Employee-owned organization with {years} years of continuous operation, {total_known_clients}+ documented client relationships, and deep technology partnerships. {'Existing relationship with the client strengthens this theme.' if existing_rel.get('found') else 'Always-available baseline theme.'}"
 })
+
+# Award-Winning Solutions theme — only if awards are present and relevant
+if awards and len(awards) >= 2:
+    candidates.append({
+        "name": "Award-Winning Quality & Innovation",
+        "category": "organizational_strength",
+        "score": min(len(awards) * 2, 8),
+        "confidence": "medium",
+        "evidence": [f"Award: {a}" for a in awards[:3]],
+        "rationale": f"{len(awards)} documented awards including Esri Partner of the Year and Special Achievement in GIS recognitions demonstrate consistent delivery excellence."
+    })
 ```
 
 #### Category 4: Client Alignment Themes (requires Phase 3 intel)

@@ -266,6 +266,26 @@ def clean_markdown(content):
     # 4. > **REVIEW REQUIRED:** ... -> empty (process-note blockquotes)
     content = re.sub(r'^>\s*\*\*REVIEW REQUIRED:\*\*.*$', '', content, flags=re.MULTILINE)
 
+    # --- Internal reference stripping (PDF only) ---
+    # 5. Strip internal file references that should never appear in deliverables
+    #    Patterns: "company-profile.json field.subfield", "Past_Projects.md Section",
+    #    "EVALUATION_CRITERIA.json", "evidence-library.json", etc.
+    content = re.sub(r'(?:company-profile\.json|Past_Projects\.md|rfp-summary\.json|'
+                     r'bid-outcomes\.json|evidence-library\.json|domain-context\.json|'
+                     r'EVALUATION_CRITERIA\.json|COMPLIANCE_MATRIX\.json|'
+                     r'SUBMISSION_STRUCTURE\.json|POSITIONING_OUTPUT\.json|'
+                     r'bid-context-bundle\.json|PERSONA_COVERAGE\.json)'
+                     r'[\s\w.\[\]()]*', '', content)
+    # 6. Clean up artifacts from reference stripping (dangling "per ", "from ", etc.)
+    content = re.sub(r'\b(per|from|in|via|see)\s*\.\s', '. ', content)
+    content = re.sub(r'\(\s*\)', '', content)  # empty parens
+    content = re.sub(r'  +', ' ', content)  # double spaces
+
+    # --- Em dash replacement (fitz.Story cannot render U+2014) ---
+    # 7. Replace em dashes with -- to prevent mojibake in PDF
+    content = content.replace('\u2014', '--')
+    content = content.replace('\u2013', '--')  # en dash too
+
     return content
 
 

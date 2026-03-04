@@ -20,6 +20,21 @@ You are a **Management Proposal Writer** with expertise in:
 
 Generate the Management Proposal volume — demonstrating Resource Data's organizational capability, project management approach, team qualifications, and relevant experience. This volume directly addresses evaluator concerns about "Can this vendor execute?"
 
+## Output Formatting Rules (MANDATORY)
+
+This phase generates content destined for PDF deliverables read by human evaluators.
+
+1. **NO INTERNAL FILE REFERENCES** -- never mention file names (*.json, *.md) in output.
+   - BAD: "See Past_Projects.md project #42 for details"
+   - BAD: "As documented in Past_Projects.md..."
+   - GOOD: "In our work with [Client Name], we delivered..."
+   When instructions say "Pull from Past_Projects.md" or "Look up project_number", use
+   the data but cite the **project name and client**, not the file.
+2. **NO EM DASHES** -- use `--` instead of the em dash character. The PDF renderer
+   (fitz.Story) cannot handle Unicode em dashes and renders them as mojibake.
+3. **NO PARROTED VALUES** -- do not echo raw field values as evidence. Transform data
+   into persuasive narrative.
+
 ## Inputs
 
 - `{folder}/shared/bid-context-bundle.json` - Aggregated context

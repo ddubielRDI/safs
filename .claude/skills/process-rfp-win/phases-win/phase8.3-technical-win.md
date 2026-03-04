@@ -25,6 +25,21 @@ Generate the Technical Approach volume — the core document evaluators score fo
 
 **This phase MUST use the Opus model** for superior technical synthesis.
 
+## Output Formatting Rules (MANDATORY)
+
+This phase generates content destined for PDF deliverables read by human evaluators.
+
+1. **NO INTERNAL FILE REFERENCES** -- never mention file names (*.json, *.md) in output.
+   - BAD: "Pull full details from Past_Projects.md using the project_number"
+   - BAD: "As documented in POSITIONING_OUTPUT.json..."
+   - GOOD: "In our work with [Client Name], we delivered [capability], achieving [metric]."
+   When instructions say "Pull from Past_Projects.md", use the data but cite the
+   **project name, client, and results** -- not the file.
+2. **NO EM DASHES** -- use `--` instead of the em dash character. The PDF renderer
+   (fitz.Story) cannot handle Unicode em dashes and renders them as mojibake.
+3. **NO PARROTED VALUES** -- do not echo raw field values as evidence. Transform data
+   into persuasive technical narrative.
+
 ## Inputs
 
 - `{folder}/shared/bid-context-bundle.json` - Aggregated context with win themes and priorities

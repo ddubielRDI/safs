@@ -23,6 +23,18 @@ Generate the Letter of Submittal - the first document evaluators read. Must esta
 
 **This phase MUST use the Opus model** for nuanced executive-level writing.
 
+## Output Formatting Rules (MANDATORY)
+
+This phase generates content destined for PDF deliverables read by human evaluators.
+
+1. **NO INTERNAL FILE REFERENCES** -- never mention file names (*.json, *.md) in output.
+   - BAD: "As documented in Past_Projects.md project #7..."
+   - GOOD: "As demonstrated in our 20-year partnership with Mat-Su Borough..."
+2. **NO EM DASHES** -- use `--` instead of the em dash character. The PDF renderer
+   (fitz.Story) cannot handle Unicode em dashes and renders them as mojibake.
+3. **NO PARROTED VALUES** -- do not echo raw field values as evidence. Transform data
+   into persuasive narrative. "'Not applicable'" is not a proof point.
+
 ## Inputs
 
 - `{folder}/shared/bid-context-bundle.json` - Aggregated context with win themes
