@@ -141,6 +141,59 @@ for area in areas:
 md += "\n---\n\n"
 ```
 
+#### Section: Buyer Priorities
+
+```python
+# Include if buyer priorities were extracted in Phase 1
+buyer_priorities = rfp.get("buyer_priorities", [])
+if buyer_priorities:
+    md += "## Buyer Priorities\n\n"
+    md += "*Decision drivers identified from RFP repetition, emphasis, evaluation weight, "
+    md += "and structural patterns (Shipley hot buttons / APMP Customer Intimacy).*\n\n"
+
+    md += "| Priority | Importance | Evaluation Criterion | Coverage |\n"
+    md += "|----------|------------|---------------------|----------|\n"
+
+    # Determine coverage from go-nogo and theme data
+    gonogo_coverage = gonogo.get("buyer_priority_coverage", {})
+    theme_coverage = themes.get("buyer_priority_coverage", {}) if themes else {}
+    addressed_list = gonogo_coverage.get("high_addressed_list", [])
+    theme_covered = theme_coverage.get("covered", [])
+
+    for bp in buyer_priorities:
+        name = bp.get("name", "Unknown")
+        importance = bp.get("importance", "?")
+        eval_crit = bp.get("evaluation_criterion", "N/A")
+
+        # Determine coverage status
+        if name in addressed_list and name in theme_covered:
+            coverage = "STRONG"
+        elif name in addressed_list or name in theme_covered:
+            coverage = "PARTIAL"
+        elif importance == "HIGH":
+            coverage = "GAP"
+        else:
+            coverage = "—"
+
+        md += f"| **{name}** | {importance} | {eval_crit} | {coverage} |\n"
+
+    md += "\n"
+
+    # Show signal evidence for each priority
+    md += "### Priority Details\n\n"
+    for bp in buyer_priorities:
+        name = bp.get("name", "Unknown")
+        signal = bp.get("signal", "No signal detected.")
+        linked = bp.get("linked_scope_keywords", [])
+        md += f"**{name}** ({bp.get('importance', '?')})\n"
+        md += f"*{signal}*\n"
+        if linked:
+            md += f"Linked keywords: {', '.join(linked)}\n"
+        md += "\n"
+
+    md += "\n---\n\n"
+```
+
 #### Section: Client Intelligence (conditional)
 
 ```python
@@ -507,7 +560,7 @@ Machine-readable: {folder}/screen/BID_SCREEN.json
 - [ ] No ghost fills — CSS has ZERO `background-color` on block elements (th, td, blockquote, pre, code)
 - [ ] No CSS `border` properties used anywhere
 - [ ] `hr` uses `height: 0; color: #ffffff; background-color: #ffffff;`
-- [ ] All 8 sections populated (Cover, Scorecard, Intel, Compliance, Projects, Themes, Risks, Recommendation)
+- [ ] All 9 sections populated (Cover, Scorecard, **Buyer Priorities**, Intel, Compliance, Projects, Themes, Risks, Recommendation)
 - [ ] Scorecard renders 7 weighted assessment areas (not 5 equal dimensions)
 - [ ] If --quick mode, intel section omitted
 - [ ] QA check passed (file exists, > 10KB, page count > 0)

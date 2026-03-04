@@ -271,7 +271,11 @@ Scoring algorithm (FAR 15.305 relevance factors): industry(10/5) + tech(3/match,
 ```python
 rfp_summary = read_json(f"{folder}/screen/rfp-summary.json")
 rfp_domain = (rfp_summary.get("industry_domain") or "").lower()
-rfp_keywords = [kw.lower() for kw in rfp_summary.get("scope_keywords", [])]
+
+# Prefer required_technologies (specific named products) over scope_keywords (generic terms)
+# Fallback ensures backward compatibility with older rfp-summary.json files
+tech_list = rfp_summary.get("required_technologies") or rfp_summary.get("scope_keywords", [])
+rfp_keywords = [kw.lower() for kw in tech_list]
 
 # Related industry mapping for partial matches (5pts instead of 10)
 related_industries = {
@@ -488,6 +492,7 @@ Outputs:
 - [ ] `past-projects-match.json` written (>1KB) with top 5 projects
 - [ ] Company profile loaded — services flattened (DICT not list)
 - [ ] Past_Projects.md parsed — projects scored by algorithm
+- [ ] Technology matching uses required_technologies (with fallback to scope_keywords)
 - [ ] Override projects from company-profile.json applied
 - [ ] Related industry mapping used for partial matches
 - [ ] Each project has score_breakdown and relevance_statement

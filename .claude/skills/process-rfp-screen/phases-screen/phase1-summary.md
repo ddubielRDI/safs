@@ -554,6 +554,154 @@ if rfp_summary["fields_not_found"]:
         log(f"    - {field}")
 ```
 
+### Step 4b: Extract Required Technologies & Evaluation Subfactors (LLM)
+
+After regex-based extraction, use LLM analysis to extract precise technology requirements and evaluation subfactors from the combined RFP text. These overlay the generic `scope_keywords` with specific named technologies and decompose evaluation criteria into what evaluators actually assess.
+
+```python
+# Build context from already-extracted fields
+extraction_context = {
+    "scope_keywords": rfp_summary.get("scope_keywords", []),
+    "evaluation_criteria": rfp_summary.get("evaluation_criteria", []),
+    "mandatory_requirements": rfp_summary.get("mandatory_requirements", []),
+    "key_deliverables": rfp_summary.get("key_deliverables", [])
+}
+
+tech_subfactor_prompt = f"""Analyze this RFP text and extract two things:
+
+1. REQUIRED TECHNOLOGIES: Specific named technologies, platforms, products, and standards
+   mentioned as required or preferred. Extract proper nouns and specific versions — not
+   generic terms like "database" or "web" (those are already in scope_keywords).
+   Examples of what TO extract: "ArcGIS Server", "SQL Server 2019", "React", ".NET 8",
+   "AWS GovCloud", "ServiceNow", "Salesforce", "JIRA", "Power BI"
+   Examples of what NOT to extract: "database", "cloud", "web application", "analytics"
+
+2. EVALUATION SUBFACTORS: For each evaluation criterion listed below, identify what the
+   RFP text says the evaluator will specifically assess. Look for:
+   - Section headings or numbered items under each criterion
+   - Stated sub-factors, sub-elements, or scoring breakdowns
+   - Emphasis language ("must demonstrate", "will be evaluated on", "should include")
+   - If no subfactors are discernible for a criterion, return an empty list
+
+Already-extracted evaluation criteria:
+{json.dumps(extraction_context["evaluation_criteria"], indent=2)}
+
+Already-extracted scope keywords (for reference — do NOT duplicate these):
+{json.dumps(extraction_context["scope_keywords"])}
+
+RFP TEXT:
+{combined_text[:60000]}
+
+Return JSON only:
+{{
+  "required_technologies": ["TechName1", "TechName2", ...],
+  "evaluation_subfactors": [
+    {{
+      "criterion": "Criterion Name (must match an evaluation_criteria name)",
+      "weight": "weight if known, e.g. 60%",
+      "subfactors": ["What evaluator assesses #1", "What evaluator assesses #2", ...]
+    }}
+  ]
+}}
+"""
+
+tech_result = llm(tech_subfactor_prompt, json_mode=True)
+
+# Validate and store
+if isinstance(tech_result.get("required_technologies"), list):
+    rfp_summary["required_technologies"] = tech_result["required_technologies"]
+    log(f"  Required Technologies: {len(rfp_summary['required_technologies'])} extracted")
+    for tech in rfp_summary["required_technologies"][:10]:
+        log(f"    - {tech}")
+else:
+    rfp_summary["required_technologies"] = []
+    log("  Required Technologies: extraction failed — falling back to scope_keywords")
+
+if isinstance(tech_result.get("evaluation_subfactors"), list):
+    rfp_summary["evaluation_subfactors"] = tech_result["evaluation_subfactors"]
+    log(f"  Evaluation Subfactors: {len(rfp_summary['evaluation_subfactors'])} criteria decomposed")
+    for sf in rfp_summary["evaluation_subfactors"]:
+        log(f"    - {sf.get('criterion', '?')}: {len(sf.get('subfactors', []))} subfactors")
+else:
+    rfp_summary["evaluation_subfactors"] = []
+    log("  Evaluation Subfactors: extraction failed")
+```
+
+### Step 4c: Identify Buyer Priorities (LLM)
+
+Identify 3–6 buyer priorities (decision drivers) by analyzing repetition, emphasis, evaluation weight, and structural patterns in the RFP. These represent what the evaluator cares about most — Shipley "hot buttons" / APMP "Customer Intimacy" / Lohfeld "decision drivers."
+
+```python
+# Build enriched context from all prior extractions
+priority_context = {
+    "required_technologies": rfp_summary.get("required_technologies", []),
+    "evaluation_subfactors": rfp_summary.get("evaluation_subfactors", []),
+    "evaluation_criteria": rfp_summary.get("evaluation_criteria", []),
+    "scope_keywords": rfp_summary.get("scope_keywords", []),
+    "mandatory_requirements": rfp_summary.get("mandatory_requirements", [])
+}
+
+buyer_priority_prompt = f"""Analyze this RFP to identify 3-6 BUYER PRIORITIES — the things the
+evaluator cares about most deeply. These are NOT just scope items; they are decision drivers
+that will separate winning proposals from adequate ones.
+
+Detect priorities by looking for CONVERGENCE of these signals:
+- REPETITION: Same concept appears in multiple RFP sections (scope, requirements, evaluation, staffing)
+- EMPHASIS: Words like "critical", "essential", "key", "must demonstrate", "extensive experience"
+- EVALUATION WEIGHT: Higher-weighted criteria = proxy for buyer priorities
+- STRUCTURAL EMPHASIS: Dedicated RFP sections, phased approach, detailed sub-requirements
+- QUALIFICATION SPECIFICITY: Named platforms/certifications (not generic "technical experience")
+
+Already-extracted data for context:
+{json.dumps(priority_context, indent=2)}
+
+RFP TEXT:
+{combined_text[:60000]}
+
+For each priority, rate importance:
+- HIGH: Evaluator will actively score on this; appears in 3+ RFP sections or is explicitly weighted
+- MEDIUM: Evaluator notices but doesn't weight separately; appears in 1-2 sections
+
+Return JSON only:
+{{
+  "buyer_priorities": [
+    {{
+      "name": "Short descriptive name (e.g., 'ESRI GIS Platform Expertise')",
+      "importance": "HIGH or MEDIUM",
+      "signal": "Evidence string: where/how this priority was detected in the RFP (cite sections, repetition count, emphasis language)",
+      "evaluation_criterion": "Which evaluation criterion this maps to, or 'Multiple' / 'None'",
+      "linked_scope_keywords": ["keyword1", "keyword2"]
+    }}
+  ]
+}}
+
+Rules:
+- Return 3-6 priorities, ordered by importance (HIGH first)
+- linked_scope_keywords: max 5 per priority, drawn from scope_keywords or required_technologies
+- Every priority MUST cite specific RFP evidence in the signal field
+- Do NOT invent priorities not supported by the text
+"""
+
+priority_result = llm(buyer_priority_prompt, json_mode=True)
+
+# Validate and store
+if isinstance(priority_result.get("buyer_priorities"), list):
+    # Cap linked_scope_keywords at 5 per priority
+    for p in priority_result["buyer_priorities"]:
+        if isinstance(p.get("linked_scope_keywords"), list):
+            p["linked_scope_keywords"] = p["linked_scope_keywords"][:5]
+        else:
+            p["linked_scope_keywords"] = []
+
+    rfp_summary["buyer_priorities"] = priority_result["buyer_priorities"]
+    log(f"  Buyer Priorities: {len(rfp_summary['buyer_priorities'])} identified")
+    for bp in rfp_summary["buyer_priorities"]:
+        log(f"    - [{bp.get('importance', '?')}] {bp.get('name', '?')}")
+else:
+    rfp_summary["buyer_priorities"] = []
+    log("  Buyer Priorities: extraction failed")
+```
+
 ### Step 5: Write Output
 
 ```python
@@ -583,7 +731,9 @@ Contract Type: {contract_type or "Not specified"}
 Domain: {industry_domain or "Not classified"}
 Set-Aside: {set_aside or "None detected"}
 Scope Keywords: {', '.join(scope_keywords) or "None extracted"}
-Evaluation: {len(evaluation_criteria)} criteria found
+Required Technologies: {len(required_technologies)} extracted
+Evaluation: {len(evaluation_criteria)} criteria, {len(evaluation_subfactors)} decomposed
+Buyer Priorities: {len(buyer_priorities)} identified ({high_count} HIGH, {medium_count} MEDIUM)
 Confidence: {extraction_confidence}
 Missing Fields: {len(fields_not_found)}
 Output: screen/rfp-summary.json
@@ -602,3 +752,8 @@ Output: screen/rfp-summary.json
 - [ ] Mandatory requirements and key deliverables captured
 - [ ] Extraction confidence assessed based on critical fields
 - [ ] Missing fields documented in `fields_not_found` array
+- [ ] Required technologies extracted via LLM (specific named products/platforms, not generic terms)
+- [ ] Evaluation subfactors decomposed per criterion (what evaluator actually assesses)
+- [ ] Buyer priorities identified (3-6, each with importance HIGH/MEDIUM, signal evidence, linked keywords)
+- [ ] linked_scope_keywords capped at 5 per buyer priority
+- [ ] LLM prompts grounded in already-extracted regex data (scope_keywords, evaluation_criteria)

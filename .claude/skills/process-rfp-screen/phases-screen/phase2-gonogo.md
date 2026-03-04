@@ -26,6 +26,12 @@ domain-expertise: Bid/no-bid analysis, opportunity qualification, capture manage
 rfp_summary = read_json(f"{folder}/screen/rfp-summary.json")
 company = read_json(COMPANY_PROFILE)
 # combined_text available from Phase 0 (in memory)
+
+# New Phase 1 enriched fields (backward-compatible — may not exist on older runs)
+buyer_priorities = rfp_summary.get("buyer_priorities", [])
+required_technologies = rfp_summary.get("required_technologies") or rfp_summary.get("scope_keywords", [])
+evaluation_subfactors = rfp_summary.get("evaluation_subfactors", [])
+high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
 ```
 
 Prepare reference data for the assessment:
@@ -130,10 +136,11 @@ For every assessment area:
 - Technology stack overlap: does the company offer the specific technologies the RFP demands
 - Mandatory requirement coverage: can each stated requirement be addressed by a documented capability
 - Depth vs breadth: does the company have deep expertise or only tangential coverage
+- **Buyer priority coverage:** For each buyer priority tagged HIGH, assess if the company has direct documented capability. Each unaddressable HIGH priority is a ceiling-reducer (~15 pts from 100)
 
 **Where to find evidence:**
 - `company-profile.json` services (DICT — flatten all categories), past_performance
-- `rfp-summary.json` scope_keywords, mandatory_requirements, technology_requirements
+- `rfp-summary.json` scope_keywords, required_technologies (prefer over scope_keywords), mandatory_requirements, buyer_priorities
 - `combined_text` for detailed technical requirements, SOW specifics
 
 **Scoring guidance:**
@@ -155,6 +162,7 @@ For every assessment area:
 - Competition level: prior proposal counts, number of expected bidders, market saturation
 - Preference points: veteran-owned, small business, HUBZone eligibility vs requirements
 - COTS positioning: whether COTS/low-code is preferred (disadvantaging custom builders)
+- **Buyer priority differentiation:** HIGH buyer priorities where the company has a differentiator = significant advantage. Where the company merely meets the bar = neutral. Where there's a gap = disadvantage
 
 **Where to find evidence:**
 - `rfp-summary.json` evaluation_criteria, evaluation_method, set_aside, prior_rfp_history
@@ -253,6 +261,7 @@ For every assessment area:
 - Structural disadvantages: incumbent lock, set-aside exclusion, late market entry
 - Teaming opportunities: could a teaming arrangement improve the bid
 - Overall competitive dynamics based on all signals gathered
+- **Buyer priority balance:** Count HIGH buyer priorities where company has strong evidence vs gaps. More addressed = higher win probability
 
 **Where to find evidence:**
 - Synthesize findings from all other assessment areas
@@ -342,8 +351,45 @@ go_nogo = {
     "overall_risks": ["aggregated risk strings"],
     "overall_mitigations": ["aggregated mitigation strings"],
     "override_allowed": True,
-    "user_decision_required": user_decision_required
+    "user_decision_required": user_decision_required,
+
+    # Buyer priority coverage tracking (from Phase 1 enrichment)
+    "buyer_priority_coverage": buyer_priority_coverage
 }
+
+# Build buyer_priority_coverage by assessing each HIGH priority against company capabilities
+high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
+addressed = []
+gaps = []
+
+for priority in high_priorities:
+    priority_name = priority.get("name", "")
+    linked_kws = [kw.lower() for kw in priority.get("linked_scope_keywords", [])]
+
+    # Check if any linked keyword appears in company services or capabilities
+    company_match = False
+    for kw in linked_kws:
+        for svc in all_services:
+            if kw in svc.lower() or svc.lower() in kw:
+                company_match = True
+                break
+        if company_match:
+            break
+
+    if company_match:
+        addressed.append(priority_name)
+    else:
+        gaps.append(priority_name)
+
+buyer_priority_coverage = {
+    "high_total": len(high_priorities),
+    "high_addressed": len(addressed),
+    "high_addressed_list": addressed,
+    "high_gaps": gaps
+}
+
+go_nogo["buyer_priority_coverage"] = buyer_priority_coverage
+
 write_json(f"{folder}/screen/go-nogo-score.json", go_nogo)
 ```
 
@@ -371,6 +417,10 @@ Overall Score: {overall_score}/100
 
 Thresholds: GO >= 50 | CONDITIONAL 40-49 | NO-GO < 40
 
+Buyer Priority Coverage:
+  HIGH priorities: {high_total} total, {high_addressed} addressed, {len(high_gaps)} gaps
+  Gaps: {', '.join(high_gaps) or "None"}
+
 Top Risks:
 {bullet list of overall_risks}
 
@@ -393,3 +443,6 @@ Output: screen/go-nogo-score.json
 - [ ] overall_score = sum(score * weight) for all 7 areas, rounded
 - [ ] Recommendation follows thresholds (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
 - [ ] Output field is "recommendation" (not "decision")
+- [ ] buyer_priorities and required_technologies loaded from rfp-summary.json (with fallback)
+- [ ] buyer_priority_coverage computed: high_total, high_addressed, high_gaps
+- [ ] HIGH buyer priorities referenced in Technical Capability, Competitive Position, and Win Probability narratives

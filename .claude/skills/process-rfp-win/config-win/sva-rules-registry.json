@@ -54,7 +54,15 @@
           "enabled": true,
           "description": "EVALUATION_CRITERIA.json has at least 3 evaluation factors. Weights sum to ~100%. At least 1 factor has explicit (non-inferred) weight.",
           "auto_correctable": true,
-          "corrective_phase": "1.6"
+          "corrective_phase": "1.6",
+          "lessons_learned": [
+            {
+              "date": "2026-03-03",
+              "finding": "False positive on simple RFQs with Quality-Based Selection (QBS)",
+              "detail": "Simple RFQs may legitimately have only 2 evaluation factors (e.g., Company Qualifications 60%, Key Personnel 40%). The minimum-3 threshold should apply only to complex RFPs.",
+              "guidance": "QBS/RFQ solicitations with exactly 2 factors where weights sum to 100% should score as PASS, not FAIL. Check solicitation type before applying the >= 3 threshold."
+            }
+          ]
         },
         {
           "id": "SVA1-COMPLIANCE-COVERAGE",
@@ -65,7 +73,15 @@
           "description": "Ratio of mandatory items in COMPLIANCE_MATRIX.json to SHALL/MUST occurrences in flattened text > 0.7.",
           "threshold": 0.7,
           "auto_correctable": true,
-          "corrective_phase": "1.7"
+          "corrective_phase": "1.7",
+          "lessons_learned": [
+            {
+              "date": "2026-03-03",
+              "finding": "Items/keywords ratio misleading due to contextual SHALL/MUST keywords",
+              "detail": "SHALL/MUST keywords are often contextual — appearing in section headers, quoted regulations, and compound sentences restating the same obligation. Initial ratio of 0.58 improved to 0.745 after keyword mapping analysis revealed duplication.",
+              "guidance": "Rule should consider keyword deduplication before computing the ratio. Many SHALL/MUST occurrences are continuations, headers, or regulatory quotes, not distinct mandatory items. Deduplicate by clause before comparing to COMPLIANCE_MATRIX.json item count."
+            }
+          ]
         },
         {
           "id": "SVA1-COMPLIANCE-CATEGORIES",
@@ -168,7 +184,15 @@
           "severity": "CRITICAL",
           "category": "Traceability",
           "enabled": true,
-          "description": "Every CRITICAL and HIGH priority requirement is addressed by at least one specification document."
+          "description": "Every CRITICAL and HIGH priority requirement is addressed by at least one specification document.",
+          "lessons_learned": [
+            {
+              "date": "2026-03-03",
+              "finding": "Coverage threshold doesn't exclude administrative/procurement requirements",
+              "detail": "Administrative requirements (form submission, bid packaging, vendor disclosures, insurance paperwork) are legitimately NOT addressed in technical specifications — they belong in bid response sections (Phase 8). Including them in the denominator artificially deflates coverage from ~97% to 87.6%.",
+              "guidance": "Coverage calculation should exclude requirements with category=ADM and type=COMPLIANCE that relate to procurement process. Alternatively, lower the effective threshold to 90% with an explicit note about administrative exclusion. Technical coverage should be evaluated independently from procurement compliance."
+            }
+          ]
         },
         {
           "id": "SVA3-SPEC-INTERNAL-CONSISTENCY",
@@ -200,7 +224,15 @@
           "severity": "MEDIUM",
           "category": "Completeness",
           "enabled": true,
-          "description": "Every data entity from workflow requirements has a definition in ENTITY_DEFINITIONS.md."
+          "description": "Every data entity from workflow requirements has a definition in ENTITY_DEFINITIONS.md.",
+          "lessons_learned": [
+            {
+              "date": "2026-03-03",
+              "finding": "Entity candidate extraction includes non-system entities",
+              "detail": "Entity candidates extracted from requirements include administrative and legal form types (General Partnership, Sole Proprietorship, Interlocal Agreement) that are legal/organizational concepts, not system data entities. These inflate the candidate count and deflate the completeness ratio.",
+              "guidance": "Entity candidate extraction should filter to data entities only — objects that will be stored, queried, or processed by the system. Exclude legal/organizational form types, procurement concepts, and regulatory classification terms that appear as nouns in requirements but are not system-managed entities."
+            }
+          ]
         },
         {
           "id": "SVA3-SPEC-DEPTH-RATIO",

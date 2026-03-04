@@ -42,6 +42,10 @@ intel_available = client_intel is not None and client_intel.get("status") == "co
 rfp_domain = (rfp_summary.get("industry_domain") or "").lower()
 scope_keywords = [kw.lower() for kw in rfp_summary.get("scope_keywords", [])]
 eval_criteria = rfp_summary.get("evaluation_criteria", [])
+
+# New Phase 1 enriched fields (backward-compatible)
+buyer_priorities = rfp_summary.get("buyer_priorities", [])
+required_technologies = rfp_summary.get("required_technologies", [])
 matched_projects = past_matches.get("matched_projects", [])
 match_quality = past_matches.get("match_quality", "weak")
 compliance_summary = compliance.get("summary", {})
@@ -361,6 +365,65 @@ Return ONLY the framing text, no labels or quotes."""
     theme["framing"] = framing
 ```
 
+### Step 3c: Buyer Priority Coverage Check
+
+After selecting themes, verify that the selected themes collectively address all HIGH buyer priorities. This signals to the full pipeline where theme gaps exist.
+
+```python
+# Check: do selected themes collectively reference all HIGH buyer priorities?
+high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
+
+if high_priorities:
+    # Build set of all keywords referenced by selected themes
+    theme_keywords = set()
+    for theme in selected:
+        # Gather keywords from theme evidence and name
+        theme_name_lower = theme.get("name", "").lower()
+        theme_keywords.add(theme_name_lower)
+        for ev in theme.get("evidence", []):
+            theme_keywords.update(ev.lower().split())
+
+    # Check each HIGH priority for coverage
+    covered = []
+    uncovered = []
+    for priority in high_priorities:
+        priority_name = priority.get("name", "")
+        linked_kws = [kw.lower() for kw in priority.get("linked_scope_keywords", [])]
+
+        # A priority is "covered" if any of its linked keywords appear in theme keywords
+        is_covered = any(
+            any(kw in tk for tk in theme_keywords)
+            for kw in linked_kws
+        ) if linked_kws else False
+
+        # Also check if the priority name itself is referenced
+        if not is_covered:
+            is_covered = any(
+                word in " ".join(theme_keywords)
+                for word in priority_name.lower().split()
+                if len(word) > 3  # Skip short words like "and", "for"
+            )
+
+        if is_covered:
+            covered.append(priority_name)
+        else:
+            uncovered.append(priority_name)
+
+    buyer_priority_coverage = {
+        "covered": covered,
+        "uncovered": uncovered,
+        "coverage_ratio": f"{len(covered)}/{len(high_priorities)}"
+    }
+
+    if uncovered:
+        log(f"  Buyer Priority Coverage: {len(covered)}/{len(high_priorities)} HIGH priorities addressed")
+        log(f"  THEME GAPS — full pipeline should address:")
+        for u in uncovered:
+            log(f"    - {u}")
+else:
+    buyer_priority_coverage = {"covered": [], "uncovered": [], "coverage_ratio": "N/A"}
+```
+
 ### Step 4: Write Output
 
 ```python
@@ -374,6 +437,7 @@ preliminary_themes = {
     "themes_selected": len(selected),
     "category_distribution": category_counts,
     "themes": selected,
+    "buyer_priority_coverage": buyer_priority_coverage,
     "methodology": "Rule-based theme derivation from screening data. Categories: domain_expertise, technical_capability, organizational_strength, client_alignment. Max 2 per category, top 3-4 selected by score.",
     "note": "These are preliminary positioning hints. The full /process-rfp-win pipeline generates production themes with evaluation factor mapping, CVD format, and section-theme mandates."
 }
@@ -410,3 +474,7 @@ Output:
 - [ ] `intel_available` field correctly reflects Phase 3 status
 - [ ] Methodology note included explaining these are preliminary, not production themes
 - [ ] All prior phase outputs loaded and referenced (not re-analyzed from scratch)
+- [ ] buyer_priorities loaded from rfp-summary.json (backward-compatible if absent)
+- [ ] Buyer priority coverage check performed: HIGH priorities vs theme keywords
+- [ ] buyer_priority_coverage included in output (covered, uncovered, coverage_ratio)
+- [ ] Uncovered HIGH priorities flagged as "Theme gap — full pipeline should address"

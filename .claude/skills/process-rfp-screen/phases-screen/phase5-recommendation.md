@@ -194,6 +194,13 @@ if recommendation == "GO":
     if preliminary_themes and preliminary_themes.get("themes"):
         top_theme_names = [t["name"] for t in preliminary_themes["themes"][:3]]
         next_steps.append("Preliminary win themes: " + "; ".join(top_theme_names))
+
+    # Append uncovered buyer priorities as focus areas for the full pipeline
+    theme_coverage = (preliminary_themes or {}).get("buyer_priority_coverage", {})
+    gonogo_coverage = go_nogo.get("buyer_priority_coverage", {})
+    uncovered = theme_coverage.get("uncovered", []) or gonogo_coverage.get("high_gaps", [])
+    if uncovered:
+        next_steps.append("Focus areas for full pipeline (uncovered HIGH buyer priorities): " + "; ".join(uncovered))
 elif recommendation == "CONDITIONAL":
     rationale = f"Score {total_score}/100 in CONDITIONAL range. "
     if dealbreakers:
@@ -297,3 +304,5 @@ Outputs:
 - [ ] Historical bid patterns checked (if bid-outcomes.json exists with 3+ entries)
 - [ ] Opportunities identified
 - [ ] Next steps tailored to recommendation (GO/CONDITIONAL/NO-GO)
+- [ ] Uncovered HIGH buyer priorities included in next_steps (if GO recommendation)
+- [ ] buyer_priority_coverage from both go-nogo-score.json and preliminary-themes.json consulted
