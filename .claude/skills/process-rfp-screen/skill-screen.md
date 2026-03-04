@@ -30,6 +30,7 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 | `screen/preliminary-themes.json` | 4.5 | 1KB |
 | `screen/risk-assessment.json` | 5 | 1KB |
 | `screen/BID_SCREEN.json` | 5 | 3KB |
+| `screen/clarifying-questions.json` | 5.5 | 1KB |
 | `screen/BID_SCREEN.md` | 6 | 5KB |
 | `screen/BID_SCREEN.pdf` | 6 | 10KB |
 
@@ -97,6 +98,7 @@ Phase 3: Client Intelligence Snapshot        → phases-screen/phase3-intel.md  
 Phase 4: Compliance Check & Project Match    → phases-screen/phase4-compliance.md
 Phase 4.5: Preliminary Win Themes            → phases-screen/phase4.5-themes.md
 Phase 5: Risk Assessment & Recommendation    → phases-screen/phase5-recommendation.md
+Phase 5.5: Clarifying Questions Generation   → phases-screen/phase5.5-questions.md
 Phase 6: PDF Generation                      → phases-screen/phase6-pdf.md         [MANDATORY]
 ```
 
@@ -218,6 +220,13 @@ phases = [
         "skip_condition": None
     },
     {
+        "id": 5.5,
+        "name": "Clarifying Questions Generation",
+        "file": "phase5.5-questions.md",
+        "blocking": False,
+        "skip_condition": None
+    },
+    {
         "id": 6,
         "name": "PDF Generation",
         "file": "phase6-pdf.md",
@@ -265,6 +274,7 @@ required_outputs = [
     ("screen/past-projects-match.json", "Past Project Matches", 1),
     ("screen/preliminary-themes.json", "Preliminary Themes", 1),
     ("screen/risk-assessment.json", "Risk Assessment", 1),
+    ("screen/clarifying-questions.json", "Clarifying Questions", 1),
     ("screen/BID_SCREEN.json", "Consolidated Data", 3),
     ("screen/BID_SCREEN.md", "Markdown Report", 5),
     ("screen/BID_SCREEN.pdf", "PDF Report", 10),

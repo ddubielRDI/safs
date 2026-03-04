@@ -44,6 +44,12 @@ compliance = bid_screen["compliance"]
 projects = bid_screen["past_projects"]
 risk = bid_screen["risk_assessment"]
 themes = bid_screen.get("preliminary_themes", {})
+
+# Phase 5.5 output (clarifying questions) — loaded separately since it updates BID_SCREEN.json after Phase 5
+clarifying_qs = bid_screen.get("clarifying_questions", {})
+if not clarifying_qs:
+    # Fallback: read directly from file if BID_SCREEN.json wasn't updated
+    clarifying_qs = read_json_safe(f"{folder}/screen/clarifying-questions.json") or {}
 ```
 
 ### Step 2: Build BID_SCREEN.md
@@ -398,6 +404,84 @@ elif themes.get("status") != "not_generated":
     md += "\n---\n\n"
 ```
 
+#### Section: Clarifying Questions for Client
+
+```python
+# Include if clarifying questions were generated (Phase 5.5)
+cq_questions = clarifying_qs.get("questions", [])
+if cq_questions:
+    md += "## Clarifying Questions for Client\n\n"
+    md += "*Questions identified from screening analysis that would strengthen the "
+    md += "proposal approach. Prioritized by impact on bid decision and technical strategy.*\n\n"
+
+    # Questions deadline callout (only if extracted)
+    cq_deadline = clarifying_qs.get("questions_deadline", "Not found")
+    if cq_deadline and cq_deadline not in ("Not found", "Not specified", "N/A", "Unknown"):
+        # Calculate days remaining if possible
+        from datetime import datetime
+        deadline_note = ""
+        try:
+            # Try common date formats
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y", "%b %d, %Y"):
+                try:
+                    deadline_dt = datetime.strptime(cq_deadline.strip(), fmt)
+                    days_remaining = (deadline_dt - datetime.now()).days
+                    if days_remaining < 0:
+                        deadline_note = " -- PASSED"
+                    elif days_remaining == 0:
+                        deadline_note = " -- TODAY"
+                    else:
+                        deadline_note = f" -- {days_remaining} days remaining"
+                    break
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+        md += f"**Questions Deadline: {cq_deadline}{deadline_note}**\n\n"
+
+    # Summary line
+    cq_summary = clarifying_qs.get("summary", {})
+    by_priority = cq_summary.get("by_priority", {})
+    high_ct = by_priority.get("HIGH", 0)
+    med_ct = by_priority.get("MEDIUM", 0)
+    low_ct = by_priority.get("LOW", 0)
+    total_ct = cq_summary.get("total_questions", len(cq_questions))
+    md += f"**{total_ct} Questions:** {high_ct} Critical | {med_ct} Important | {low_ct} Advisory\n\n"
+
+    md += "\n### Question Details\n\n"
+
+    # Group by priority for detailed display
+    priority_labels = {
+        "HIGH": "Critical Priority",
+        "MEDIUM": "Important Priority",
+        "LOW": "Advisory Priority"
+    }
+
+    for priority_level, label in priority_labels.items():
+        priority_questions = [q for q in cq_questions if q.get("priority") == priority_level]
+        if not priority_questions:
+            continue
+
+        md += f"#### {label}\n\n"
+        for q in priority_questions:
+            qid = q.get("id", "")
+            q_text = q.get("question", "")
+            rfp_ref = q.get("rfp_reference", "")
+            impact = q.get("impact", "")
+            related = q.get("related_finding", "")
+
+            md += f"**{qid}.** {q_text}\n\n"
+            if rfp_ref:
+                md += f"- *Unclear RFP Language:* {rfp_ref}\n"
+            if impact:
+                md += f"- *Why Asked:* {impact}\n"
+            if related:
+                md += f"- *Screening Finding:* {related}\n"
+            md += "\n"
+
+    md += "\n---\n\n"
+```
+
 #### Section: Risks and Opportunities
 
 ```python
@@ -596,7 +680,8 @@ Machine-readable: {folder}/screen/BID_SCREEN.json
 - [ ] No ghost fills — CSS has ZERO `background-color` on block elements (th, td, blockquote, pre, code)
 - [ ] No CSS `border` properties used anywhere
 - [ ] `hr` uses `height: 0; color: #ffffff; background-color: #ffffff;`
-- [ ] All 9 sections populated (Cover, Scorecard, **Buyer Priorities**, Intel, Compliance, Projects, Themes, Risks, Recommendation)
+- [ ] All 10 sections populated (Cover, Scorecard, **Buyer Priorities**, Intel, Compliance, Projects, Themes, **Clarifying Questions**, Risks, Recommendation)
+- [ ] Clarifying Questions section omitted gracefully if clarifying-questions.json missing or has 0 questions
 - [ ] Scorecard renders 7 weighted assessment areas (not 5 equal dimensions)
 - [ ] If --quick mode, intel section omitted
 - [ ] QA check passed (file exists, > 10KB, page count > 0)
