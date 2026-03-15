@@ -2,17 +2,10 @@
 name: phase1.5-domain-win
 expert-role: Business Analyst
 domain-expertise: Industry classification, compliance frameworks
+skill: procurement-analyst
 ---
 
 # Phase 1.5: Domain Detection
-
-## Expert Role
-
-You are a **Business Analyst** with deep expertise in:
-- Industry classification and vertical markets
-- Regulatory compliance frameworks (FERPA, HIPAA, PCI-DSS, etc.)
-- Business terminology by sector
-- Entity relationship patterns across industries
 
 ## Purpose
 

@@ -2,11 +2,11 @@
 name: phase2-gonogo
 expert-role: Bid Decision Analyst
 domain-expertise: Bid/no-bid analysis, opportunity qualification, capture management, Shipley BD lifecycle
+skill: capture-strategist
+sub-skill: bid-decision
 ---
 
 # Phase 2: Go/No-Go Scoring
-
-**Expert Role:** Bid Decision Analyst
 
 **Purpose:** Assess the RFP opportunity across 7 weighted assessment areas using LLM narrative analysis with cited evidence. Produce a weighted score (0-100) and recommend GO, CONDITIONAL, or NO_GO.
 

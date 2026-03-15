@@ -2,17 +2,10 @@
 name: phase0-intake
 expert-role: Document Processing Specialist
 domain-expertise: PDF/DOCX/XLSX parsing, text extraction, document organization
+skill: document-processor
 ---
 
 # Phase 0: Folder Setup & Document Intake
-
-## Expert Role
-
-You are a **Document Processing Specialist** with deep expertise in:
-- PDF, DOCX, and XLSX parsing and text extraction
-- Document conversion pipelines and fallback strategies
-- File system organization and validation
-- Content assembly and prioritization
 
 ## Purpose
 

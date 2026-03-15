@@ -2,17 +2,11 @@
 name: phase7d-scoring-win
 expert-role: Bid Strategist
 domain-expertise: Win probability, scoring models
+skill: capture-strategist
+sub-skill: bid-decision
 ---
 
 # Phase 7d: Bid Scoring Model
-
-## Expert Role
-
-You are a **Bid Strategist** with deep expertise in:
-- Win probability assessment
-- Bid scoring methodologies
-- Competitive analysis
-- Strategic positioning
 
 ## Purpose
 

@@ -2,11 +2,10 @@
 name: phase5-recommendation
 expert-role: Risk Analyst & Bid Decision Advisor
 domain-expertise: Risk assessment, opportunity analysis, bid strategy, portfolio management
+skill: risk-analyst
 ---
 
 # Phase 5: Risk Assessment & Recommendation
-
-**Expert Role:** Risk Analyst & Bid Decision Advisor
 
 **Purpose:** Consolidate risks from all prior phases, check historical bid patterns, assess opportunities, and assemble the final recommendation. Produces both the risk assessment and the consolidated BID_SCREEN.json.
 
@@ -202,13 +201,65 @@ if client_intel and client_intel.get("status") == "complete":
 total_score = go_nogo.get("overall_score", 0)
 recommendation = go_nogo.get("recommendation", "NO_GO")
 
-# Generate rationale
+# Generate EVIDENCE-BASED rationale (MANDATORY: must name specific differentiators)
+# A BD director reading only this rationale should understand WHY, not just the score.
+
+# Gather evidence for rationale synthesis
+strongest_area = max(assessment_areas, key=lambda a: a.get("score", 0)) if assessment_areas else {}
+weakest_area = min(assessment_areas, key=lambda a: a.get("score", 0)) if assessment_areas else {}
+buyer_coverage = go_nogo.get("buyer_priority_coverage", {})
+high_addressed = buyer_coverage.get("high_addressed", 0)
+high_total = buyer_coverage.get("high_total", 0)
+high_gaps = buyer_coverage.get("high_gaps", [])
+top_project = past_matches.get("matched_projects", [{}])[0] if past_matches.get("matched_projects") else {}
+match_quality_str = past_matches.get("match_quality", "unknown")
+matching_vehicles = compliance.get("contract_vehicles", {}).get("matching_rfp", [])
+partnerships = compliance.get("partnerships", [])
+existing_rel = compliance.get("existing_relationship", {})
+
 if recommendation == "GO":
+    # Build a rationale that names 3+ specific differentiators
     rationale = f"Score {total_score}/100 meets GO threshold. "
-    if opportunities:
-        rationale += f"{len(opportunities)} competitive advantages identified. "
-    if risks:
-        rationale += f"{len(risks)} risks noted but manageable."
+
+    # Top differentiator from strongest assessment area
+    if strongest_area:
+        rationale += f"{strongest_area.get('name', '')} scored {strongest_area.get('score', 0)}/100"
+        # Extract first evidence item for specificity
+        evidence = strongest_area.get("evidence", [])
+        if evidence:
+            rationale += f" -- {evidence[0]}. "
+        else:
+            rationale += ". "
+
+    # Buyer priority coverage
+    if high_total > 0:
+        rationale += f"All {high_addressed}/{high_total} HIGH buyer priorities addressed. " if high_addressed == high_total else f"{high_addressed}/{high_total} HIGH buyer priorities addressed"
+        if high_gaps:
+            rationale += f" (gaps: {', '.join(high_gaps)}). "
+        else:
+            rationale += " "
+
+    # Past performance strength
+    if top_project and top_project.get("relevance_score", 0) > 15:
+        rationale += f"Past performance match quality: {match_quality_str} (top match: {top_project.get('title', 'N/A')}, score {top_project.get('relevance_score', 0)}). "
+
+    # Contract vehicles / partnerships
+    if matching_vehicles:
+        rationale += f"Existing contract vehicles in RFP state: {'; '.join(matching_vehicles[:2])}. "
+    if partnerships:
+        rationale += f"{partnerships[0]}. "
+
+    # Risk summary
+    high_risk_count = sum(1 for r in risks if r.get("severity") == "high")
+    if high_risk_count == 0:
+        rationale += f"{len(risks)} risks noted, all medium severity -- no dealbreakers."
+    else:
+        rationale += f"{high_risk_count} high-severity risk(s) require attention."
+
+    # Existing relationship note
+    if existing_rel.get("found"):
+        rationale += f" Existing client relationship: {existing_rel.get('matched_client', 'identified')}."
+
     next_steps = [
         f"Run full pipeline: /process-rfp-win {folder}",
         "Estimated full pipeline time: 3-4 hours",
@@ -225,10 +276,15 @@ if recommendation == "GO":
     uncovered = theme_coverage.get("uncovered", []) or gonogo_coverage.get("high_gaps", [])
     if uncovered:
         next_steps.append("Focus areas for full pipeline (uncovered HIGH buyer priorities): " + "; ".join(uncovered))
+
 elif recommendation == "CONDITIONAL":
     rationale = f"Score {total_score}/100 in CONDITIONAL range. "
+    if weakest_area:
+        rationale += f"Weakest area: {weakest_area.get('name', '')} ({weakest_area.get('score', 0)}/100). "
     if dealbreakers:
-        rationale += f"{len(dealbreakers)} potential dealbreaker(s) require resolution. "
+        rationale += f"{len(dealbreakers)} potential dealbreaker(s) require resolution: {'; '.join(d[:60] for d in dealbreakers[:2])}. "
+    if high_gaps:
+        rationale += f"Unaddressed HIGH buyer priorities: {', '.join(high_gaps)}. "
     rationale += "Review risks before committing resources."
     next_steps = [
         "Resolve conditions: " + "; ".join(r["risk"][:60] for r in dealbreakers[:3]),
@@ -237,6 +293,8 @@ elif recommendation == "CONDITIONAL":
     ]
 else:  # NO_GO
     rationale = f"Score {total_score}/100 below threshold. "
+    if weakest_area:
+        rationale += f"Critical weakness: {weakest_area.get('name', '')} ({weakest_area.get('score', 0)}/100). "
     rationale += "; ".join(r["risk"][:60] for r in risks[:3])
     next_steps = [
         "Do not invest in full bid preparation",

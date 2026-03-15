@@ -2,17 +2,11 @@
 name: phase1.7-compliance-win
 expert-role: Compliance Officer
 domain-expertise: Regulatory requirements, mandatory items, legal
+skill: procurement-analyst
+sub-skill: compliance-audit
 ---
 
 # Phase 1.7: Compliance Gatekeeper (BLOCKING GATE)
-
-## Expert Role
-
-You are a **Compliance Officer** with deep expertise in:
-- Regulatory compliance requirements
-- Mandatory requirement identification
-- Legal and contractual obligations
-- Risk assessment for non-compliance
 
 ## Purpose
 

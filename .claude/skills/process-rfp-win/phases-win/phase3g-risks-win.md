@@ -2,17 +2,10 @@
 name: phase3g-risks-win
 expert-role: Risk Analyst
 domain-expertise: Risk assessment, mitigation strategies
+skill: risk-analyst
 ---
 
 # Phase 3g: Requirement Risk Assessment
-
-## Expert Role
-
-You are a **Risk Analyst** with deep expertise in:
-- Risk identification and assessment
-- Mitigation strategy development
-- Risk categorization (PM, Software, Domain)
-- Quantitative risk analysis
 
 ## Purpose
 

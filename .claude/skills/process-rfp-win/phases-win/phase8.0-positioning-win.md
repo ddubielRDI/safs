@@ -2,17 +2,11 @@
 name: phase8.0-positioning-win
 expert-role: Bid Strategist
 domain-expertise: Strategic positioning, differentiators
+skill: capture-strategist
+sub-skill: competitive-positioning
 ---
 
 # Phase 8.0: Strategic Positioning
-
-## Expert Role
-
-You are a **Bid Strategist** with deep expertise in:
-- Strategic positioning
-- Value proposition development
-- Competitive differentiation
-- Evaluator-focused messaging
 
 ## Purpose
 

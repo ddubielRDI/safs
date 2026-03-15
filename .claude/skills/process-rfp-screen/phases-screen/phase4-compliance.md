@@ -2,11 +2,11 @@
 name: phase4-compliance
 expert-role: Compliance Officer & Bid Strategist
 domain-expertise: Procurement compliance, proposal past performance, project matching
+skill: procurement-analyst
+sub-skill: compliance-audit
 ---
 
 # Phase 4: Compliance Quick-Check & Past Project Match
-
-**Expert Role:** Compliance Officer & Bid Strategist
 
 **Purpose:** Two outputs: (1) Compliance gap analysis against company profile, (2) Top 5 past project matches scored by relevance. These feed into the final recommendation.
 
@@ -485,7 +485,7 @@ for i in range(1, len(project_sections)-1, 2):
 
 ### Step 6: Score Each Project
 
-Scoring algorithm (FAR 15.305 relevance factors): industry(10/5) + tech(3/match, max 15) + metrics(5) + quote(2) + recency(1-5) + scale(0-3) + contract_type(0-3) + dollar_proximity(0-3) = 0-46 max
+Scoring algorithm (FAR 15.305 relevance factors): industry(10/5) + tech(3/match, max 15) + metrics(5) + quote(2) + recency(1-5) + scale(0-3) + contract_type(0-3) + dollar_proximity(0-3) + geographic_proximity(0-5) = 0-51 max
 
 ```python
 rfp_summary = read_json(f"{folder}/screen/rfp-summary.json")
@@ -616,6 +616,50 @@ for project in projects:
             dollar_score = 1
     breakdown["dollar_proximity"] = dollar_score
     score += dollar_score
+
+    # Geographic proximity (max 5) — same state AND same government level as RFP client
+    # For municipal RFPs, a Texas city project is more relevant than a federal project
+    geo_score = 0
+    proj_client = (project.get("client") or "").lower()
+    proj_desc = (project.get("description") or "").lower()
+    proj_combined = proj_client + " " + proj_desc
+
+    # Same state bonus (3 pts): check if project client is in the RFP's state
+    if rfp_state:
+        state_names = {
+            "texas": ["texas", ", tx", "plano", "houston", "dallas", "abilene", "austin", "san antonio"],
+            "alaska": ["alaska", ", ak", "anchorage", "juneau", "fairbanks"],
+            "idaho": ["idaho", ", id", "boise"],
+            "oregon": ["oregon", ", or", "portland", "salem"],
+            "washington": ["washington state", ", wa", "seattle", "olympia"],
+            "minnesota": ["minnesota", ", mn", "minneapolis", "st. paul"],
+        }
+        state_indicators = state_names.get(rfp_state, [rfp_state])
+        if any(ind in proj_combined for ind in state_indicators):
+            geo_score += 3
+
+    # Same government level bonus (2 pts): municipal RFP prefers municipal projects
+    rfp_gov_level = ""
+    rfp_domain_lower = rfp_domain.lower()
+    if "local" in rfp_domain_lower or "municipal" in rfp_domain_lower:
+        rfp_gov_level = "local"
+    elif "state" in rfp_domain_lower:
+        rfp_gov_level = "state"
+    elif "federal" in rfp_domain_lower:
+        rfp_gov_level = "federal"
+
+    if rfp_gov_level == "local":
+        if any(kw in proj_combined for kw in ["city of", "county", "borough", "municipality", "town of"]):
+            geo_score += 2
+    elif rfp_gov_level == "state":
+        if any(kw in proj_combined for kw in ["state of", "department of", "commission", "state agency"]):
+            geo_score += 2
+    elif rfp_gov_level == "federal":
+        if any(kw in proj_combined for kw in ["federal", "faa", "gsa", "dod", "usda", "epa", "noaa"]):
+            geo_score += 2
+
+    breakdown["geographic_proximity"] = geo_score
+    score += geo_score
 
     scored_projects.append({
         "project_number": project["project_number"],

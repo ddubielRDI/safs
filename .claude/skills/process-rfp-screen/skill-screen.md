@@ -80,6 +80,9 @@ PAST_PROJECTS = "Past_Projects.md"  # In repo root
 SCAN_LIMIT = 80000  # Max chars of RFP text to analyze
 MAX_WEB_SEARCHES = 8  # Client intel search budget
 
+# Domain skills — shared across both pipelines
+DOMAIN_SKILLS_DIR = "/path/to/safs/.claude/skills"
+
 # Scoring thresholds (identical to Phase 1.9)
 THRESHOLD_GO = 50
 THRESHOLD_CONDITIONAL = 40
@@ -175,63 +178,76 @@ phases = [
         "name": "Folder Setup & Document Intake",
         "file": "phase0-intake.md",
         "blocking": True,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "document-processor"
     },
     {
         "id": 1,
         "name": "RFP Summary Extraction",
         "file": "phase1-summary.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "procurement-analyst"
     },
     {
         "id": 2,
         "name": "Go/No-Go Scoring",
         "file": "phase2-gonogo.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "capture-strategist",
+        "sub_skill": "bid-decision"
     },
     {
         "id": 3,
         "name": "Client Intelligence Snapshot",
         "file": "phase3-intel.md",
         "blocking": False,
-        "skip_condition": "quick_mode"  # Skip if --quick
+        "skip_condition": "quick_mode",  # Skip if --quick
+        "skill": "competitive-intel"
     },
     {
         "id": 4,
         "name": "Compliance Quick-Check & Past Project Match",
         "file": "phase4-compliance.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "procurement-analyst",
+        "sub_skill": "compliance-audit"
     },
     {
         "id": 4.5,
         "name": "Preliminary Win Theme Derivation",
         "file": "phase4.5-themes.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "capture-strategist",
+        "sub_skill": "competitive-positioning"
     },
     {
         "id": 5,
         "name": "Risk Assessment & Recommendation",
         "file": "phase5-recommendation.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "risk-analyst"
     },
     {
         "id": 5.5,
         "name": "Clarifying Questions Generation",
         "file": "phase5.5-questions.md",
         "blocking": False,
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "capture-strategist",
+        "sub_skill": "competitive-positioning"
     },
     {
         "id": 6,
         "name": "PDF Generation",
         "file": "phase6-pdf.md",
         "blocking": True,  # Pipeline fails without PDF
-        "skip_condition": None
+        "skip_condition": None,
+        "skill": "publication-specialist"
     }
 ]
 
@@ -242,7 +258,7 @@ for phase in phases:
 
     # Check skip condition
     if phase["skip_condition"] == "quick_mode" and quick_mode:
-        log(f"\nPhase {phase_id}: {phase_name} — SKIPPED (--quick mode)")
+        log(f"\nPhase {phase_id}: {phase_name} -- SKIPPED (--quick mode)")
         results[phase_id] = {"status": "skipped", "reason": "--quick mode"}
         continue
 
@@ -250,9 +266,48 @@ for phase in phases:
     log(f"Phase {phase_id}: {phase_name}")
     log(f"{'='*50}")
 
-    # Read phase file and execute its instructions inline
+    # --- SKILL LOADING (MANDATORY) ---
+    # Before executing the phase, load domain expertise into context.
+    # The skill file contains standards, frameworks, and quality criteria
+    # that improve output quality for this phase.
+    #
+    # HOW THIS WORKS (inline execution model):
+    # Since screen phases run in main context (no Task agents), skill loading
+    # means using the Read tool to read the skill file(s) BEFORE reading the
+    # phase file. The skill content then exists in context and informs execution.
+    #
+    # STEPS:
+    # 1. Check phase["skill"] for a skill name
+    # 2. READ {DOMAIN_SKILLS_DIR}/{skill_name}.md using the Read tool
+    # 3. If phase["sub_skill"] exists, ALSO READ {DOMAIN_SKILLS_DIR}/{skill_name}/{sub_skill_name}.md
+    # 4. Log what was loaded
+    # 5. THEN read and execute the phase file
+    #
+    # Skill loading is defensive: if a file is missing, warn and proceed without it.
+
+    skill_name = phase.get("skill")
+    sub_skill_name = phase.get("sub_skill")
+
+    if skill_name:
+        # READ the core skill file: {DOMAIN_SKILLS_DIR}/{skill_name}.md
+        skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}.md"
+        log(f"  Loading skill: {skill_name}")
+        # >>> Use Read tool on skill_path <<<
+
+        if sub_skill_name:
+            # ALSO READ the sub-skill file: {DOMAIN_SKILLS_DIR}/{skill_name}/{sub_skill_name}.md
+            sub_skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}/{sub_skill_name}.md"
+            log(f"  Loading sub-skill: {sub_skill_name}")
+            # >>> Use Read tool on sub_skill_path <<<
+
+        log(f"  Skill: {skill_name}{' + ' + sub_skill_name if sub_skill_name else ''} (loaded)")
+    else:
+        log(f"  Skill: none (procedural phase)")
+
+    # NOW read the phase file and execute its instructions.
+    # The skill content already in context will inform the phase execution.
     phase_file = f"{PHASES_DIR}/{phase['file']}"
-    # Execute phase instructions...
+    # >>> Use Read tool on phase_file, then follow its instructions <<<
 
     # After execution, verify outputs
     # (Phase-specific verification defined in each phase file)

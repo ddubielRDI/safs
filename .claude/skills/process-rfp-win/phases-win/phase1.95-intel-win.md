@@ -2,21 +2,12 @@
 name: phase1.95-intel-win
 expert-role: Competitive Intelligence Analyst
 domain-expertise: Market research, incumbent analysis, FPDS/USASpending, competitive positioning, OSINT
+skill: competitive-intel
 ---
 
 # Phase 1.95: Client Intelligence
 
 > **Conditional Execution:** This phase runs ONLY if `{folder}/shared/GO_NOGO_DECISION.json` exists and its `recommendation` field is `"GO"`, OR the user explicitly overrides with a NO-GO decision. If the recommendation is `"NO_GO"` and the user has NOT overridden, SKIP this phase and log: "Phase 1.95 skipped — Go/No-Go decision was NO_GO."
-
-## Expert Role
-
-You are a **Competitive Intelligence Analyst** with deep expertise in:
-- Open-source intelligence (OSINT) gathering
-- Market research and competitive analysis
-- Federal procurement data (FPDS, USASpending.gov, SAM.gov)
-- Incumbent vendor identification and analysis
-- Technology stack inference from job postings and news
-- Strategic positioning for proposal development
 
 ## Purpose
 

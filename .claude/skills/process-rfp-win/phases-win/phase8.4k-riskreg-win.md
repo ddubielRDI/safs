@@ -2,17 +2,10 @@
 name: phase8.4k-riskreg-win
 expert-role: Risk Analyst
 domain-expertise: Risk register formatting, tabular risk presentation, mitigation tracking, risk categorization
+skill: risk-analyst
 ---
 
 # Phase 8.4k: Risk Register
-
-## Expert Role
-
-You are a **Risk Analyst** with expertise in:
-- Structured risk register creation
-- Risk categorization and severity assessment
-- Mitigation strategy presentation
-- Tabular risk documentation for government proposals
 
 ## Purpose
 

@@ -2,17 +2,10 @@
 name: phase1-summary
 expert-role: Business Analyst
 domain-expertise: RFP analysis, procurement terminology, requirements extraction
+skill: procurement-analyst
 ---
 
 # Phase 1: RFP Summary Extraction
-
-## Expert Role
-
-You are a **Business Analyst** with deep expertise in:
-- RFP analysis and procurement terminology
-- Government and commercial solicitation processes
-- Requirements extraction and classification
-- Contract types, set-asides, and evaluation methodologies
 
 ## Purpose
 
@@ -613,6 +606,16 @@ if isinstance(tech_result.get("required_technologies"), list):
     log(f"  Required Technologies: {len(rfp_summary['required_technologies'])} extracted")
     for tech in rfp_summary["required_technologies"][:10]:
         log(f"    - {tech}")
+
+    # CRITICAL: Merge required_technologies INTO scope_keywords so downstream phases
+    # (matching, scoring, themes) use precise terms, not generic ones.
+    # Dedup by lowercase comparison; required_technologies take precedence.
+    existing_lower = {kw.lower() for kw in rfp_summary.get("scope_keywords", [])}
+    for tech in rfp_summary["required_technologies"]:
+        if tech.lower() not in existing_lower:
+            rfp_summary["scope_keywords"].append(tech)
+            existing_lower.add(tech.lower())
+    log(f"  Scope keywords enriched: {len(rfp_summary['scope_keywords'])} total (merged required_technologies)")
 else:
     rfp_summary["required_technologies"] = []
     log("  Required Technologies: extraction failed — falling back to scope_keywords")

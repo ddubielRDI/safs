@@ -2,11 +2,11 @@
 name: phase5.5-questions
 expert-role: Senior Capture Manager & Requirements Analyst
 domain-expertise: RFP analysis, requirements elicitation, Q&A period strategy, proposal capture management
+skill: capture-strategist
+sub-skill: competitive-positioning
 ---
 
 # Phase 5.5: Clarifying Questions Generation
-
-**Expert Role:** Senior Capture Manager & Requirements Analyst
 
 **Purpose:** Generate prioritized, RFP-specific clarifying questions by cross-referencing all prior phase findings against the raw RFP text. Output is professional enough to submit directly during a client Q&A period.
 

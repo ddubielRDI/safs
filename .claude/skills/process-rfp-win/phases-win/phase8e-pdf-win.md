@@ -2,17 +2,10 @@
 name: phase8e-pdf-win
 expert-role: Publication Specialist
 domain-expertise: Multi-file PDF assembly, typography, professional document layout, RFP submission packaging
+skill: publication-specialist
 ---
 
 # Phase 8e: Multi-File PDF Assembly
-
-## Expert Role
-
-You are a **Publication Specialist** with deep expertise in:
-- Multi-file PDF generation and document assembly
-- Professional typography and layout
-- RFP submission packaging with naming conventions
-- Table formatting and visual hierarchy
 
 ## Purpose
 

@@ -510,6 +510,7 @@ PHASES = [
         "subskill": "phase1-flatten-win.md",
         "expert_role": "Document Processing Specialist",
         "domain_expertise": "PDF/DOCX/XLSX parsing, text extraction, OCR",
+        "skill": "document-processor",
         "notes": "CRITICAL: PDFs must use markitdown, NEVER pdfplumber or Claude's Read tool (~1MB limit)",
         "required_outputs": ["{folder}/flattened/*.md"],
         "parallel": True
@@ -521,6 +522,7 @@ PHASES = [
         "subskill": "phase1.5-domain-win.md",
         "expert_role": "Business Analyst",
         "domain_expertise": "Industry classification, compliance frameworks",
+        "skill": "procurement-analyst",
         "required_outputs": ["{folder}/shared/domain-context.json"]
     },
     {
@@ -530,6 +532,7 @@ PHASES = [
         "subskill": "phase1.6-evaluation-win.md",
         "expert_role": "Procurement Specialist",
         "domain_expertise": "RFP evaluation criteria, scoring methodologies",
+        "skill": "procurement-analyst",
         "required_outputs": ["{folder}/shared/EVALUATION_CRITERIA.json"]
     },
     {
@@ -539,6 +542,8 @@ PHASES = [
         "subskill": "phase1.7-compliance-win.md",
         "expert_role": "Compliance Officer",
         "domain_expertise": "Regulatory requirements, mandatory items, legal",
+        "skill": "procurement-analyst",
+        "sub_skill": "compliance-audit",
         "required_outputs": ["{folder}/shared/COMPLIANCE_MATRIX.json"],
         "blocking_gate": True,
         "gate_condition": "All mandatory items must be addressed"
@@ -550,6 +555,7 @@ PHASES = [
         "subskill": "phase1.8-submission-win.md",
         "expert_role": "Procurement Analyst",
         "domain_expertise": "RFP submission requirements, volume structure, naming conventions",
+        "skill": "procurement-analyst",
         "required_outputs": ["{folder}/shared/SUBMISSION_STRUCTURE.json"]
     },
     {
@@ -559,6 +565,8 @@ PHASES = [
         "subskill": "phase1.9-gonogo-win.md",
         "expert_role": "Bid Decision Analyst",
         "domain_expertise": "Bid/no-bid analysis, opportunity qualification, capture management",
+        "skill": "capture-strategist",
+        "sub_skill": "bid-decision",
         "required_outputs": ["{folder}/shared/GO_NOGO_DECISION.json"],
         "advisory_gate": True,
         "gate_thresholds": {"go": 50, "conditional": 40, "no_go": 0},
@@ -571,6 +579,7 @@ PHASES = [
         "subskill": "phase1.95-intel-win.md",
         "expert_role": "Competitive Intelligence Analyst",
         "domain_expertise": "Market research, incumbent analysis, FPDS, competitive positioning",
+        "skill": "competitive-intel",
         "required_outputs": ["{folder}/shared/bid/CLIENT_INTELLIGENCE.json"],
         "conditional": True,
         "condition": "Only runs if GO_NOGO_DECISION.json recommends GO or user overrides",
@@ -699,6 +708,7 @@ PHASES = [
         "subskill": "phase3g-risks-win.md",
         "expert_role": "Risk Analyst",
         "domain_expertise": "Risk assessment, mitigation strategies",
+        "skill": "risk-analyst",
         "required_outputs": [
             "{folder}/outputs/REQUIREMENT_RISKS.md",
             "{folder}/shared/REQUIREMENT_RISKS.json"
@@ -794,6 +804,8 @@ PHASES = [
         "subskill": "phase7d-scoring-win.md",
         "expert_role": "Bid Strategist",
         "domain_expertise": "Win probability, scoring models",
+        "skill": "capture-strategist",
+        "sub_skill": "bid-decision",
         "required_outputs": ["{folder}/shared/WIN_SCORECARD.json"]
     },
 
@@ -806,6 +818,8 @@ PHASES = [
         "subskill": "phase8.0-positioning-win.md",
         "expert_role": "Bid Strategist",
         "domain_expertise": "Strategic positioning, differentiators, past performance matching",
+        "skill": "capture-strategist",
+        "sub_skill": "competitive-positioning",
         "required_outputs": ["{folder}/shared/bid/POSITIONING_OUTPUT.json"],
         "additional_inputs": ["Past_Projects.md", "config-win/company-profile.json"],
         "notes": "Reads Past_Projects.md and scores/ranks projects. Outputs matched_projects[], theme_eval_mapping (themes→eval factors), section_theme_mandates (bid sections→required themes), evaluator_messages (persona-tailored messaging)."
@@ -877,6 +891,7 @@ PHASES = [
         "subskill": "phase8.4k-riskreg-win.md",
         "expert_role": "Risk Analyst",
         "domain_expertise": "Risk registers, tabular risk presentation, mitigation tracking",
+        "skill": "risk-analyst",
         "required_outputs": ["{folder}/outputs/bid-sections/04_RISK_REGISTER.md"],
         "depends_on": ["8.4"]
     },
@@ -936,6 +951,7 @@ PHASES = [
         "subskill": "phase8e-pdf-win.md",
         "expert_role": "Publication Specialist",
         "domain_expertise": "PDF generation, multi-file assembly, typography, layout",
+        "skill": "publication-specialist",
         "required_outputs": ["{folder}/outputs/bid/*.pdf"],
         "notes": "⚠️ MANDATORY — Pipeline is INCOMPLETE without PDFs. Uses Python markdown_pdf (primary) or npx md-to-pdf (fallback). Generates named PDFs per SUBMISSION_STRUCTURE.json PLUS consolidated Draft_Bid.pdf. MUST ALWAYS EXECUTE.",
         "post_sva": True,
@@ -944,6 +960,7 @@ PHASES = [
 
     # ---- POST-PIPELINE (optional) ----
     {"id": "9", "name": "Post-Bid Learning (Optional)", "subskill": "phase9-postbid-win.md", "stage": "post",
+     "skill": "capture-strategist", "sub_skill": "bid-decision",
      "outputs": [("outputs/BID_OUTCOME_REPORT.md", 2)],
      "notes": "Run after bid decision received. Logs outcome to bid-outcomes.json for future pattern analysis."},
 ]
@@ -954,6 +971,7 @@ PHASES = [
 ```python
 MAX_RETRIES = 3
 SKILLS_DIR = "/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/phases-win"
+DOMAIN_SKILLS_DIR = "/home/ddubiel/repos/safs/.claude/skills"
 
 def execute_phase(phase, folder):
     """
@@ -972,10 +990,30 @@ def execute_phase(phase, folder):
         # Update progress: in_progress
         update_progress(folder, phase_id, "in_progress", f"Attempt {retry_count + 1}/{MAX_RETRIES}")
 
-        # Build Task prompt with expert role
+        # Load domain skill if phase declares one
+        skill_name = phase.get("skill")
+        sub_skill_name = phase.get("sub_skill")
+        skill_instruction = ""
+
+        if skill_name:
+            skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}.md"
+            skill_instruction = f"\n**Domain Skill:** Read `{skill_path}` FIRST for domain expertise context."
+            skill_log = f"Skill: {skill_name}"
+
+            if sub_skill_name:
+                sub_skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}/{sub_skill_name}.md"
+                skill_instruction += f"\n**Sub-skill:** Also read `{sub_skill_path}` for specialized depth."
+                skill_log += f" + {sub_skill_name}"
+
+            log(f"  {skill_log} (loading)")
+        else:
+            log(f"  Skill: none (procedural phase)")
+
+        # Build Task prompt with expert role and skill injection
         prompt = f"""
 You are a **{expert_role}** with deep expertise in:
 - {domain_expertise}
+{skill_instruction}
 
 Execute the subskill: {SKILLS_DIR}/{subskill}
 
@@ -985,10 +1023,11 @@ Execute the subskill: {SKILLS_DIR}/{subskill}
 {chr(10).join(f"- {o.replace('{folder}', folder)}" for o in required_outputs)}
 
 **Instructions:**
-1. Read the subskill file for detailed instructions
-2. Execute as the expert role specified
-3. Create ALL required outputs
-4. Verify outputs exist before completing
+1. {"Read the domain skill file(s) listed above to load expertise context" if skill_name else "Read the subskill file for detailed instructions"}
+2. Read the subskill file for detailed instructions
+3. Execute as the expert role specified
+4. Create ALL required outputs
+5. Verify outputs exist before completing
 
 **CRITICAL:** Do not report completion until all required outputs exist.
 """

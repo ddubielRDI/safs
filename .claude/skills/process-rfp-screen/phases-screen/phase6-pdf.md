@@ -2,11 +2,10 @@
 name: phase6-pdf
 expert-role: Publication Specialist
 domain-expertise: Document layout, PDF generation, professional formatting
+skill: publication-specialist
 ---
 
 # Phase 6: PDF Generation
-
-**Expert Role:** Publication Specialist
 
 **Purpose:** Generate a professional BID_SCREEN.md from consolidated data, then render as BID_SCREEN.pdf (~7-9 pages). This is the final human-readable deliverable.
 
@@ -208,13 +207,22 @@ if intel and intel.get("status") == "complete":
     intelligence = intel.get("intelligence", {})
 
     md += "## Client Intelligence\n\n"
-    md += "### Organization Profile\n\n"
 
+    # Organization Profile — populated by Phase 3 Category A search
     org = intelligence.get("organization_profile", {})
-    md += f"**Name:** {org.get('name', 'Unknown')}\n"
-    md += f"**Industry:** {org.get('industry', 'Unknown')}\n"
-    md += f"**Size:** {org.get('size', 'Unknown')}\n"
-    md += f"**Headquarters:** {org.get('headquarters', 'Unknown')}\n\n"
+    if org and org.get("name"):
+        md += "### Organization Profile\n\n"
+        md += f"**Name:** {org.get('name', 'Unknown')}\n"
+        md += f"**Industry:** {org.get('industry', 'Unknown')}\n"
+        md += f"**Size:** {org.get('size', 'Unknown')}\n"
+        md += f"**Headquarters:** {org.get('headquarters', 'Unknown')}\n"
+        if org.get("governance"):
+            md += f"**Governance:** {org.get('governance')}\n"
+        if org.get("demographics"):
+            md += f"**Demographics:** {org.get('demographics')}\n"
+        if org.get("budget"):
+            md += f"**Budget:** {org.get('budget')}\n"
+        md += "\n"
 
     # Recent News
     news = intelligence.get("news", [])
@@ -223,7 +231,24 @@ if intel and intel.get("status") == "complete":
         md += "| Date | Headline | Source |\n"
         md += "|------|----------|--------|\n"
         for item in news[:5]:
-            md += f"| {item.get('date', 'N/A')} | {item.get('headline', 'N/A')} | {item.get('source', 'N/A')} |\n"
+            if isinstance(item, dict):
+                md += f"| {item.get('date', 'N/A')} | {item.get('headline', 'N/A')} | {item.get('source', 'N/A')} |\n"
+            else:
+                md += f"| N/A | {item} | N/A |\n"
+        md += "\n"
+
+    # Key Contacts / Leadership
+    leadership = intelligence.get("leadership", [])
+    if leadership:
+        md += "### Key Contacts\n\n"
+        for person in leadership[:5]:
+            if isinstance(person, dict):
+                md += f"- **{person.get('name', 'Unknown')}** -- {person.get('title', 'Unknown')}"
+                if person.get("note"):
+                    md += f" ({person.get('note')})"
+                md += "\n"
+            else:
+                md += f"- {person}\n"
         md += "\n"
 
     # Technology Environment
@@ -231,17 +256,23 @@ if intel and intel.get("status") == "complete":
     if tech_stack:
         md += "### Technology Environment\n\n"
         for tech in tech_stack:
-            md += f"- {tech}\n"
+            if isinstance(tech, dict):
+                md += f"- **{tech.get('technology', 'Unknown')}** ({tech.get('category', '')}) -- {tech.get('note', '')}\n"
+            else:
+                md += f"- {tech}\n"
         md += "\n"
 
-    # Competitive Landscape
+    # Competitive Landscape — populated by Phase 3 Category E search
     competitive = intelligence.get("competitive_landscape", {})
-    if competitive:
+    if competitive and (competitive.get("incumbent") or competitive.get("known_competitors")):
         md += "### Competitive Landscape\n\n"
         md += f"**Incumbent:** {competitive.get('incumbent', 'Unknown')}\n"
         known = competitive.get("known_competitors", [])
         if known:
             md += f"**Known Competitors:** {', '.join(known)}\n"
+        notes = competitive.get("notes", "")
+        if notes:
+            md += f"\n*{notes}*\n"
         md += "\n"
 
     md += "\n---\n\n"

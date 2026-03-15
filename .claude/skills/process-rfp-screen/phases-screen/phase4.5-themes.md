@@ -2,11 +2,11 @@
 name: phase4.5-themes
 expert-role: Positioning Strategist
 domain-expertise: Win theme development, competitive positioning, proposal strategy, Shipley/APMP best practices
+skill: capture-strategist
+sub-skill: competitive-positioning
 ---
 
 # Phase 4.5: Preliminary Win Theme Derivation
-
-**Expert Role:** Positioning Strategist
 
 **Purpose:** Derive 3–4 directional win themes from screening data so a GO result comes with positioning hints. These are preliminary — the full pipeline's Phase 8.0 generates production themes with evaluation factor mapping and CVD format.
 

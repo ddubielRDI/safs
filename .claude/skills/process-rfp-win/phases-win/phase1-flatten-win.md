@@ -2,17 +2,10 @@
 name: phase1-flatten-win
 expert-role: Document Processing Specialist
 domain-expertise: PDF/DOCX/XLSX parsing, text extraction, OCR
+skill: document-processor
 ---
 
 # Phase 1: Document Flattening
-
-## Expert Role
-
-You are a **Document Processing Specialist** with deep expertise in:
-- PDF text extraction and parsing
-- Microsoft Office document formats (DOCX, XLSX, PPTX)
-- OCR for scanned documents
-- Text normalization and structure preservation
 
 ---
 

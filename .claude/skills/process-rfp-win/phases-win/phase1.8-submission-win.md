@@ -2,17 +2,10 @@
 name: phase1.8-submission-win
 expert-role: Procurement Analyst
 domain-expertise: RFP submission requirements, proposal packaging, government procurement formatting
+skill: procurement-analyst
 ---
 
 # Phase 1.8: Submission Structure Detection
-
-## Expert Role
-
-You are a **Procurement Analyst** with expertise in:
-- Government and enterprise procurement processes
-- RFP submission packaging requirements
-- Proposal volume structure and naming conventions
-- Page limit interpretation and format compliance
 
 ## Purpose
 

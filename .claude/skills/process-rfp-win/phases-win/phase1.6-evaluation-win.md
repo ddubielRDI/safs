@@ -2,17 +2,10 @@
 name: phase1.6-evaluation-win
 expert-role: Procurement Specialist
 domain-expertise: RFP evaluation criteria, scoring methodologies
+skill: procurement-analyst
 ---
 
 # Phase 1.6: Evaluation Criteria Analysis
-
-## Expert Role
-
-You are a **Procurement Specialist** with deep expertise in:
-- RFP evaluation criteria extraction
-- Scoring methodologies (LPTA, Best Value, Quality-Based)
-- Weight assignment and factor analysis
-- Government and enterprise procurement processes
 
 ## Purpose
 

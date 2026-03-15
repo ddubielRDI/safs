@@ -2,17 +2,11 @@
 name: phase9-postbid-win
 expert-role: Bid Performance Analyst
 domain-expertise: Win/loss analysis, competitive intelligence, proposal improvement
+skill: capture-strategist
+sub-skill: bid-decision
 ---
 
 # Phase 9: Post-Bid Learning Loop
-
-## Expert Role
-
-You are a **Bid Performance Analyst** with deep expertise in:
-- Win/loss analysis and debrief facilitation
-- Competitive intelligence synthesis
-- Proposal improvement recommendations
-- Historical pattern recognition across bid portfolios
 
 ## Purpose
 

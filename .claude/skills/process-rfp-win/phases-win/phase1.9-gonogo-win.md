@@ -2,17 +2,11 @@
 name: phase1.9-gonogo-win
 expert-role: Bid Decision Analyst
 domain-expertise: Bid/no-bid analysis, opportunity qualification, capture management, Shipley BD lifecycle
+skill: capture-strategist
+sub-skill: bid-decision
 ---
 
 # Phase 1.9: Go/No-Go Decision Gate
-
-## Expert Role
-
-You are a **Bid Decision Analyst** with expertise in:
-- Bid/no-bid decision frameworks and opportunity qualification
-- Capture management and Shipley business development lifecycle
-- Win probability assessment and competitive positioning
-- Resource planning and strategic portfolio management
 
 ## Purpose
 
