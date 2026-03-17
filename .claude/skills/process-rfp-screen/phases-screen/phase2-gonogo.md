@@ -53,6 +53,42 @@ past_performance = company.get("past_performance", {})
 
 ---
 
+## Skill Integration: Capture-Strategist & Bid-Decision Framework Application (MANDATORY)
+
+The **capture-strategist** and **bid-decision** sub-skill are loaded in context. Apply these frameworks as you assess each area:
+
+**Shipley Phase 2 (Opportunity Assessment) Gate Criteria:**
+- Is the opportunity real? (funded, defined scope, legitimate procurement)
+- Can we compete? (technical capability, past performance, competitive position)
+- Can we win? (discriminators, customer access, price competitiveness)
+- Is it worth winning? (strategic fit, profitability, resource investment)
+
+**APMP's 5 Opportunity Assessment Dimensions:**
+Use as an overlay lens on each assessment area:
+1. Customer — Do we know the customer? Do they know us?
+2. Opportunity — Is the deal real, funded, and winnable?
+3. Solution — Can we deliver what they need?
+4. Competitive — Who else is bidding? Can we differentiate?
+5. Team — Do we have the people and bandwidth?
+
+**Lohfeld's 12 KPIs** — specifically assess these where data exists:
+- Customer access level, requirements understanding, solution maturity
+- Competitive intelligence depth, team readiness, price competitiveness
+- Past performance relevance, incumbent relationship, key personnel availability
+
+**Cognitive Bias Check (from bid-decision sub-skill):**
+After completing all 7 assessments, briefly check for these 6 biases:
+1. Sunk cost — "We've already invested time analyzing this" should not inflate scores
+2. Optimism bias — Are scores based on evidence or hope?
+3. Anchoring — Is the first impression dominating the assessment?
+4. Confirmation bias — Are we seeking evidence that confirms GO while ignoring red flags?
+5. Availability bias — Are we overweighting recent wins/losses?
+6. Groupthink — Would a contrarian view change the recommendation?
+
+Include a brief `bias_assessment` note in the output indicating whether any bias was detected.
+
+---
+
 ## Step 2: LLM Narrative Assessment
 
 Read all three inputs thoroughly. For EACH of the 7 assessment areas below, produce a narrative assessment with:
@@ -274,6 +310,15 @@ For every assessment area:
 
 ### Area 7: Win Probability (Weight: 5%)
 
+**Apply Pwin Estimation Methodology from bid-decision sub-skill:**
+The score for this area should reflect a calibrated win probability assessment, not just a gestalt feeling. The bid-decision sub-skill defines 4 Pwin levels:
+- Level 1 (Subjective): Gut feel based on overall assessment — acceptable for screening
+- Level 2 (Factor-Based): Weighted assessment of key factors (what this phase does)
+- Level 3 (Comparative): Benchmarked against similar past bids (if bid-outcomes.json has data)
+- Level 4 (Historical Calibration): Statistical calibration against outcome data (future capability)
+
+For this screening, target Level 2 (Factor-Based) and Level 3 if historical data exists.
+
 **What to evaluate:**
 - Estimated realistic win chance given all other factors
 - Structural advantages: existing relationship, geographic presence, unique capability
@@ -281,6 +326,7 @@ For every assessment area:
 - Teaming opportunities: could a teaming arrangement improve the bid
 - Overall competitive dynamics based on all signals gathered
 - **Buyer priority balance:** Count HIGH buyer priorities where company has strong evidence vs gaps. More addressed = higher win probability
+- **Shipley competitive assessment:** Apply the "Can we win?" gate criterion — name 3+ discriminators or explain why fewer suffice
 
 **Where to find evidence:**
 - Synthesize findings from all other assessment areas
@@ -373,7 +419,18 @@ go_nogo = {
     "user_decision_required": user_decision_required,
 
     # Buyer priority coverage tracking (from Phase 1 enrichment)
-    "buyer_priority_coverage": buyer_priority_coverage
+    "buyer_priority_coverage": buyer_priority_coverage,
+
+    # Skill-informed strategic assessment (capture-strategist + bid-decision)
+    "shipley_gate_assessment": {
+        "opportunity_real": True,  # Is this a funded, legitimate procurement?
+        "can_compete": True,  # Do we have the capability?
+        "can_win": True,  # Do we have discriminators?
+        "worth_winning": True,  # Is it strategically valuable?
+        "discriminators_identified": [],  # 3+ discriminators named
+        "conditions_for_go": []  # Gaps that need resolution
+    },
+    "bias_assessment": ""  # Brief note on whether cognitive biases were detected during scoring
 }
 
 # Build buyer_priority_coverage by assessing each HIGH priority against company capabilities
@@ -465,3 +522,13 @@ Output: screen/go-nogo-score.json
 - [ ] buyer_priorities and required_technologies loaded from rfp-summary.json (with fallback)
 - [ ] buyer_priority_coverage computed: high_total, high_addressed, high_gaps
 - [ ] HIGH buyer priorities referenced in Technical Capability, Competitive Position, and Win Probability narratives
+
+### Skill Integration Quality Checks (capture-strategist + bid-decision)
+- [ ] Shipley Phase 2 gate criteria assessed (opportunity_real, can_compete, can_win, worth_winning)
+- [ ] 3+ discriminators identified and named in shipley_gate_assessment
+- [ ] APMP 5-dimension overlay applied as lens across assessment areas
+- [ ] Lohfeld KPIs referenced where data available (customer access, solution maturity, team readiness)
+- [ ] Area 7 uses Pwin estimation methodology (Level 2+ factor-based, Level 3 if historical data)
+- [ ] Cognitive bias check performed: sunk cost, optimism, anchoring, confirmation, availability, groupthink
+- [ ] bias_assessment field populated with brief finding
+- [ ] **Anti-pattern check:** No "strategy-free proposals," no "spray and pray," no "ignoring evaluation methodology"

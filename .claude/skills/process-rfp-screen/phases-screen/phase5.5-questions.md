@@ -228,6 +228,32 @@ if len(triggers) == 0:
     return
 ```
 
+### Skill Integration: Capture-Strategist & Competitive-Positioning for Question Strategy (MANDATORY)
+
+The **capture-strategist** and **competitive-positioning** sub-skill are loaded in context. Apply these frameworks to question generation:
+
+**Competitive Positioning Lens:** Prioritize questions whose answers would create competitive advantage, not just reduce ambiguity. A capture strategist knows that Q&A questions are a positioning tool:
+- Questions that demonstrate domain understanding signal competence to the evaluator
+- Questions that expose areas where competitors are likely weak position your strengths
+- Questions should show pre-RFP engagement understanding (customer intimacy)
+
+**Shipley Q&A Period Strategy:** Questions should signal capability without revealing strategy:
+- DO ask about scope details that show you understand the client's environment
+- DO ask about evaluation process details that help you tailor the response
+- DON'T ask questions that reveal you lack basic domain knowledge
+- DON'T ask questions that tip your pricing or teaming strategy
+
+**Ghost Strategy Awareness:** When framing questions, consider:
+- Questions that highlight requirements where you have a unique advantage
+- Questions that force the client to clarify requirements where incumbents may be coasting
+- Questions that surface evaluation criteria favoring your differentiators
+
+**Strategic Question Category:** Beyond the 8 technical categories, some questions should be flagged as "demonstrates_expertise" — questions that a domain expert would ask but a generalist wouldn't think to. These signal customer intimacy.
+
+**Anti-Pattern Guard:** Check against "RFP-reactive capture" — questions should show strategic engagement, not just gap-filling.
+
+---
+
 ### Step 4: LLM Synthesis -- Generate Questions
 
 Pass the trigger inventory, RFP text, buyer priorities, and evaluation criteria to a single LLM call.
@@ -300,6 +326,15 @@ Generate 8-15 clarifying questions based on the triggers above. Each question sh
 - compliance_gaps: Regulatory or legal requirements needing client confirmation
 - data_integration: Existing systems, data schemas, migration paths, API requirements
 
+## STRATEGIC QUESTION FRAMING (from capture-strategist skill)
+Apply these lenses when crafting questions:
+- Frame questions through COMPETITIVE POSITIONING lens -- prioritize questions whose answers create competitive advantage
+- Reference APMP Customer Intimacy -- questions should demonstrate domain understanding to the evaluator
+- Apply GHOST STRATEGY awareness -- questions that expose areas where competitors are likely weak should be prioritized
+- Apply Shipley Q&A strategy -- questions should signal capability without revealing strategy
+- Flag questions that "demonstrate expertise" -- questions a domain expert would ask but a generalist wouldn't
+- Avoid "RFP-reactive" questions that merely fill gaps without strategic value
+
 ## PRIORITY LEVELS
 - HIGH: Answer changes bid decision or fundamentally alters technical approach
 - MEDIUM: Answer meaningfully affects proposal strategy, staffing, or cost estimate
@@ -316,7 +351,9 @@ Return ONLY a valid JSON array. No markdown, no commentary.
     "priority": "HIGH|MEDIUM|LOW",
     "rfp_reference": "Specific section, page, or quoted requirement that prompted this",
     "impact": "What answering would clarify for the proposal team",
-    "related_finding": "Which screening phase finding revealed this gap"
+    "related_finding": "Which screening phase finding revealed this gap",
+    "demonstrates_expertise": true/false,
+    "strategic_value": "Brief note on competitive advantage this question creates (or 'informational' if purely gap-filling)"
   }}
 ]
 
@@ -394,7 +431,9 @@ for q in questions_raw:
         "priority": priority,
         "rfp_reference": q.get("rfp_reference", "General RFP review"),
         "impact": q.get("impact", ""),
-        "related_finding": q.get("related_finding", "")
+        "related_finding": q.get("related_finding", ""),
+        "demonstrates_expertise": q.get("demonstrates_expertise", False),
+        "strategic_value": q.get("strategic_value", "informational")
     })
     category_counts[category] = category_counts.get(category, 0) + 1
 
@@ -522,3 +561,10 @@ Outputs:
 - [ ] Empty trigger inventory handled gracefully (0 questions, minimal output)
 - [ ] Questions reference specific RFP content (not generic)
 - [ ] Professional tone suitable for client Q&A submission
+
+### Skill Integration Quality Checks (capture-strategist + competitive-positioning)
+- [ ] Questions framed through competitive positioning lens (not just gap-filling)
+- [ ] At least 1-2 questions flagged as demonstrates_expertise = true
+- [ ] strategic_value field populated for each question
+- [ ] Questions signal capability without revealing strategy (Shipley Q&A discipline)
+- [ ] **Anti-pattern check:** No "RFP-reactive capture" — questions show strategic engagement

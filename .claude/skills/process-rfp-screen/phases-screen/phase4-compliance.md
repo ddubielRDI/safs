@@ -23,6 +23,36 @@ sub-skill: compliance-audit
 
 ---
 
+## Skill Integration: Procurement-Analyst & Compliance-Audit Framework Application (MANDATORY)
+
+The **procurement-analyst** and **compliance-audit** sub-skill are loaded in context. Apply these frameworks:
+
+**5-Tier Confidence Scale (from compliance-audit sub-skill):**
+Instead of simple PASS/PARTIAL/GAP/RISK, assess each compliance item's confidence level:
+- **Verified** — documented evidence exists and is current (certification, contract, license)
+- **Documented** — capability described in company profile but not independently verified
+- **Inferred** — capability likely based on related experience but not explicitly stated
+- **Claimed** — company claims capability but no supporting evidence found
+- **Unknown** — cannot determine compliance status from available data
+
+Map to existing statuses: Verified/Documented = PASS, Inferred = PARTIAL, Claimed = RISK, Unknown = GAP.
+
+**Mandatory vs. Desirable Language Identification:**
+- "Shall," "must," "required" = mandatory (failure = non-responsive)
+- "Should," "may," "desired," "preferred" = desirable (missing = scored lower but not disqualifying)
+- Tag each compliance item with `requirement_strength`: "mandatory" or "desirable"
+
+**FAR 15.305 Past Performance Evaluation Framework (for Part B):**
+- Structure relevance as: Very Relevant / Relevant / Somewhat Relevant / Not Relevant
+- Assess recency (within 3 years preferred), relevancy (scope similarity), quality (outcomes/metrics)
+
+**Anti-Pattern Guards:**
+- Treating all evaluation factors equally (they have different weights)
+- Ignoring Section H special clauses (insurance, bonding, unique terms)
+- Failing to distinguish mandatory vs. desirable requirements
+
+---
+
 ## Part A: Compliance Quick-Check
 
 ### Step 1: Extract Compliance Items from RFP Text
@@ -65,10 +95,23 @@ for patterns, category in [
     for pattern in patterns:
         matches = re.findall(pattern, combined_text, re.IGNORECASE)
         for match in matches:
+            req_text = match.strip()[:200]
+
+            # Skill-informed: Determine requirement strength (mandatory vs desirable)
+            # Look at surrounding context for strength indicators
+            req_lower = req_text.lower()
+            if any(kw in req_lower for kw in ["shall", "must", "required", "mandatory"]):
+                requirement_strength = "mandatory"
+            elif any(kw in req_lower for kw in ["should", "may", "desired", "preferred", "optional"]):
+                requirement_strength = "desirable"
+            else:
+                requirement_strength = "mandatory"  # Default to mandatory for safety
+
             compliance_items.append({
-                "requirement": match.strip()[:200],
+                "requirement": req_text,
                 "category": category,
-                "source": "rfp_text"
+                "source": "rfp_text",
+                "requirement_strength": requirement_strength
             })
 ```
 
@@ -106,12 +149,22 @@ for item in compliance_items:
         if matched:
             break
 
+    # Skill-informed: Assign confidence tier (compliance-audit sub-skill 5-tier scale)
+    if matched:
+        if item["match_source"] == "certifications":
+            item["confidence_tier"] = "Verified"  # Certifications are verifiable
+        elif item["match_source"] == "partnerships":
+            item["confidence_tier"] = "Verified"  # Named partnerships are verifiable
+        else:
+            item["confidence_tier"] = "Documented"  # Listed in profile but not independently verified
+
     if not matched:
         # Check if it's a hard gap, partial match, or risk
         if item["category"] in ["set_aside", "insurance"]:
             item["status"] = "RISK"
             item["match_source"] = None
             item["match_detail"] = "Cannot verify — requires manual confirmation"
+            item["confidence_tier"] = "Unknown"
         else:
             # Check for partial match — any service/capability words overlap
             req_words = set(req_lower.split())
@@ -124,6 +177,7 @@ for item in compliance_items:
                             item["status"] = "PARTIAL"
                             item["match_source"] = "partial_capability"
                             item["match_detail"] = f"Partial overlap with: {source_item}"
+                            item["confidence_tier"] = "Inferred"  # Capability inferred from partial match
                             partial_match = True
                             break
                 if partial_match:
@@ -132,6 +186,7 @@ for item in compliance_items:
                 item["status"] = "GAP"
                 item["match_source"] = None
                 item["match_detail"] = "No matching capability found in company profile"
+                item["confidence_tier"] = "Unknown"  # Cannot determine compliance
 ```
 
 ### Step 2b: Contract Vehicle Matching (from Past_Projects.md)
@@ -786,3 +841,10 @@ Outputs:
 - [ ] Enriched project fields extracted: key_outcomes, challenges, quote_text, quote_attribution, team_size
 - [ ] compliance-check.json includes contract_vehicles, existing_relationship, partnerships, awards
 - [ ] past-projects-match.json includes existing_relationship, contract_vehicles_in_state, partnerships
+
+### Skill Integration Quality Checks (procurement-analyst + compliance-audit)
+- [ ] Each compliance item has confidence_tier (Verified/Documented/Inferred/Claimed/Unknown)
+- [ ] Each compliance item has requirement_strength (mandatory/desirable)
+- [ ] Mandatory GAPs flagged as higher severity than desirable GAPs
+- [ ] Past project relevance rated using FAR language (Very Relevant/Relevant/Somewhat Relevant/Not Relevant)
+- [ ] **Anti-pattern check:** Not treating all factors equally, not ignoring Section H special clauses

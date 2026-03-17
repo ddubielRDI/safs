@@ -40,6 +40,42 @@ past_matches = read_json(f"{folder}/screen/past-projects-match.json")
 preliminary_themes = read_json_safe(f"{folder}/screen/preliminary-themes.json")
 ```
 
+### Skill Integration: Risk-Analyst Framework Application (MANDATORY)
+
+The **risk-analyst** skill is loaded in context. Apply these frameworks throughout this phase:
+
+**Risk Taxonomy Classification:** Classify every risk into one of 6 categories:
+- Technical — scope ambiguity, integration complexity, technology maturity
+- Schedule — timeline compression, dependency chains, resource contention
+- Cost — budget uncertainty, rate cap exposure, cost growth drivers
+- Management — staffing gaps, governance structure, communication overhead
+- External/Regulatory — compliance mandates, policy changes, political risk
+- Past Performance — relevance gaps, reference risks, performance history
+
+**5x5 Probability/Impact Matrix:** Score each risk with calibrated scales:
+- Likelihood (1-5): 1=Rare, 2=Unlikely, 3=Possible, 4=Likely, 5=Almost Certain
+- Consequence (1-5): 1=Negligible, 2=Minor, 3=Moderate, 4=Major, 5=Severe
+- Severity = Likelihood x Consequence (1-25), banded: Low(1-4), Moderate(5-9), High(10-15), Critical(16-25)
+
+**If/Then Risk Statement Format:** Rewrite every risk as:
+"If [specific condition], then [measurable consequence]" — not vague descriptions.
+
+**Response Strategy Assignment:** For each High/Critical risk, assign one of:
+- Avoid — eliminate the threat entirely (change approach)
+- Transfer — shift impact to a third party (insurance, subcontractor)
+- Mitigate — reduce likelihood or consequence (specific actions)
+- Accept — acknowledge and monitor (with trigger conditions)
+
+**Residual Risk:** After mitigation, what risk remains? State explicitly.
+
+**Anti-Pattern Guards (check output against these):**
+- Vague risk statements without measurable consequences
+- Mitigation theater — mitigations that sound good but don't reduce risk
+- Probability anchoring — all risks scored "medium" without differentiation
+- Copy-paste risks — generic statements not tied to THIS RFP's specifics
+
+---
+
 ### Step 2: Consolidate Risks
 
 ```python
@@ -110,6 +146,87 @@ risks.sort(key=lambda r: {"high": 0, "medium": 1, "low": 2}[r["severity"]])
 risks = risks[:8]
 ```
 
+### Step 2b: Skill-Informed Risk Enrichment (MANDATORY)
+
+Apply the risk-analyst framework to enrich each consolidated risk. This transforms flat risk lists into structured, actionable risk assessments.
+
+```python
+# Enrich each risk with skill-mandated structured fields
+for risk_item in risks:
+    risk_text = risk_item.get("risk", "")
+
+    # 1. Classify into 6-category taxonomy (from skill)
+    #    Map existing "category" to the skill's taxonomy
+    category_map = {
+        "scoring": "Management",
+        "compliance": "External/Regulatory",
+        "experience": "Past Performance",
+        "timeline": "Schedule",
+    }
+    risk_item["risk_category"] = category_map.get(
+        risk_item.get("category", ""), "Technical"
+    )
+
+    # 2. Score with calibrated 5x5 matrix
+    #    Use the risk context to assign probability and impact
+    #    Defaults based on original severity; LLM should refine
+    severity_defaults = {
+        "high": {"likelihood": 4, "impact": 4},
+        "medium": {"likelihood": 3, "impact": 3},
+        "low": {"likelihood": 2, "impact": 2},
+    }
+    defaults = severity_defaults.get(risk_item.get("severity", "medium"), {"likelihood": 3, "impact": 3})
+    risk_item["likelihood"] = defaults["likelihood"]
+    risk_item["impact"] = defaults["impact"]
+    risk_item["severity_score"] = risk_item["likelihood"] * risk_item["impact"]
+
+    # Band severity score
+    ss = risk_item["severity_score"]
+    if ss >= 16:
+        risk_item["severity_band"] = "Critical"
+    elif ss >= 10:
+        risk_item["severity_band"] = "High"
+    elif ss >= 5:
+        risk_item["severity_band"] = "Moderate"
+    else:
+        risk_item["severity_band"] = "Low"
+
+    # 3. Rewrite risk in If/Then format (LLM should produce these directly,
+    #    but provide the structure for algorithmic risks)
+    if not risk_text.lower().startswith("if "):
+        risk_item["description_if_then"] = f"If {risk_text.lower()}, then proposal competitiveness or delivery capability may be compromised"
+    else:
+        risk_item["description_if_then"] = risk_text
+
+    # 4. Assign response strategy for High/Critical
+    if risk_item["severity_band"] in ("High", "Critical"):
+        risk_item["response_strategy"] = "Mitigate"  # Default; LLM should refine
+        risk_item["mitigation_plan"] = ""  # LLM fills with specific actions
+        risk_item["residual_risk"] = ""  # What remains after mitigation
+    else:
+        risk_item["response_strategy"] = "Accept"
+        risk_item["mitigation_plan"] = "Monitor during proposal development"
+        risk_item["residual_risk"] = "Low — accepted risk within tolerance"
+
+# Compute severity distribution
+severity_distribution = {
+    "critical": sum(1 for r in risks if r.get("severity_band") == "Critical"),
+    "high": sum(1 for r in risks if r.get("severity_band") == "High"),
+    "moderate": sum(1 for r in risks if r.get("severity_band") == "Moderate"),
+    "low": sum(1 for r in risks if r.get("severity_band") == "Low"),
+}
+
+# Check for correlated risks (risks in same category that compound)
+risk_correlations = []
+from collections import Counter
+category_counts = Counter(r.get("risk_category", "") for r in risks)
+for cat, count in category_counts.items():
+    if count >= 2:
+        risk_correlations.append(
+            f"{count} risks in {cat} category may compound each other"
+        )
+```
+
 ### Step 3: Check Historical Bid Patterns
 
 ```python
@@ -136,7 +253,9 @@ if os.path.exists(outcomes_path):
         }
 ```
 
-### Step 4: Assess Opportunities
+### Step 4: Assess Opportunities (Risk-Opportunity Duality)
+
+Structure opportunities as the inverse of managed risks — each mitigated risk reveals a competitive advantage. Per risk-analyst skill, opportunities emerge when the organization's risk management capability exceeds what competitors can demonstrate.
 
 ```python
 opportunities = []
@@ -195,14 +314,17 @@ if client_intel and client_intel.get("status") == "complete":
         })
 ```
 
-### Step 5: Generate Final Recommendation
+### Step 5: Generate Final Recommendation (Strategic Narrative)
+
+Per the risk-analyst skill, the recommendation rationale must be a strategic narrative, not a mechanical score report. Frame the recommendation through a risk appetite lens: what is the risk-adjusted value of pursuing this opportunity?
 
 ```python
 total_score = go_nogo.get("overall_score", 0)
 recommendation = go_nogo.get("recommendation", "NO_GO")
 
-# Generate EVIDENCE-BASED rationale (MANDATORY: must name specific differentiators)
+# Generate STRATEGIC NARRATIVE rationale (MANDATORY: must name specific differentiators)
 # A BD director reading only this rationale should understand WHY, not just the score.
+# Structure: (1) Risk severity distribution, (2) Risk correlations, (3) Risk-adjusted assessment
 
 # Gather evidence for rationale synthesis
 strongest_area = max(assessment_areas, key=lambda a: a.get("score", 0)) if assessment_areas else {}
@@ -249,12 +371,19 @@ if recommendation == "GO":
     if partnerships:
         rationale += f"{partnerships[0]}. "
 
-    # Risk summary
-    high_risk_count = sum(1 for r in risks if r.get("severity") == "high")
-    if high_risk_count == 0:
-        rationale += f"{len(risks)} risks noted, all medium severity -- no dealbreakers."
+    # Risk distribution summary (skill-enriched)
+    rationale += f"Risk profile: {severity_distribution.get('critical', 0)} Critical, "
+    rationale += f"{severity_distribution.get('high', 0)} High, "
+    rationale += f"{severity_distribution.get('moderate', 0)} Moderate, "
+    rationale += f"{severity_distribution.get('low', 0)} Low. "
+    if risk_correlations:
+        rationale += f"Correlated risks: {'; '.join(risk_correlations)}. "
+    if severity_distribution.get("critical", 0) == 0 and severity_distribution.get("high", 0) == 0:
+        rationale += "No critical or high-severity risks -- favorable risk posture. "
+    elif severity_distribution.get("critical", 0) > 0:
+        rationale += "Critical risks require immediate mitigation before bid commitment. "
     else:
-        rationale += f"{high_risk_count} high-severity risk(s) require attention."
+        rationale += f"{severity_distribution.get('high', 0)} high-severity risk(s) require attention. "
 
     # Existing relationship note
     if existing_rel.get("found"):
@@ -309,13 +438,16 @@ else:  # NO_GO
 risk_assessment = {
     "phase": "5",
     "timestamp": datetime.now().isoformat(),
-    "risks": risks,
+    "risks": risks,  # Each risk now includes: risk_category, likelihood, impact, severity_score, severity_band, description_if_then, response_strategy, mitigation_plan, residual_risk
     "risk_summary": {
         "total": len(risks),
         "high": sum(1 for r in risks if r["severity"] == "high"),
         "medium": sum(1 for r in risks if r["severity"] == "medium"),
         "low": sum(1 for r in risks if r["severity"] == "low")
     },
+    "severity_distribution": severity_distribution,  # {critical, high, moderate, low} from 5x5 matrix
+    "risk_correlations": risk_correlations,  # Compounding risks in same category
+    "aggregate_exposure": f"{severity_distribution.get('critical', 0)} critical, {severity_distribution.get('high', 0)} high risks across {len(set(r.get('risk_category', '') for r in risks))} categories",
     "has_dealbreaker": has_dealbreaker,
     "dealbreakers": [r["risk"] for r in dealbreakers],
     "opportunities": opportunities,
@@ -388,3 +520,14 @@ Outputs:
 - [ ] Next steps tailored to recommendation (GO/CONDITIONAL/NO-GO)
 - [ ] Uncovered HIGH buyer priorities included in next_steps (if GO recommendation)
 - [ ] buyer_priority_coverage from both go-nogo-score.json and preliminary-themes.json consulted
+
+### Skill Integration Quality Checks (risk-analyst)
+- [ ] Every risk classified into 6-category taxonomy (Technical/Schedule/Cost/Management/External-Regulatory/Past Performance)
+- [ ] Every risk scored with 5x5 probability/impact matrix (likelihood 1-5, impact 1-5)
+- [ ] Severity banded from severity_score: Low(1-4), Moderate(5-9), High(10-15), Critical(16-25)
+- [ ] Every risk has description_if_then in "If [condition], then [consequence]" format
+- [ ] High/Critical risks have response_strategy (Avoid/Transfer/Mitigate/Accept) and residual_risk
+- [ ] severity_distribution included in output (critical/high/moderate/low counts)
+- [ ] risk_correlations identified (compounding risks in same category)
+- [ ] Recommendation rationale is strategic narrative, not mechanical score report
+- [ ] **Anti-pattern check:** No vague risk statements, no mitigation theater, no probability anchoring, no copy-paste risks

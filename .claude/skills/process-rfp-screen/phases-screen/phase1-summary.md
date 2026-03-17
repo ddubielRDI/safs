@@ -517,6 +517,68 @@ if rfp_summary["key_deliverables"]:
     log(f"  Key Deliverables: {len(rfp_summary['key_deliverables'])} identified")
 ```
 
+### Step 3b: Skill-Informed Extraction Validation (procurement-analyst)
+
+After regex extraction, apply procurement-analyst skill frameworks to validate and enrich the extraction:
+
+```python
+# 1. Solicitation Type Classification (from skill taxonomy)
+#    Classify the RFP type and note implications for bid strategy
+solicitation_type_indicators = {
+    "RFP": r"request\s+for\s+proposal",
+    "RFQ": r"request\s+for\s+quotation",
+    "IFB": r"invitation\s+for\s+bid",
+    "BAA": r"broad\s+agency\s+announcement",
+    "IDIQ": r"indefinite\s+delivery|IDIQ",
+    "RFI": r"request\s+for\s+information",
+    "RFSQ": r"request\s+for\s+(?:statement\s+of\s+)?qualification",
+}
+detected_type = None
+for sol_type, pattern in solicitation_type_indicators.items():
+    if re.search(pattern, combined_text, re.IGNORECASE):
+        detected_type = sol_type
+        break
+rfp_summary["solicitation_type"] = detected_type or "RFP"  # Default to RFP
+rfp_summary["solicitation_type_implications"] = {
+    "RFP": "Best value evaluation likely -- technical approach matters as much as price",
+    "RFQ": "Price-competitive -- lowest price technically acceptable may apply",
+    "IFB": "Sealed bid, lowest price wins -- focus on cost, not technical differentiators",
+    "BAA": "Research-oriented -- innovation and technical approach are primary",
+    "IDIQ": "Task order vehicle -- past performance on similar vehicles is key",
+    "RFI": "Information only -- no bid, but positions for future solicitation",
+    "RFSQ": "Qualification-based -- demonstrate capability, pricing secondary",
+}.get(rfp_summary["solicitation_type"], "Standard competitive procurement")
+log(f"  Solicitation Type: {rfp_summary['solicitation_type']} -- {rfp_summary['solicitation_type_implications']}")
+
+# 2. Evaluation Methodology Identification (from skill language markers)
+#    Distinguish LPTA vs Best Value vs QBS using specific language
+eval_method = rfp_summary.get("evaluation_method")
+if not eval_method:
+    lpta_markers = ["lowest price", "technically acceptable", "pass/fail", "acceptable/unacceptable"]
+    best_value_markers = ["best value", "tradeoff", "trade-off", "most advantageous"]
+    qbs_markers = ["qualifications-based", "qualification based", "QBS", "Brooks Act"]
+    combined_lower = combined_text.lower()
+    if any(m in combined_lower for m in lpta_markers):
+        rfp_summary["evaluation_method"] = "LPTA"
+    elif any(m in combined_lower for m in best_value_markers):
+        rfp_summary["evaluation_method"] = "Best Value"
+    elif any(m in combined_lower for m in qbs_markers):
+        rfp_summary["evaluation_method"] = "Qualifications-Based"
+
+# 3. Contract Type Pricing Strategy Implications (from skill's FFP/T&M/CPFF table)
+contract_type = rfp_summary.get("contract_type")
+if contract_type:
+    pricing_strategy_map = {
+        "FFP": "Fixed price -- all cost risk on contractor. Price must include contingency. Tight scope definition critical.",
+        "T&M": "Time and materials -- rate competition. Focus on competitive hourly rates and efficient staffing.",
+        "IDIQ": "Task order vehicle -- demonstrate flexibility and rapid response capability.",
+        "CPFF": "Cost plus fixed fee -- government assumes cost risk. Focus on fee reasonableness and cost controls.",
+        "BPA": "Blanket purchase -- volume pricing and availability matter. Quick turnaround expected.",
+        "Labor Hour": "Hourly rate competition -- similar to T&M but without materials.",
+    }
+    rfp_summary["pricing_strategy_note"] = pricing_strategy_map.get(contract_type, "Review contract type for pricing approach")
+```
+
 ### Step 4: Assess Extraction Confidence
 
 ```python
@@ -760,3 +822,9 @@ Output: screen/rfp-summary.json
 - [ ] Buyer priorities identified (3-6, each with importance HIGH/MEDIUM, signal evidence, linked keywords)
 - [ ] linked_scope_keywords capped at 5 per buyer priority
 - [ ] LLM prompts grounded in already-extracted regex data (scope_keywords, evaluation_criteria)
+
+### Skill Integration Quality Checks (procurement-analyst)
+- [ ] Solicitation type classified (RFP/RFQ/IFB/BAA/IDIQ) with strategy implications
+- [ ] Evaluation methodology identified via language markers (LPTA vs Best Value vs QBS)
+- [ ] Contract type pricing strategy note populated (FFP/T&M/CPFF implications)
+- [ ] **Anti-pattern check:** Not treating all factors equally, not conflating RFQ with RFP, not ignoring Section H special clauses

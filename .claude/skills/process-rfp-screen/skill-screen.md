@@ -293,6 +293,16 @@ for phase in phases:
         skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}.md"
         log(f"  Loading skill: {skill_name}")
         # >>> Use Read tool on skill_path <<<
+        # After reading the skill, note the key frameworks, quality criteria, and
+        # anti-patterns it defines. When executing the phase, actively apply these
+        # frameworks to structure outputs and verify quality. The skill content is
+        # not background reading -- it defines the expert standard the phase must meet.
+        #
+        # Each phase file now contains a "Skill Integration" section that explicitly
+        # bridges loaded skill frameworks into execution. Look for:
+        # - Framework application directives (specific frameworks to apply)
+        # - Quality criteria checkpoints (checks before writing output)
+        # - Anti-pattern guards (output patterns to avoid)
 
         if sub_skill_name:
             # ALSO READ the sub-skill file: {DOMAIN_SKILLS_DIR}/{skill_name}/{sub_skill_name}.md

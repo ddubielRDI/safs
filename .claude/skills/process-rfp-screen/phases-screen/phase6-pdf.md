@@ -399,16 +399,30 @@ if theme_list:
     md += "*Directional positioning hints from screening data. Full pipeline generates "
     md += "production themes with evaluation factor mapping.*\n\n"
 
-    md += "| # | Theme | Category | Confidence | Key Evidence |\n"
-    md += "|---|-------|----------|------------|---------------|\n"
+    # Check if themes have skill-enriched fields
+    has_enriched_themes = any(t.get("discriminator_type") for t in theme_list)
 
-    for t in theme_list:
-        rank = t.get("rank", "")
-        name = t.get("name", "Unnamed")
-        category = t.get("category", "").replace("_", " ").title()
-        confidence = t.get("confidence", "unknown").upper()
-        evidence_summary = "; ".join(t.get("evidence", [])[:2])[:120]
-        md += f"| {rank} | **{name}** | {category} | {confidence} | {evidence_summary} |\n"
+    if has_enriched_themes:
+        md += "| # | Theme | Category | Type | Maturity | Confidence |\n"
+        md += "|---|-------|----------|------|----------|------------|\n"
+        for t in theme_list:
+            rank = t.get("rank", "")
+            name = t.get("name", "Unnamed")
+            category = t.get("category", "").replace("_", " ").title()
+            disc_type = t.get("discriminator_type", "")
+            maturity = t.get("maturity_level", "")
+            confidence = t.get("confidence", "unknown").upper()
+            md += f"| {rank} | **{name}** | {category} | {disc_type} | {maturity} | {confidence} |\n"
+    else:
+        md += "| # | Theme | Category | Confidence | Key Evidence |\n"
+        md += "|---|-------|----------|------------|---------------|\n"
+        for t in theme_list:
+            rank = t.get("rank", "")
+            name = t.get("name", "Unnamed")
+            category = t.get("category", "").replace("_", " ").title()
+            confidence = t.get("confidence", "unknown").upper()
+            evidence_summary = "; ".join(t.get("evidence", [])[:2])[:120]
+            md += f"| {rank} | **{name}** | {category} | {confidence} | {evidence_summary} |\n"
 
     md += "\n### Theme Details\n\n"
     for t in theme_list:
@@ -422,6 +436,16 @@ if theme_list:
         if framing:
             md += f"\n{framing}\n\n"
         md += f"*{rationale}*\n"
+
+        # Skill-enriched fields (from competitive-positioning sub-skill)
+        disc_type = t.get("discriminator_type")
+        maturity = t.get("maturity_level")
+        ghost = t.get("ghost_element")
+        if disc_type or maturity:
+            md += f"\n**Discriminator:** {disc_type or 'N/A'} | **Maturity:** {maturity or 'N/A'}\n"
+        if ghost:
+            md += f"**Competitive Edge:** {ghost}\n"
+
         if evidence:
             md += "Supporting evidence:\n"
             for e in evidence:
@@ -522,11 +546,38 @@ md += "## Risks and Opportunities\n\n"
 md += "### Risk Assessment\n\n"
 risks = risk.get("risks", [])
 
+# Render severity distribution if available (skill-enriched from Phase 5)
+severity_dist = risk.get("severity_distribution", {})
+if severity_dist:
+    md += f"**Risk Profile:** {severity_dist.get('critical', 0)} Critical | "
+    md += f"{severity_dist.get('high', 0)} High | "
+    md += f"{severity_dist.get('moderate', 0)} Moderate | "
+    md += f"{severity_dist.get('low', 0)} Low\n\n"
+
+# Render risk correlations if present
+risk_correlations = risk.get("risk_correlations", [])
+if risk_correlations:
+    md += "**Correlated Risks:** " + "; ".join(risk_correlations) + "\n\n"
+
 if risks:
-    md += "| # | Risk | Severity | Category |\n"
-    md += "|---|------|----------|----------|\n"
-    for i, r in enumerate(risks, 1):
-        md += f"| {i} | {r.get('risk', '')} | {r.get('severity', 'unknown').upper()} | {r.get('category', 'general')} |\n"
+    # Use enriched table format if skill-informed fields are present
+    has_enriched = any(r.get("severity_band") for r in risks)
+    if has_enriched:
+        md += "| # | Risk | Category | L | I | Severity | Response |\n"
+        md += "|---|------|----------|---|---|----------|----------|\n"
+        for i, r in enumerate(risks, 1):
+            risk_desc = r.get("description_if_then", r.get("risk", ""))[:100]
+            risk_cat = r.get("risk_category", r.get("category", "general"))
+            likelihood = r.get("likelihood", "")
+            impact = r.get("impact", "")
+            severity_band = r.get("severity_band", r.get("severity", "unknown").upper())
+            response = r.get("response_strategy", "")
+            md += f"| {i} | {risk_desc} | {risk_cat} | {likelihood} | {impact} | {severity_band} | {response} |\n"
+    else:
+        md += "| # | Risk | Severity | Category |\n"
+        md += "|---|------|----------|----------|\n"
+        for i, r in enumerate(risks, 1):
+            md += f"| {i} | {r.get('risk', '')} | {r.get('severity', 'unknown').upper()} | {r.get('category', 'general')} |\n"
     md += "\n"
 else:
     md += "*No significant risks identified.*\n\n"
@@ -717,3 +768,10 @@ Machine-readable: {folder}/screen/BID_SCREEN.json
 - [ ] If --quick mode, intel section omitted
 - [ ] QA check passed (file exists, > 10KB, page count > 0)
 - [ ] If PDF fails, BID_SCREEN.json still available as fallback
+
+### Skill-Enriched Rendering Checks (publication-specialist)
+- [ ] Risk table renders enriched format if available (Likelihood, Impact, Severity Band, Response Strategy columns)
+- [ ] Risk severity distribution summary rendered above risk table
+- [ ] Theme table renders enriched format if available (Discriminator Type, Maturity Level columns)
+- [ ] Theme details include Discriminator, Maturity, and Competitive Edge fields
+- [ ] Backward-compatible: falls back to simple format if enriched fields not present

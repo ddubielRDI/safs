@@ -62,6 +62,39 @@ overall_risks = go_nogo.get("overall_risks", [])
 overall_mitigations = go_nogo.get("overall_mitigations", [])
 ```
 
+### Skill Integration: Capture-Strategist & Competitive-Positioning Framework Application (MANDATORY)
+
+The **capture-strategist** and **competitive-positioning** sub-skill are loaded in context. Apply these frameworks throughout this phase:
+
+**Discriminator Type Classification:** For each theme candidate, classify its discriminator type:
+- **Hard Discriminator** — provable, measurable, verifiable (patent, certification, metric, tool). Example: "Esri Gold Partner since 1992" is hard; "experienced team" is soft.
+- **Soft Discriminator** — qualitative, subjective, narrative-dependent. These are weaker and easier for competitors to claim.
+- Per competitive-positioning sub-skill, prefer Hard discriminators; Soft discriminators need quantified evidence to be credible.
+
+**APMP Theme Maturity Assessment:** Assess each theme's maturity level:
+1. **Feature** — states a capability ("We have GIS expertise")
+2. **Benefit** — connects capability to client value ("Our GIS expertise reduces implementation time")
+3. **Proof** — provides evidence for the benefit ("In 3 similar projects, we reduced implementation time by 40%")
+4. **Discriminator** — proves competitors can't match ("Only Esri Gold Partner in Alaska with 34 years of municipal GIS delivery")
+- **Only select themes that reach at least "Proof" maturity** — they must have evidence from past projects, metrics, or certifications
+
+**Ghost Strategy Element:** For each selected theme, identify what competitor weakness it exploits:
+- What would a competitor need to match this? (Time, certification, experience, partnership)
+- This informs Phase 8.0 ghost strategy in the full pipeline
+
+**CVD Formula (Capability-Value-Differentiator):** Theme framings in Step 3b MUST follow this structure:
+- **Capability:** What we can do (specific, named — not generic)
+- **Value:** Why that matters to THIS evaluator (tied to buyer priority)
+- **Differentiator:** Why competitors can't match it (ghost element)
+
+**Anti-Pattern Guards:**
+- "Strategy-free proposals" — themes without win strategy (just listing capabilities)
+- "Incumbent complacency" — themes that assume past performance alone wins
+- "Feature-dumping" — themes at Feature maturity level without Proof
+- Generic themes interchangeable with any company
+
+---
+
 ### Step 2: Build Candidate Theme Pool
 
 Build candidates across 4 categories. Each candidate gets a score, evidence list, and rationale.
@@ -361,6 +394,62 @@ for i, theme in enumerate(selected, 1):
     theme["rank"] = i
 ```
 
+### Step 3a: Skill-Informed Theme Enrichment (MANDATORY)
+
+After selecting themes algorithmically, enrich each with skill-mandated structured fields.
+
+```python
+for theme in selected:
+    evidence = theme.get("evidence", [])
+    has_metrics = any(
+        any(c.isdigit() for c in str(e)) for e in evidence
+    )
+    has_named_project = any("project" in str(e).lower() for e in evidence)
+    has_certification = any(
+        kw in str(evidence).lower()
+        for kw in ["partner", "certified", "award", "gold", "accredited"]
+    )
+
+    # 1. Discriminator type classification
+    if has_certification or has_metrics:
+        theme["discriminator_type"] = "Hard"
+    else:
+        theme["discriminator_type"] = "Soft"
+
+    # 2. APMP maturity assessment
+    if has_certification and has_metrics and has_named_project:
+        theme["maturity_level"] = "Discriminator"
+    elif has_named_project and (has_metrics or has_certification):
+        theme["maturity_level"] = "Proof"
+    elif has_named_project or has_metrics:
+        theme["maturity_level"] = "Benefit"
+    else:
+        theme["maturity_level"] = "Feature"
+
+    # 3. Ghost strategy element
+    #    What would a competitor need to match this theme?
+    ghost_element = ""
+    if has_certification:
+        ghost_element = "Requires equivalent partnership/certification (years to obtain)"
+    elif has_metrics:
+        ghost_element = "Requires comparable quantified project outcomes (cannot be fabricated)"
+    elif theme.get("category") == "organizational_strength":
+        ghost_element = "Requires equivalent organizational tenure and track record"
+    else:
+        ghost_element = "Competitor could potentially claim similar capability"
+    theme["ghost_element"] = ghost_element
+
+# Log maturity assessment
+for theme in selected:
+    log(f"  Theme #{theme['rank']}: {theme['name']}")
+    log(f"    Discriminator: {theme['discriminator_type']} | Maturity: {theme['maturity_level']} | Ghost: {theme['ghost_element'][:60]}")
+
+# Warn if any selected theme is below Proof maturity
+feature_themes = [t for t in selected if t.get("maturity_level") == "Feature"]
+if feature_themes:
+    log(f"  WARNING: {len(feature_themes)} theme(s) at Feature maturity — need evidence to reach Proof level")
+```
+
 ### Step 3b: Generate Compelling Framing
 
 For each selected theme, synthesize its evidence + rationale into a 1–2 sentence evaluator-facing pitch. This framing connects RDI's specific capabilities to the client's stated needs — it is the "elevator pitch" for the theme.
@@ -377,8 +466,13 @@ for theme in selected:
     theme_rationale = theme.get("rationale", "")
     theme_name = theme.get("name", "")
 
-    # LLM prompt: generate compelling framing
-    framing_prompt = f"""Generate a 1-2 sentence compelling framing for this win theme.
+    # LLM prompt: generate CVD-structured compelling framing
+    # Per competitive-positioning sub-skill, use Capability-Value-Differentiator formula
+    discriminator_type = theme.get("discriminator_type", "Soft")
+    maturity_level = theme.get("maturity_level", "Feature")
+    ghost_element = theme.get("ghost_element", "")
+
+    framing_prompt = f"""Generate a 1-2 sentence compelling framing for this win theme using the CVD (Capability-Value-Differentiator) formula.
 
 RFP: "{rfp_title}" for {client_name}
 Scope keywords: {scope_summary}
@@ -386,6 +480,14 @@ Theme: {theme_name}
 Rationale: {theme_rationale}
 Evidence: {'; '.join(theme_evidence)}
 Matched projects: {', '.join(p.get('title', '') for p in matched_projects[:5])}
+Discriminator type: {discriminator_type} ({"provable/measurable" if discriminator_type == "Hard" else "qualitative — strengthen with evidence"})
+Maturity level: {maturity_level} (target: Proof or Discriminator)
+Ghost element: {ghost_element}
+
+CVD FORMULA (MANDATORY structure):
+- CAPABILITY: What we can do (specific, named — not generic)
+- VALUE: Why that matters to THIS evaluator (tied to buyer priority from RFP)
+- DIFFERENTIATOR: Why competitors can't match it (reference the ghost element)
 
 Requirements:
 - Use SPECIFIC evidence (project names, metrics, numbers) — not generic claims
@@ -393,6 +495,7 @@ Requirements:
 - 1-2 sentences max, persuasive professional tone
 - Reference matched projects and concrete deliverables where possible
 - Do NOT use filler phrases like "uniquely positioned" or "best-in-class"
+- The framing should implicitly contain all three CVD elements in natural prose
 
 Return ONLY the framing text, no labels or quotes."""
 
@@ -513,3 +616,12 @@ Output:
 - [ ] Buyer priority coverage check performed: HIGH priorities vs theme keywords
 - [ ] buyer_priority_coverage included in output (covered, uncovered, coverage_ratio)
 - [ ] Uncovered HIGH priorities flagged as "Theme gap — full pipeline should address"
+
+### Skill Integration Quality Checks (capture-strategist + competitive-positioning)
+- [ ] Each theme has discriminator_type: "Hard" (provable) or "Soft" (qualitative)
+- [ ] Each theme has maturity_level: Feature/Benefit/Proof/Discriminator (target Proof+)
+- [ ] Feature-level themes flagged with warning — need evidence to reach Proof
+- [ ] Each theme has ghost_element: what competitor weakness this exploits
+- [ ] Framing prompts use CVD formula (Capability-Value-Differentiator)
+- [ ] Framing references specific evidence, not generic claims
+- [ ] **Anti-pattern check:** No strategy-free themes, no incumbent complacency, no feature-dumping, no generic interchangeable themes

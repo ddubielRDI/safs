@@ -50,6 +50,34 @@ if not client_name:
     return
 ```
 
+### Skill Integration: Competitive-Intel Framework Application (MANDATORY)
+
+The **competitive-intel** skill is loaded in context. Apply these frameworks:
+
+**CRAAP Source Evaluation Framework:** For each web search result, assess:
+- Currency — How recent is the information?
+- Relevance — Does it relate to the RFP context?
+- Authority — Is the source credible? (.gov, .edu, official sites > blogs, forums)
+- Accuracy — Can the claims be verified from multiple sources?
+- Purpose — What is the source's intent? (news vs. marketing vs. opinion)
+
+Only include findings that score at least 3/5 on the CRAAP scale.
+
+**Collection Planning Allocation:** Distribute the 8 searches by priority:
+- 30% Incumbent ID (2-3 searches) — Who has the current contract?
+- 25% Competitor Landscape (2 searches) — Who else will bid?
+- 25% Client Environment (2 searches) — Technology stack, org structure
+- 20% Strategic Context (1-2 searches) — Client initiatives, pain points
+
+**Intelligence Cycle Terminology:** Structure output using:
+- **Collection** — raw search results gathered
+- **Processing** — validated and cross-referenced findings
+- **Analysis** — synthesized intelligence with confidence levels
+
+**Triangulation Rule:** For any claim to be reported as "high confidence," it must be corroborated by at least 2 independent sources. Single-source claims should be marked as "low-medium confidence."
+
+---
+
 ### Step 3: Execute Web Research (Max 8 Queries)
 
 Track search count. Stop at 8. Prioritize categories in order.
@@ -187,3 +215,9 @@ Output: screen/client-intel-snapshot.json
 - [ ] Max 8 searches enforced
 - [ ] `client-intel-snapshot.json` written (>1KB)
 - [ ] Search log documents every query
+
+### Skill Integration Quality Checks (competitive-intel)
+- [ ] CRAAP framework applied to source evaluation (only 3/5+ included)
+- [ ] Collection planning allocation roughly followed (30% incumbent, 25% competitor, 25% client, 20% strategic)
+- [ ] Triangulation rule applied (high-confidence claims require 2+ independent sources)
+- [ ] Intelligence structured using collection/processing/analysis terminology
