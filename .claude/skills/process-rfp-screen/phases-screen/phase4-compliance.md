@@ -577,16 +577,62 @@ for project in projects:
         breakdown["industry"] = 0
     score += breakdown["industry"]
 
-    # Technology overlap (3pts per match, max 15)
+    # Technology overlap — tiered scoring (max 15)
+    # Uses tech_intelligence from Phase 1 for version/stack-aware matching
+    rfp_tech_intel = rfp_summary.get("tech_intelligence", {})
+    phase1_stacks = rfp_tech_intel.get("technology_stacks", [])
+    # Build lookup of Phase 1 technology details for version matching
+    phase1_tech_details = {}
+    for stack in phase1_stacks:
+        for tech in stack.get("technologies", []):
+            if isinstance(tech, dict):
+                phase1_tech_details[tech.get("name", "").lower()] = tech
+            else:
+                phase1_tech_details[str(tech).lower()] = {"name": str(tech)}
+    # Build stack membership for stack-level matching
+    stack_members = {}
+    for stack in phase1_stacks:
+        stack_name = stack.get("name", "").lower()
+        for tech in stack.get("technologies", []):
+            tech_name = (tech.get("name", "") if isinstance(tech, dict) else str(tech)).lower()
+            stack_members[tech_name] = stack_name
+
     proj_techs = [t.lower() for t in project.get("technologies", [])]
     tech_matches = []
+    tech_match_depths = []  # Track match depth per technology
     for kw in rfp_keywords:
         for tech in proj_techs:
             if kw in tech or tech in kw:
+                # Determine match depth tier
+                phase1_detail = phase1_tech_details.get(kw, {})
+                required_version = phase1_detail.get("version", "")
+                match_depth = "name"  # Default: basic name overlap (3 pts)
+
+                if required_version and required_version.lower() in tech:
+                    match_depth = "version"  # Tech name + version both match (5 pts)
+                elif kw in stack_members and any(
+                    stack_members[kw] in pt for pt in proj_techs
+                ):
+                    match_depth = "stack"  # Recognized as part of same stack (4 pts)
+
                 tech_matches.append(kw)
+                tech_match_depths.append({"technology": kw, "match_depth": match_depth})
                 break
-    tech_score = min(len(tech_matches) * 3, 15)
-    breakdown["technology"] = {"score": tech_score, "matches": tech_matches[:5]}
+
+    # Tiered scoring: version=5, stack=4, name=3 (max 15 unchanged)
+    # Note: When ALL RFP technologies are unversioned (common in municipal/older RFPs),
+    # the version-match tier (5pts) will be unused. This is expected -- the tiered
+    # system still differentiates stack-aware matches (4pts) from basic name overlap (3pts).
+    depth_points = {"version": 5, "stack": 4, "name": 3}
+    tech_score = min(
+        sum(depth_points.get(d["match_depth"], 3) for d in tech_match_depths),
+        15
+    )
+    breakdown["technology"] = {
+        "score": tech_score,
+        "matches": tech_matches[:5],
+        "technology_match_depth": tech_match_depths[:5]
+    }
     score += tech_score
 
     # Metrics (5pts if metrics table present)
@@ -735,6 +781,20 @@ for project in projects:
         "description_summary": (project.get("description") or "")[:300]
     })
 
+# VERIFICATION: Assert score breakdown sums correctly
+for proj in scored_projects:
+    breakdown = proj.get("score_breakdown", {})
+    # Flatten nested breakdown values (technology has sub-dict with "score" key)
+    flat_sum = 0
+    for key, val in breakdown.items():
+        if isinstance(val, dict):
+            flat_sum += val.get("score", 0)
+        else:
+            flat_sum += val
+    if flat_sum != proj["relevance_score"]:
+        log(f"  WARNING: Score mismatch for {proj['project_name']}: breakdown sums to {flat_sum} but score is {proj['relevance_score']}")
+        proj["relevance_score"] = flat_sum  # Use verified sum
+
 # Sort by score descending, take top 5
 scored_projects.sort(key=lambda p: p["relevance_score"], reverse=True)
 
@@ -795,6 +855,108 @@ past_match = {
     "partnerships": partnerships,
     "awards": awards[:5]  # Top 5 awards
 }
+```
+
+### Step 7b: Tech Gap Analysis (from Phase 1 tech_intelligence)
+
+Build a technology gap report by comparing RFP-required technologies against past project coverage. This feeds into Phase 5 risk assessment and Phase 5.5 clarifying questions.
+
+```python
+# Collect all technologies mentioned across top matched projects
+all_project_techs = set()
+for p in top_5:
+    for t in p.get("technologies", []):
+        all_project_techs.add(t.lower())
+
+# Compare against RFP required technologies
+rfp_tech_intel = rfp_summary.get("tech_intelligence", {})
+rfp_required_techs = rfp_summary.get("required_technologies", [])
+
+techs_with_coverage = []
+techs_without_coverage = []
+
+for tech in rfp_required_techs:
+    tech_lower = tech.lower()
+    if any(tech_lower in pt or pt in tech_lower for pt in all_project_techs):
+        techs_with_coverage.append(tech)
+    else:
+        techs_without_coverage.append(tech)
+
+# Determine gap severity
+gap_count = len(techs_without_coverage)
+total_required = len(rfp_required_techs) or 1
+if gap_count == 0:
+    gap_severity = "none"
+elif gap_count / total_required <= 0.25:
+    gap_severity = "low"
+elif gap_count / total_required <= 0.5:
+    gap_severity = "medium"
+else:
+    gap_severity = "high"
+
+gap_advisory = ""
+if gap_count > 0:
+    gap_advisory = f"{gap_count} technolog{'y' if gap_count == 1 else 'ies'} required by RFP {'has' if gap_count == 1 else 'have'} no coverage in past projects"
+
+tech_gap_analysis = {
+    "technologies_with_coverage": techs_with_coverage,
+    "technologies_without_coverage": techs_without_coverage,
+    "gap_severity": gap_severity,
+    "gap_advisory": gap_advisory
+}
+past_match["tech_gap_analysis"] = tech_gap_analysis
+```
+
+### Step 7c: Evaluation Impact Cross-Reference
+
+Map compliance GAP/RISK items to high-point evaluation criteria from the evaluation model. This highlights which compliance issues will cost the most evaluation points.
+
+```python
+evaluation_model = rfp_summary.get("evaluation_model", {})
+point_allocation = evaluation_model.get("point_allocation", [])
+
+eval_impact_xref = []
+
+if point_allocation:
+    # Build list of compliance items that are GAP or RISK
+    compliance_gaps_risks = [
+        item for item in compliance_items
+        if item.get("status") in ("GAP", "RISK")
+    ]
+
+    for gap_item in compliance_gaps_risks:
+        gap_text = gap_item.get("requirement", "").lower()
+        gap_category = gap_item.get("category", "")
+
+        # Find evaluation criteria that might be impacted by this gap
+        impacted_criteria = []
+        for criterion in point_allocation:
+            criterion_name = criterion.get("criterion", "").lower()
+            criterion_points = criterion.get("points", 0)
+            # Check for keyword overlap between gap requirement and criterion
+            gap_words = set(gap_text.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
+            criterion_words = set(criterion_name.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
+            overlap = gap_words & criterion_words
+            if len(overlap) >= 1 or gap_category in criterion_name:
+                impacted_criteria.append({
+                    "criterion": criterion.get("criterion", ""),
+                    "points": criterion_points,
+                    "keyword_overlap": list(overlap)
+                })
+
+        if impacted_criteria:
+            eval_impact_xref.append({
+                "compliance_item": gap_item.get("requirement", "")[:120],
+                "status": gap_item.get("status", ""),
+                "impacted_criteria": impacted_criteria,
+                "total_points_at_risk": sum(c["points"] for c in impacted_criteria)
+            })
+
+    # Sort by points at risk descending
+    eval_impact_xref.sort(key=lambda x: x["total_points_at_risk"], reverse=True)
+
+past_match["evaluation_impact_xref"] = eval_impact_xref
+
 write_json(f"{folder}/screen/past-projects-match.json", past_match)
 ```
 
@@ -841,6 +1003,14 @@ Outputs:
 - [ ] Enriched project fields extracted: key_outcomes, challenges, quote_text, quote_attribution, team_size
 - [ ] compliance-check.json includes contract_vehicles, existing_relationship, partnerships, awards
 - [ ] past-projects-match.json includes existing_relationship, contract_vehicles_in_state, partnerships
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] Technology scoring uses tiered system: version match (5), stack match (4), name match (3) — max 15 unchanged
+- [ ] `technology_match_depth` tracked per project in score_breakdown.technology
+- [ ] `tech_gap_analysis` computed and added to past-projects-match.json
+- [ ] `gap_severity` correctly assigned (none/low/medium/high based on coverage ratio)
+- [ ] `evaluation_impact_xref` cross-references compliance GAP/RISK items against evaluation_model.point_allocation
+- [ ] `total_points_at_risk` computed per cross-referenced compliance gap
 
 ### Skill Integration Quality Checks (procurement-analyst + compliance-audit)
 - [ ] Each compliance item has confidence_tier (Verified/Documented/Inferred/Claimed/Unknown)

@@ -9,7 +9,12 @@ allowed-tools: [Bash, Write, Edit, Glob, Grep, Read, WebFetch, WebSearch]
 
 ## Skill Description
 
-Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and produces a single `BID_SCREEN.pdf` for human GO/NO-GO judgment. Designed to run in ~15-30 minutes — use BEFORE committing to the full `/process-rfp-win` pipeline (3+ hours).
+Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and produces a single `BID_SCREEN.docx` for human GO/NO-GO judgment. Designed to run in ~15-30 minutes — use BEFORE committing to the full `/process-rfp-win` pipeline (3+ hours).
+
+**Three Intelligence Layers** (v2 -- 2026-03-25):
+- **Client Tone Detection** — detects communication register (formal/outcomes/innovation/compliance/mission-driven) from RFP text and adapts all downstream outputs to mirror evaluator language.
+- **Full Technology Intelligence** — maps tech stacks, versions, ecosystem relationships, maturity, and competitive positioning (differentiator/table-stakes/gap).
+- **Evaluator-Lens Positioning** — maps themes to evaluation criteria point values, estimates scoring impact, aligns questions to high-point criteria.
 
 **Key Design Decisions:**
 - **Grok Review: SKIPPED** — this is a screening tool, not a production bid. Speed > polish.
@@ -32,7 +37,7 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 | `screen/BID_SCREEN.json` | 5 | 3KB |
 | `screen/clarifying-questions.json` | 5.5 | 1KB |
 | `screen/BID_SCREEN.md` | 6 | 5KB |
-| `screen/BID_SCREEN.pdf` | 6 | 10KB |
+| `screen/BID_SCREEN.docx` | 6 | 30KB |
 
 ---
 
@@ -57,7 +62,7 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 | Read | `{folder}/**/*` | All files in input folder |
 | Write | `{folder}/screen/**/*` | Create/overwrite screen outputs |
 | Create | `{folder}/screen/**/*` | New files and directories |
-| Bash | `markitdown`, `python3`, `pip` | Document conversion, PDF generation |
+| Bash | `markitdown`, `python3`, `pip` | Document conversion, DOCX generation |
 | WebSearch | Max 8 queries | Client intelligence (Phase 3 only) |
 
 ---
@@ -102,7 +107,7 @@ Phase 4: Compliance Check & Project Match    → phases-screen/phase4-compliance
 Phase 4.5: Preliminary Win Themes            → phases-screen/phase4.5-themes.md
 Phase 5: Risk Assessment & Recommendation    → phases-screen/phase5-recommendation.md
 Phase 5.5: Clarifying Questions Generation   → phases-screen/phase5.5-questions.md
-Phase 6: PDF Generation                      → phases-screen/phase6-pdf.md         [MANDATORY]
+Phase 6: Report Generation (DOCX)             → phases-screen/phase6-pdf.md         [MANDATORY]
 ```
 
 ---
@@ -187,7 +192,11 @@ phases = [
         "file": "phase1-summary.md",
         "blocking": False,
         "skip_condition": None,
-        "skill": "procurement-analyst"
+        "skill": "procurement-analyst",
+        "additional_skills": [
+            "capture-strategist/tone-calibration",
+            "competitive-intel/tech-intelligence"
+        ]  # v2: Phase 1 also loads tone + tech intelligence sub-skills
     },
     {
         "id": 2,
@@ -243,9 +252,9 @@ phases = [
     },
     {
         "id": 6,
-        "name": "PDF Generation",
+        "name": "Report Generation (DOCX)",
         "file": "phase6-pdf.md",
-        "blocking": True,  # Pipeline fails without PDF
+        "blocking": True,  # Pipeline fails without DOCX
         "skip_condition": None,
         "skill": "publication-specialist"
     }
@@ -293,6 +302,12 @@ for phase in phases:
         skill_path = f"{DOMAIN_SKILLS_DIR}/{skill_name}.md"
         log(f"  Loading skill: {skill_name}")
         # >>> Use Read tool on skill_path <<<
+
+        # v2: Load additional cross-domain sub-skills if specified
+        for extra in phase.get("additional_skills", []):
+            extra_path = f"{DOMAIN_SKILLS_DIR}/{extra}.md"
+            log(f"  Loading additional skill: {extra}")
+            # >>> Use Read tool on extra_path <<<
         # After reading the skill, note the key frameworks, quality criteria, and
         # anti-patterns it defines. When executing the phase, actively apply these
         # frameworks to structure outputs and verify quality. The skill content is
@@ -342,7 +357,7 @@ required_outputs = [
     ("screen/clarifying-questions.json", "Clarifying Questions", 1),
     ("screen/BID_SCREEN.json", "Consolidated Data", 3),
     ("screen/BID_SCREEN.md", "Markdown Report", 5),
-    ("screen/BID_SCREEN.pdf", "PDF Report", 10),
+    ("screen/BID_SCREEN.docx", "DOCX Report", 30),
 ]
 
 if not quick_mode:
@@ -388,10 +403,10 @@ Total Score: {total_score}/100
 Mode: {'QUICK' if quick_mode else 'FULL'}
 
 Outputs: {folder}/screen/
-Primary: BID_SCREEN.pdf
+Primary: BID_SCREEN.docx
 
 {"Next step: /process-rfp-win " + folder if recommendation == "GO" else ""}
-{"Review risks in BID_SCREEN.pdf before deciding." if recommendation == "CONDITIONAL" else ""}
+{"Review risks in BID_SCREEN.docx before deciding." if recommendation == "CONDITIONAL" else ""}
 {"Recommendation is NO-GO. Override available if strategic reasons exist." if recommendation == "NO_GO" else ""}
 """)
 
@@ -411,7 +426,7 @@ log("=" * 60)
 | company-profile.json missing | ABORT — scoring meaningless without company data |
 | Past_Projects.md missing | Continue, empty project matches, flag as RISK |
 | WebSearch failures | Continue with remaining searches; min 1 for intel |
-| PDF generation fails | Retry once; if still fails, output BID_SCREEN.json only |
+| DOCX generation fails | Retry once; if still fails, output BID_SCREEN.json only |
 
 ---
 
@@ -432,8 +447,8 @@ This ensures:
 - [ ] Phases executed sequentially in main context (no Task agents)
 - [ ] Phase 3 skipped when `--quick` flag present
 - [ ] All JSON outputs written to `{folder}/screen/`
-- [ ] `BID_SCREEN.pdf` generated and > 10KB
+- [ ] `BID_SCREEN.docx` generated and > 30KB
 - [ ] `BID_SCREEN.json` contains data from all phases
 - [ ] Recommendation follows threshold rules (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
-- [ ] No ghost fills in PDF (CSS constraints respected)
+- [ ] DOCX uses python-docx with Calibri font, navy headings, Light Grid Accent 1 tables
 - [ ] `screen/` directory does not interfere with `shared/` or `outputs/`

@@ -127,10 +127,20 @@ Extract per result: name, title, source, note (certifications, responsibilities)
 
 **Category C: Technology Stack (2 searches)**
 
+```python
+# Load Phase 1 tech intelligence for informed search (backward-compatible)
+rfp_tech_intel = rfp_summary.get("tech_intelligence", {})
+phase1_stacks = rfp_tech_intel.get("technology_stacks", [])
+primary_stack_name = phase1_stacks[0].get("name", "") if phase1_stacks else ""
+```
+
 ```
 WebSearch: "{client_name} technology stack software systems GIS Esri"
-WebSearch: "{client_name} IT modernization digital transformation"
+# Use Phase 1's primary stack name instead of generic "IT modernization" query
+WebSearch: "{client_name} {primary_stack_name or 'IT modernization'} implementation deployment"
 ```
+
+> **Note:** If Phase 1 identified specific technology stacks (e.g., "Esri ArcGIS Enterprise"), the second search targets that stack name for validation. If no stacks were identified, falls back to the generic "IT modernization" query for backward compatibility.
 
 Extract per result: technology, category, confidence, note
 
@@ -183,9 +193,56 @@ client_intel = {
         "max_searches": 8,
         "search_log": intel["search_log"],
         "data_freshness": datetime.now().strftime("%Y-%m-%d")
-    }
+    },
+
+    # Technology stack validation: cross-reference Phase 1 tech_intelligence against web research
+    "technology_stack_validation": _build_tech_validation(rfp_tech_intel, intel["technology_stack"])
 }
 write_json(f"{folder}/screen/client-intel-snapshot.json", client_intel)
+```
+
+```python
+def _build_tech_validation(phase1_tech_intel, web_discovered_tech):
+    """Cross-reference Phase 1 technology stacks against web research findings."""
+    phase1_stacks = phase1_tech_intel.get("technology_stacks", [])
+    phase1_tech_names = []
+    for stack in phase1_stacks:
+        phase1_tech_names.extend(stack.get("technologies", []))
+
+    # Normalize for comparison
+    phase1_names_lower = [t.lower() for t in phase1_tech_names]
+    web_tech_names = [t.get("technology", "") if isinstance(t, dict) else str(t) for t in web_discovered_tech]
+    web_names_lower = [t.lower() for t in web_tech_names]
+
+    confirmed = []
+    unconfirmed = []
+    additional = []
+
+    for tech_name in phase1_tech_names:
+        if any(tech_name.lower() in wt or wt in tech_name.lower() for wt in web_names_lower):
+            confirmed.append(tech_name)
+        else:
+            unconfirmed.append(tech_name)
+
+    for web_tech in web_tech_names:
+        if not any(web_tech.lower() in pt or pt in web_tech.lower() for pt in phase1_names_lower):
+            additional.append(web_tech)
+
+    # Confidence: high if >50% confirmed, medium if any confirmed, low if none
+    total = len(phase1_tech_names) or 1
+    if len(confirmed) / total > 0.5:
+        confidence = "high"
+    elif confirmed:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    return {
+        "phase1_stacks_confirmed": confirmed,
+        "phase1_stacks_unconfirmed": unconfirmed,
+        "additional_tech_discovered": additional,
+        "validation_confidence": confidence
+    }
 ```
 
 ### Step 5: Report
@@ -215,6 +272,12 @@ Output: screen/client-intel-snapshot.json
 - [ ] Max 8 searches enforced
 - [ ] `client-intel-snapshot.json` written (>1KB)
 - [ ] Search log documents every query
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] Phase 1 `tech_intelligence.technology_stacks` loaded for Category C search targeting
+- [ ] Second Category C search uses primary stack name (or "IT modernization" fallback)
+- [ ] `technology_stack_validation` field added to output with confirmed/unconfirmed/additional arrays
+- [ ] `validation_confidence` correctly computed (high/medium/low)
 
 ### Skill Integration Quality Checks (competitive-intel)
 - [ ] CRAAP framework applied to source evaluation (only 3/5+ included)

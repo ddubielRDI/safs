@@ -117,6 +117,25 @@ if match_quality == "weak":
         "category": "experience"
     })
 
+# From Phase 4 Tech Gap Analysis (Batch 3)
+tech_gap = past_matches.get("tech_gap_analysis", {})
+gap_severity = tech_gap.get("gap_severity", "none")
+techs_without_coverage = tech_gap.get("technologies_without_coverage", [])
+if gap_severity in ("medium", "high") and techs_without_coverage:
+    risks.append({
+        "risk": f"Technology gap: {len(techs_without_coverage)} RFP-required technolog{'y has' if len(techs_without_coverage) == 1 else 'ies have'} no past project coverage ({', '.join(techs_without_coverage[:3])})",
+        "source": "tech_gap_analysis",
+        "severity": "high" if gap_severity == "high" else "medium",
+        "category": "experience"
+    })
+elif gap_severity == "low" and techs_without_coverage:
+    risks.append({
+        "risk": f"Minor technology gap: {', '.join(techs_without_coverage[:2])} lack past project coverage",
+        "source": "tech_gap_analysis",
+        "severity": "low",
+        "category": "experience"
+    })
+
 # Timeline risk
 # Helper to find assessment area by name
 def find_area(areas, name_prefix):
@@ -339,9 +358,31 @@ matching_vehicles = compliance.get("contract_vehicles", {}).get("matching_rfp", 
 partnerships = compliance.get("partnerships", [])
 existing_rel = compliance.get("existing_relationship", {})
 
+# Load intelligence layers for recommendation enrichment (Batch 3)
+client_tone = go_nogo.get("client_tone", {})
+primary_style = client_tone.get("primary_style", "formal_bureaucratic")
+
+# Evaluation point coverage from Phase 4.5 themes
+eval_point_coverage = (preliminary_themes or {}).get("evaluation_point_coverage", {})
+total_theme_points = eval_point_coverage.get("total_theme_points", 0)
+total_available_points = eval_point_coverage.get("total_available_points", "unknown")
+
+# Tone-adapted rationale framing prefix
+tone_framing = {
+    "formal_bureaucratic": "",  # Default — no special framing
+    "technical_precise": "Technical assessment: ",
+    "collaborative_partnership": "Partnership opportunity assessment: ",
+    "results_oriented": "Results-focused assessment: ",
+    "innovation_forward": "Innovation opportunity assessment: ",
+}.get(primary_style, "")
+
 if recommendation == "GO":
     # Build a rationale that names 3+ specific differentiators
-    rationale = f"Score {total_score}/100 meets GO threshold. "
+    rationale = f"{tone_framing}Score {total_score}/100 meets GO threshold. "
+
+    # Evaluation point coverage (Batch 3)
+    if total_theme_points and total_available_points != "unknown":
+        rationale += f"Themes address ~{total_theme_points}/{total_available_points} evaluation points. "
 
     # Top differentiator from strongest assessment area
     if strongest_area:
@@ -520,6 +561,13 @@ Outputs:
 - [ ] Next steps tailored to recommendation (GO/CONDITIONAL/NO-GO)
 - [ ] Uncovered HIGH buyer priorities included in next_steps (if GO recommendation)
 - [ ] buyer_priority_coverage from both go-nogo-score.json and preliminary-themes.json consulted
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] Tech gap risks from Phase 4 `tech_gap_analysis` added to risk consolidation
+- [ ] Gap severity (none/low/medium/high) correctly mapped to risk severity levels
+- [ ] Evaluation point coverage included in GO rationale ("Themes address ~X/Y points")
+- [ ] Tone-adapted rationale framing applied based on `client_tone.primary_style`
+- [ ] `client_tone` and `evaluation_point_coverage` loaded from upstream phase outputs
 
 ### Skill Integration Quality Checks (risk-analyst)
 - [ ] Every risk classified into 6-category taxonomy (Technical/Schedule/Cost/Management/External-Regulatory/Past Performance)

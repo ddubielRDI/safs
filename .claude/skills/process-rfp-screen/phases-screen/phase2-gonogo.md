@@ -33,6 +33,11 @@ buyer_priorities = rfp_summary.get("buyer_priorities", [])
 required_technologies = rfp_summary.get("required_technologies") or rfp_summary.get("scope_keywords", [])
 evaluation_subfactors = rfp_summary.get("evaluation_subfactors", [])
 high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
+
+# Phase 1 intelligence layers (Batch 3 — backward-compatible with empty dict defaults)
+client_tone = rfp_summary.get("client_tone", {})
+tech_intelligence = rfp_summary.get("tech_intelligence", {})
+evaluation_model = rfp_summary.get("evaluation_model", {})
 ```
 
 Prepare reference data for the assessment:
@@ -149,6 +154,37 @@ For every assessment area:
    assessment independent of deadline status."
 4. The deadline status DOES appear in the final recommendation rationale as context,
    but the recommendation threshold (GO/CONDITIONAL/NO-GO) is based on merit scores only
+5. **Historical RFP value:** Screening past-deadline RFPs is valuable for portfolio
+   analysis, pipeline calibration, and positioning for similar future opportunities.
+   The GO/NO-GO recommendation indicates whether the firm SHOULD HAVE bid (or should
+   pursue similar opportunities), not whether it CAN still bid.
+
+---
+
+### SCORING ANCHORS (MANDATORY -- reference when assigning every score)
+
+| Range | Rating | Definition |
+|-------|--------|-----------|
+| 90-100 | Exceptional | Near-zero gaps, hard discriminators with verifiable proof, demonstrably superior to likely competitors |
+| 75-89 | Strong | Clear advantages with minor gaps that have mitigations, competitive on most dimensions |
+| 60-74 | Adequate | Meets requirements without standout advantages, competitive but not differentiated |
+| 40-59 | Weak | Notable gaps or competitive disadvantages, significant mitigation required |
+| 0-39 | Critical | Disqualifying gaps or fundamental misalignment |
+
+**Calibration mandate:** Before assigning any score above 85, explicitly state:
+1. What would need to be true for this area to score 100
+2. What specific gap or uncertainty prevents the higher score
+This prevents optimism bias and forces evidence-based scoring.
+
+### SCORE CEILING RULE
+
+When key information is unknown, affected area scores are CAPPED at 85:
+- **Competitive field unknown** → Competitive Position capped at 85 (cannot claim advantage without knowing competitors)
+- **Contract value undisclosed** → Financial Viability capped at 85 (cannot assess fit without knowing scale)
+- **Incumbent unknown** → Win Probability capped at 85 (cannot estimate win chance without knowing competitive landscape)
+- **Key personnel availability unconfirmed** → Resource Availability capped at 85
+
+The ceiling does NOT apply when the information IS known. It ensures scores reflect actual knowledge, not assumptions.
 
 ---
 
@@ -188,10 +224,13 @@ For every assessment area:
 - Mandatory requirement coverage: can each stated requirement be addressed by a documented capability
 - Depth vs breadth: does the company have deep expertise or only tangential coverage
 - **Buyer priority coverage:** For each buyer priority tagged HIGH, assess if the company has direct documented capability. Each unaddressable HIGH priority is a ceiling-reducer (~15 pts from 100)
+- **Tech maturity modifiers (from `tech_intelligence`):** Apply +5 for each established technology with strong RDI alignment (cite specific technology names and `rdi_alignment` fields). Apply -5 per unmatched emerging technology (cap at -15 total). Example: "ArcGIS Enterprise has strong RDI alignment via Esri Gold Partnership (+5)" or "Terraform has no documented RDI experience (-5)".
+- **Stack coherence check:** If `tech_intelligence.stack_coherence_score` < 0.5, note as risk — the client may not fully understand their own technology needs, which increases scope ambiguity and delivery risk.
 
 **Where to find evidence:**
 - `company-profile.json` services (DICT — flatten all categories), past_performance
 - `rfp-summary.json` scope_keywords, required_technologies (prefer over scope_keywords), mandatory_requirements, buyer_priorities
+- `rfp-summary.json` tech_intelligence.rdi_alignment, tech_intelligence.stack_coherence_score
 - `combined_text` for detailed technical requirements, SOW specifics
 
 **Scoring guidance:**
@@ -216,9 +255,11 @@ For every assessment area:
 - **Buyer priority differentiation:** HIGH buyer priorities where the company has a differentiator = significant advantage. Where the company merely meets the bar = neutral. Where there's a gap = disadvantage
 - **Awards and recognition** — Multiple Esri Partner of the Year and SAG Awards, Top Workplaces #48 (2025) provide competitive differentiation evidence (see Company Intelligence in Past_Projects.md)
 - **Technology partnerships** — Esri Gold Partner since 1992 (34 years), Snowflake Services Partner, Databricks Consulting Services Partner — strong differentiators for relevant technology stacks
+- **Evaluation point alignment (from `evaluation_model`):** Map RDI's strongest capabilities to the highest-point evaluation criteria from `evaluation_model.point_allocation`. For each assessment area, add a `point_alignment` output field listing which high-point criteria the company can address and estimated point capture potential. Example: if "Technical Approach" is worth 600/1000 points and RDI has strong alignment, note this as a major competitive advantage.
 
 **Where to find evidence:**
 - `rfp-summary.json` evaluation_criteria, evaluation_method, set_aside, prior_rfp_history
+- `rfp-summary.json` evaluation_model.point_allocation (criteria names, point values, decomposition)
 - `company-profile.json` bid_defaults (veteran_owned, small_business, certifications)
 - `combined_text` for competition signals, preference language, incumbent references
 - `Past_Projects.md` Company Intelligence section: Awards & Recognition, Certifications & Partnerships
@@ -360,6 +401,12 @@ weights = {
 
 # assessment_areas is the list of 7 area dicts built from the LLM analysis above
 overall_score = round(sum(area["score"] * area["weight"] for area in assessment_areas))
+
+# VERIFICATION: Ensure overall_score matches weighted sum
+calculated_score = round(sum(area["score"] * area["weight"] for area in assessment_areas))
+if calculated_score != overall_score:
+    log(f"  WARNING: Score mismatch -- calculated {calculated_score} vs stated {overall_score}. Using calculated value.")
+    overall_score = calculated_score
 ```
 
 ---
@@ -430,7 +477,10 @@ go_nogo = {
         "discriminators_identified": [],  # 3+ discriminators named
         "conditions_for_go": []  # Gaps that need resolution
     },
-    "bias_assessment": ""  # Brief note on whether cognitive biases were detected during scoring
+    "bias_assessment": "",  # Brief note on whether cognitive biases were detected during scoring
+
+    # Phase 1 intelligence layer pass-through (for downstream consumption by Phases 4.5, 5, 5.5)
+    "client_tone": client_tone,  # Pass through from rfp-summary.json for theme/question tone adaptation
 }
 
 # Build buyer_priority_coverage by assessing each HIGH priority against company capabilities
@@ -522,6 +572,14 @@ Output: screen/go-nogo-score.json
 - [ ] buyer_priorities and required_technologies loaded from rfp-summary.json (with fallback)
 - [ ] buyer_priority_coverage computed: high_total, high_addressed, high_gaps
 - [ ] HIGH buyer priorities referenced in Technical Capability, Competitive Position, and Win Probability narratives
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] `client_tone`, `tech_intelligence`, `evaluation_model` loaded from rfp-summary.json with `.get()` defaults
+- [ ] Tech maturity modifiers applied in Area 2 (+5 strong RDI match, -5 unmatched emerging, cap -15)
+- [ ] Stack coherence score < 0.5 flagged as risk in Area 2 if present
+- [ ] Evaluation point alignment assessed in Area 3 using `evaluation_model.point_allocation`
+- [ ] `point_alignment` output field included per Competitive Position area
+- [ ] `client_tone` passed through to go-nogo-score.json output for downstream phases
 
 ### Skill Integration Quality Checks (capture-strategist + bid-decision)
 - [ ] Shipley Phase 2 gate criteria assessed (opportunity_real, can_compete, can_win, worth_winning)

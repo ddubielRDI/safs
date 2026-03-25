@@ -239,6 +239,40 @@ manifest = {
     "truncated": truncated
 }
 
+### Step 5b: Clean Conversion Artifacts
+
+```python
+# Page header/footer patterns commonly embedded by markitdown when converting PDFs.
+# These appear as run-on text like "Bid 2015-100-BCity of Plano6/8/2015 8:55 AMp. 5"
+# and can confuse LLM extraction. Strip them before downstream consumption.
+import re
+
+# Pattern: repeated page footers/headers (bid number + org name + date + page number)
+# Heuristic: same text fragment appears 3+ times with only a page number varying
+lines = combined_text.split("\n")
+# Detect repeated short lines (likely headers/footers) -- appears on 3+ lines with minor variation
+line_counts = {}
+for line in lines:
+    # Normalize: strip page numbers and whitespace for comparison
+    normalized = re.sub(r'p\.\s*\d+', '', line).strip()
+    if 20 < len(normalized) < 120:  # Header/footer length range
+        line_counts[normalized] = line_counts.get(normalized, 0) + 1
+
+# Remove lines that appear 3+ times (likely repeated headers/footers)
+header_patterns = {pat for pat, count in line_counts.items() if count >= 3}
+if header_patterns:
+    cleaned_lines = []
+    stripped_count = 0
+    for line in lines:
+        normalized = re.sub(r'p\.\s*\d+', '', line).strip()
+        if normalized in header_patterns:
+            stripped_count += 1
+            continue
+        cleaned_lines.append(line)
+    combined_text = "\n".join(cleaned_lines)
+    log(f"  Stripped {stripped_count} repeated header/footer lines from combined text")
+```
+
 manifest_path = f"{folder}/screen/source-manifest.json"
 with open(manifest_path, "w") as f:
     json.dump(manifest, f, indent=2)

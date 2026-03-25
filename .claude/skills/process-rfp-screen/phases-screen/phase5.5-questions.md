@@ -174,7 +174,42 @@ if preliminary_themes:
             "severity": "high"
         })
 
-# --- Trigger Source 8: Phase 5 high-severity risks ---
+# --- Trigger Source 8: High-point eval criteria without decomposed subfactors (Batch 3) ---
+evaluation_model = rfp_summary.get("evaluation_model", {})
+point_allocation = evaluation_model.get("point_allocation", [])
+for criterion in point_allocation:
+    criterion_points = criterion.get("points", 0)
+    subfactors = criterion.get("subfactors", [])
+    # Flag high-point criteria (>=200 points) that lack subfactors — these are opaque to bidders
+    if criterion_points >= 200 and len(subfactors) == 0:
+        triggers.append({
+            "source": "Phase 1: evaluation_model.point_allocation",
+            "finding": f"High-point criterion '{criterion.get('criterion', '')}' ({criterion_points} pts) has no decomposed subfactors -- evaluation basis is opaque",
+            "category": "evaluation_process",
+            "severity": "high"
+        })
+    elif criterion_points >= 100 and len(subfactors) <= 1:
+        triggers.append({
+            "source": "Phase 1: evaluation_model.point_allocation",
+            "finding": f"Criterion '{criterion.get('criterion', '')}' ({criterion_points} pts) has minimal subfactor decomposition -- scoring basis unclear",
+            "category": "evaluation_process",
+            "severity": "medium"
+        })
+
+# --- Trigger Source 9: Tech gaps from Phase 4 tech_gap_analysis (Batch 3) ---
+tech_gap = past_matches.get("tech_gap_analysis", {})
+techs_without_coverage = tech_gap.get("technologies_without_coverage", [])
+gap_severity = tech_gap.get("gap_severity", "none")
+if techs_without_coverage:
+    for tech_name in techs_without_coverage[:3]:  # Cap at 3 to avoid trigger flood
+        triggers.append({
+            "source": "Phase 4: tech_gap_analysis",
+            "finding": f"Technology '{tech_name}' required by RFP has no past project coverage -- version/deployment expectations unclear",
+            "category": "technical_requirements",
+            "severity": "high" if gap_severity in ("medium", "high") else "medium"
+        })
+
+# --- Trigger Source 10: Phase 5 high-severity risks ---
 for risk_item in risk_assessment.get("risks", []):
     if risk_item.get("severity") == "high":
         triggers.append({
@@ -188,6 +223,27 @@ for risk_item in risk_assessment.get("risks", []):
             }.get(risk_item.get("category", ""), "scope_boundaries"),
             "severity": "high"
         })
+
+# --- Trigger Source: Unknown incumbent ---
+# When the competitive landscape shows incumbent is unknown, generate a strategic question
+incumbent = client_intel.get("intelligence", {}).get("competitive_landscape", {}).get("incumbent", "Unknown") if client_intel else "Unknown"
+if incumbent in ("Unknown", "unknown", None, ""):
+    triggers.append({
+        "source": "Phase 3: competitive_landscape",
+        "finding": "Incumbent/predecessor vendor is unknown -- cannot assess competitive positioning or client satisfaction with prior work",
+        "category": "evaluation_process",
+        "severity": "high"
+    })
+
+# --- Trigger Source: Prior contract outcome ---
+# Always valuable to understand what happened with the predecessor contract
+if incumbent in ("Unknown", "unknown", None, ""):
+    triggers.append({
+        "source": "Phase 3: competitive_landscape",
+        "finding": "Prior contract outcome unknown -- understanding client satisfaction with predecessor work informs positioning strategy",
+        "category": "operational_context",
+        "severity": "medium"
+    })
 
 log(f"  Trigger inventory: {len(triggers)} triggers found")
 log(f"  By category: { {cat: sum(1 for t in triggers if t['category'] == cat) for cat in set(t['category'] for t in triggers)} }")
@@ -275,6 +331,15 @@ for t in triggers:
     categories_seen.add(t["category"])
     trigger_summary += f"- [{t['severity'].upper()}] [{t['category']}] {t['finding']} (Source: {t['source']})\n"
 
+# Load client tone for question framing (Batch 3)
+client_tone = go_nogo.get("client_tone", {})
+primary_style = client_tone.get("primary_style", "formal_bureaucratic")
+mirroring_vocab = client_tone.get("mirroring_vocabulary", [])
+adaptation_rules = client_tone.get("adaptation_rules", {})
+formality_level = adaptation_rules.get("formality_level", "formal")
+preferred_terms = adaptation_rules.get("preferred_terms", [])
+avoid_terms = adaptation_rules.get("avoid_terms", [])
+
 # Build the LLM prompt
 question_prompt = f"""You are a Senior Capture Manager preparing clarifying questions for a client Q&A period.
 
@@ -297,9 +362,19 @@ question_prompt = f"""You are a Senior Capture Manager preparing clarifying ques
 
 ---
 
+## CLIENT TONE ADAPTATION (from Phase 1 analysis)
+- Client communication style: {primary_style}
+- Formality level: {formality_level}
+- Mirror these client vocabulary terms where natural: {', '.join(mirroring_vocab[:10]) if mirroring_vocab else 'N/A'}
+- Preferred terms: {', '.join(preferred_terms[:5]) if preferred_terms else 'N/A'}
+- Terms to avoid: {', '.join(avoid_terms[:5]) if avoid_terms else 'N/A'}
+- Match formality: {"Use formal, structured language with precise references" if formality_level == "formal" else "Use clear, direct language with a collaborative tone"}
+- If the client's style is prescriptive/directive, frame questions as seeking clarification on specifics.
+  If the client's style is collaborative, frame questions as seeking to understand partnership expectations.
+
 ## Your Task
 
-Generate 8-15 clarifying questions based on the triggers above. Each question should be something a professional capture manager would submit during a formal Q&A period.
+Generate 8-15 clarifying questions based on the triggers above. Each question should be something a professional capture manager would submit during a formal Q&A period. Apply the CLIENT TONE ADAPTATION above to match the client's communication style.
 
 ## STRICT RULES
 
@@ -353,7 +428,8 @@ Return ONLY a valid JSON array. No markdown, no commentary.
     "impact": "What answering would clarify for the proposal team",
     "related_finding": "Which screening phase finding revealed this gap",
     "demonstrates_expertise": true/false,
-    "strategic_value": "Brief note on competitive advantage this question creates (or 'informational' if purely gap-filling)"
+    "strategic_value": "Brief note on competitive advantage this question creates (or 'informational' if purely gap-filling)",
+    "evaluation_criterion_targeted": "Name of the evaluation criterion this question relates to (from evaluation_model), or null if not applicable"
   }}
 ]
 
@@ -433,7 +509,8 @@ for q in questions_raw:
         "impact": q.get("impact", ""),
         "related_finding": q.get("related_finding", ""),
         "demonstrates_expertise": q.get("demonstrates_expertise", False),
-        "strategic_value": q.get("strategic_value", "informational")
+        "strategic_value": q.get("strategic_value", "informational"),
+        "evaluation_criterion_targeted": q.get("evaluation_criterion_targeted")  # From evaluation_model (Batch 3)
     })
     category_counts[category] = category_counts.get(category, 0) + 1
 
@@ -557,10 +634,18 @@ Outputs:
 - [ ] Category caps enforced: max 4 per category
 - [ ] Total questions in 8-15 range (logged if outside range)
 - [ ] Min 3 categories covered (logged if fewer)
-- [ ] Each question has: id, question, category, priority, rfp_reference, impact, related_finding
+- [ ] Each question has: id, question, category, priority, rfp_reference, impact, related_finding, evaluation_criterion_targeted
 - [ ] Empty trigger inventory handled gracefully (0 questions, minimal output)
 - [ ] Questions reference specific RFP content (not generic)
 - [ ] Professional tone suitable for client Q&A submission
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] Trigger Source 8: High-point eval criteria without subfactors detected from `evaluation_model.point_allocation`
+- [ ] Trigger Source 9: Tech gaps from Phase 4 `tech_gap_analysis` added as triggers
+- [ ] `client_tone` loaded from go-nogo-score.json and injected into LLM prompt
+- [ ] CLIENT TONE ADAPTATION section included in prompt (style, vocabulary, formality, preferred/avoid terms)
+- [ ] `evaluation_criterion_targeted` field present per validated question
+- [ ] Questions reflect client tone adaptation (formality level, vocabulary mirroring)
 
 ### Skill Integration Quality Checks (capture-strategist + competitive-positioning)
 - [ ] Questions framed through competitive positioning lens (not just gap-filling)

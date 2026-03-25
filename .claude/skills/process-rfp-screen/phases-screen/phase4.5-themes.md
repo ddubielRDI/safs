@@ -166,6 +166,43 @@ if rfp_domain in domain_templates:
     })
 ```
 
+#### Category 1b: Consulting & Discovery Methodology Themes
+
+```python
+# Business Analysis / Stakeholder Discovery theme -- addresses RFPs that emphasize
+# requirements gathering, stakeholder engagement, or discovery phases. This draws
+# from the IT Consulting service line rather than only delivered GIS/IT systems.
+discovery_keywords = ["stakeholder", "discovery", "requirements", "needs assessment",
+                      "interviews", "workshops", "user research", "business analysis",
+                      "gap analysis", "current state", "future state", "roadmap"]
+disc_matches = [kw for kw in discovery_keywords if any(kw in sk for sk in scope_keywords)]
+if disc_matches:
+    # Also check buyer priorities for discovery-related priorities
+    disc_priorities = [bp for bp in buyer_priorities
+                       if any(kw in bp.get("name", "").lower() for kw in
+                              ["stakeholder", "discovery", "requirements", "consulting"])]
+    disc_evidence = [f"Scope keywords: {', '.join(disc_matches)}"]
+    if disc_priorities:
+        disc_evidence.append(f"Buyer priority: {disc_priorities[0].get('name', '')}")
+    # Check company profile for consulting capabilities
+    company_services = []
+    for cat, svcs in company.get("services", {}).items():
+        company_services.extend(svcs)
+    consulting_svcs = [s for s in company_services if any(
+        kw in s.lower() for kw in ["business analysis", "strategic planning", "consulting",
+                                    "change management", "project management"])]
+    if consulting_svcs:
+        disc_evidence.append(f"RDI capabilities: {', '.join(consulting_svcs[:3])}")
+    candidates.append({
+        "name": "Structured Discovery & Stakeholder Engagement Methodology",
+        "category": "domain_expertise",
+        "score": min(len(disc_matches) * 2 + len(disc_priorities) * 3, 10),
+        "confidence": "medium" if not disc_priorities else "high",
+        "evidence": disc_evidence,
+        "rationale": f"RFP scope includes {len(disc_matches)} discovery/consulting keywords, suggesting a requirements-driven engagement. RDI's Business Analysis and IT Strategic Planning capabilities address this need."
+    })
+```
+
 #### Category 2: Technical Capability Themes
 
 ```python
@@ -219,6 +256,41 @@ if sec_matches or pass_count >= 3:
         "confidence": "high" if sec_matches and pass_count >= 3 else "medium",
         "evidence": sec_evidence,
         "rationale": f"{'Security scope keywords detected' if sec_matches else ''}{' and ' if sec_matches and pass_count >= 3 else ''}{f'{pass_count} compliance items verified' if pass_count >= 3 else ''}."
+    })
+
+# Technology Depth theme (from tech_intelligence RDI alignment) — Batch 3
+tech_intelligence = rfp_summary.get("tech_intelligence", {})
+rdi_alignment = tech_intelligence.get("rdi_alignment", {})
+strong_matches = rdi_alignment.get("strong_match", [])
+# Filter to established/mature technologies with strong RDI match
+established_strong = [t for t in strong_matches if isinstance(t, dict) and t.get("maturity") in ("established", "mature")]
+if not established_strong and isinstance(strong_matches, list):
+    # Fallback: treat as list of strings for backward compat
+    established_strong = strong_matches if len(strong_matches) >= 2 else []
+
+if len(established_strong) >= 2:
+    tech_depth_evidence = [f"Strong RDI alignment on {len(established_strong)} established technologies"]
+    for t in established_strong[:3]:
+        if isinstance(t, dict):
+            tech_depth_evidence.append(f"{t.get('name', 'Unknown')}: {t.get('rdi_capability', 'documented')}")
+        else:
+            tech_depth_evidence.append(f"{t}: strong match")
+
+    # Annotate with tech gaps from Phase 4 past-projects-match
+    tech_gaps = past_matches.get("tech_gap_analysis", {}).get("technologies_without_coverage", [])
+    tech_gaps_note = ""
+    if tech_gaps:
+        tech_depth_evidence.append(f"Tech gaps to address in proposal: {', '.join(tech_gaps[:3])}")
+        tech_gaps_note = f" Gaps to address: {', '.join(tech_gaps[:3])}."
+
+    candidates.append({
+        "name": "Technology Depth & Platform Expertise",
+        "category": "technical_capability",
+        "score": min(len(established_strong) * 3 + 2, 12),
+        "confidence": "high" if len(established_strong) >= 3 else "medium",
+        "evidence": tech_depth_evidence,
+        "rationale": f"{len(established_strong)} established technologies in the RFP's required stack have strong RDI alignment, demonstrating deep platform expertise rather than superficial familiarity.{tech_gaps_note}",
+        "tech_gaps_to_address": tech_gaps[:5]
     })
 ```
 
@@ -460,6 +532,15 @@ rfp_title = rfp_summary.get("rfp_title", "")
 client_name = rfp_summary.get("client_name", "Unknown")
 scope_summary = ", ".join(scope_keywords[:8])
 
+# Load client tone from go-nogo pass-through for tone adaptation (Batch 3)
+client_tone = go_nogo.get("client_tone", {})
+primary_style = client_tone.get("primary_style", "formal_bureaucratic")
+mirroring_vocab = client_tone.get("mirroring_vocabulary", [])
+adaptation_rules = client_tone.get("adaptation_rules", {})
+preferred_terms = adaptation_rules.get("preferred_terms", [])
+avoid_terms = adaptation_rules.get("avoid_terms", [])
+formality_level = adaptation_rules.get("formality_level", "formal")
+
 for theme in selected:
     # Gather all available context for this theme
     theme_evidence = theme.get("evidence", [])
@@ -489,10 +570,19 @@ CVD FORMULA (MANDATORY structure):
 - VALUE: Why that matters to THIS evaluator (tied to buyer priority from RFP)
 - DIFFERENTIATOR: Why competitors can't match it (reference the ghost element)
 
+TONE ADAPTATION (from client tone analysis):
+- Client communication style: {primary_style}
+- Formality level: {formality_level}
+- Mirror these client vocabulary terms where natural: {', '.join(mirroring_vocab[:10]) if mirroring_vocab else 'N/A'}
+- Preferred terms to use: {', '.join(preferred_terms[:5]) if preferred_terms else 'N/A'}
+- Terms to avoid: {', '.join(avoid_terms[:5]) if avoid_terms else 'N/A'}
+- Match the client's register -- if the RFP is prescriptive and directive, be direct and confident;
+  if the RFP is collaborative, emphasize partnership and co-creation language.
+
 Requirements:
 - Use SPECIFIC evidence (project names, metrics, numbers) — not generic claims
 - Address the CLIENT'S need, not just RDI's capability (connect to the RFP scope)
-- 1-2 sentences max, persuasive professional tone
+- 1-2 sentences max, persuasive professional tone adapted to client style above
 - Reference matched projects and concrete deliverables where possible
 - Do NOT use filler phrases like "uniquely positioned" or "best-in-class"
 - The framing should implicitly contain all three CVD elements in natural prose
@@ -521,45 +611,149 @@ if high_priorities:
         for ev in theme.get("evidence", []):
             theme_keywords.update(ev.lower().split())
 
-    # Check each HIGH priority for coverage
+    # For each buyer priority, check if ANY selected theme's buyer_priority_mapping includes it
     covered = []
+    partial = []
     uncovered = []
-    for priority in high_priorities:
-        priority_name = priority.get("name", "")
-        linked_kws = [kw.lower() for kw in priority.get("linked_scope_keywords", [])]
+    for bp in high_priorities:
+        bp_name = bp.get("name", "")
+        linked_kws = [kw.lower() for kw in bp.get("linked_scope_keywords", [])]
 
-        # A priority is "covered" if any of its linked keywords appear in theme keywords
-        is_covered = any(
+        # Check direct theme mapping: linked keywords appear in theme keywords
+        directly_covered = any(
             any(kw in tk for tk in theme_keywords)
             for kw in linked_kws
         ) if linked_kws else False
 
-        # Also check if the priority name itself is referenced
-        if not is_covered:
-            is_covered = any(
+        # Also check if the priority name itself is directly referenced
+        if not directly_covered:
+            directly_covered = any(
                 word in " ".join(theme_keywords)
-                for word in priority_name.lower().split()
+                for word in bp_name.lower().split()
                 if len(word) > 3  # Skip short words like "and", "for"
             )
 
-        if is_covered:
-            covered.append(priority_name)
+        # Check if any theme evidence mentions the priority keywords (tangential coverage)
+        tangentially_covered = any(
+            bp_name.lower().split()[0] in " ".join(t.get("evidence", [])).lower()
+            for t in selected
+        ) if not directly_covered else False
+
+        if directly_covered:
+            coverage_status = "Covered"
+            covered.append(bp_name)
+        elif tangentially_covered:
+            coverage_status = "Partial"
+            partial.append(bp_name)
         else:
-            uncovered.append(priority_name)
+            coverage_status = "Uncovered"
+            uncovered.append(bp_name)
 
     buyer_priority_coverage = {
         "covered": covered,
+        "partial": partial,
         "uncovered": uncovered,
-        "coverage_ratio": f"{len(covered)}/{len(high_priorities)}"
+        "coverage_ratio": f"{len(covered)}/{len(high_priorities)}",
+        "partial_count": len(partial)
     }
 
-    if uncovered:
-        log(f"  Buyer Priority Coverage: {len(covered)}/{len(high_priorities)} HIGH priorities addressed")
-        log(f"  THEME GAPS — full pipeline should address:")
-        for u in uncovered:
-            log(f"    - {u}")
+    if uncovered or partial:
+        log(f"  Buyer Priority Coverage: {len(covered)}/{len(high_priorities)} HIGH priorities fully covered, {len(partial)} partial")
+        if partial:
+            log(f"  PARTIAL — themes tangentially address but lack dedicated evidence:")
+            for p in partial:
+                log(f"    - {p}")
+        if uncovered:
+            log(f"  THEME GAPS — full pipeline should address:")
+            for u in uncovered:
+                log(f"    - {u}")
 else:
-    buyer_priority_coverage = {"covered": [], "uncovered": [], "coverage_ratio": "N/A"}
+    buyer_priority_coverage = {"covered": [], "partial": [], "uncovered": [], "coverage_ratio": "N/A", "partial_count": 0}
+```
+
+### Step 3d: Evaluation Point Mapping (Batch 3)
+
+For each selected theme, map it to evaluation criteria from `evaluation_model` and estimate point contribution. This provides visibility into which themes drive the most evaluation points and identifies orphan themes with zero alignment.
+
+```python
+evaluation_model = rfp_summary.get("evaluation_model", {})
+point_allocation = evaluation_model.get("point_allocation", [])
+total_available_points = sum(c.get("points", 0) for c in point_allocation) or 1000
+
+if point_allocation:
+    for theme in selected:
+        theme_name_lower = theme.get("name", "").lower()
+        theme_evidence_text = " ".join(str(e).lower() for e in theme.get("evidence", []))
+        theme_rationale_lower = theme.get("rationale", "").lower()
+        theme_text = f"{theme_name_lower} {theme_evidence_text} {theme_rationale_lower}"
+
+        mapped_criteria = []
+        for criterion in point_allocation:
+            criterion_name = criterion.get("criterion", "")
+            criterion_name_lower = criterion_name.lower()
+            criterion_points = criterion.get("points", 0)
+            subfactors = criterion.get("subfactors", [])
+
+            # Check for keyword overlap between theme and criterion
+            criterion_words = set(criterion_name_lower.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
+            theme_words = set(theme_text.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
+            overlap = criterion_words & theme_words
+
+            # Also check subfactor alignment
+            subfactor_overlap = []
+            for sf in subfactors:
+                sf_name = (sf.get("name", "") if isinstance(sf, dict) else str(sf)).lower()
+                if any(w in theme_text for w in sf_name.split() if len(w) > 3):
+                    subfactor_overlap.append(sf_name)
+
+            if len(overlap) >= 1 or subfactor_overlap:
+                # Determine alignment strength
+                if len(overlap) >= 3 or (len(overlap) >= 1 and subfactor_overlap):
+                    alignment_strength = "strong"
+                elif len(overlap) >= 1 or subfactor_overlap:
+                    alignment_strength = "moderate"
+                else:
+                    alignment_strength = "weak"
+
+                mapped_criteria.append({
+                    "criterion": criterion_name,
+                    "points": criterion_points,
+                    "alignment_strength": alignment_strength,
+                    "keyword_overlap": list(overlap)[:5],
+                    "subfactor_overlap": subfactor_overlap[:3]
+                })
+
+        # Estimate point contribution based on alignment strength
+        estimated_contribution = 0
+        for mc in mapped_criteria:
+            strength_multiplier = {"strong": 0.4, "moderate": 0.2, "weak": 0.1}.get(mc["alignment_strength"], 0.1)
+            estimated_contribution += mc["points"] * strength_multiplier
+
+        theme["evaluation_alignment"] = {
+            "mapped_criteria": mapped_criteria,
+            "estimated_point_contribution": round(estimated_contribution),
+            "point_contribution_pct": f"{(estimated_contribution / total_available_points) * 100:.1f}%"
+        }
+
+        # Log warning for themes with zero alignment
+        if not mapped_criteria:
+            log(f"  WARNING: Theme #{theme.get('rank', '?')} '{theme.get('name', '')}' has ZERO evaluation criteria alignment")
+
+    # Compute aggregate theme point coverage
+    total_theme_points = sum(
+        t.get("evaluation_alignment", {}).get("estimated_point_contribution", 0)
+        for t in selected
+    )
+    log(f"  Evaluation point coverage: ~{total_theme_points}/{total_available_points} points ({(total_theme_points / total_available_points) * 100:.1f}%)")
+else:
+    # No evaluation model available — skip point mapping
+    for theme in selected:
+        theme["evaluation_alignment"] = {
+            "mapped_criteria": [],
+            "estimated_point_contribution": 0,
+            "point_contribution_pct": "N/A (no evaluation model)"
+        }
+    total_theme_points = 0
 ```
 
 ### Step 4: Write Output
@@ -576,7 +770,13 @@ preliminary_themes = {
     "category_distribution": category_counts,
     "themes": selected,
     "buyer_priority_coverage": buyer_priority_coverage,
-    "methodology": "Rule-based theme derivation from screening data. Categories: domain_expertise, technical_capability, organizational_strength, client_alignment. Max 2 per category, top 3-4 selected by score.",
+    "evaluation_point_coverage": {
+        "total_theme_points": total_theme_points,
+        "total_available_points": total_available_points if point_allocation else "unknown",
+        "coverage_pct": f"{(total_theme_points / total_available_points) * 100:.1f}%" if point_allocation else "N/A"
+    },
+    "client_tone_applied": bool(client_tone),
+    "methodology": "Rule-based theme derivation from screening data. Categories: domain_expertise, technical_capability, organizational_strength, client_alignment. Max 2 per category, top 3-4 selected by score. Batch 3: evaluation point mapping, client tone adaptation, tech intelligence integration.",
     "note": "These are preliminary positioning hints. The full /process-rfp-win pipeline generates production themes with evaluation factor mapping, CVD format, and section-theme mandates."
 }
 write_json(f"{folder}/screen/preliminary-themes.json", preliminary_themes)
@@ -616,6 +816,17 @@ Output:
 - [ ] Buyer priority coverage check performed: HIGH priorities vs theme keywords
 - [ ] buyer_priority_coverage included in output (covered, uncovered, coverage_ratio)
 - [ ] Uncovered HIGH priorities flagged as "Theme gap — full pipeline should address"
+
+### Intelligence Layer Integration Quality Checks (Batch 3)
+- [ ] `client_tone` loaded from go-nogo-score.json pass-through
+- [ ] TONE ADAPTATION instructions injected into framing prompt (style, vocabulary, preferred/avoid terms)
+- [ ] `tech_intelligence.rdi_alignment` used to generate "Technology Depth" theme candidate (when 2+ established strong matches)
+- [ ] Tech gaps from Phase 4 `tech_gap_analysis` annotated on relevant themes as `tech_gaps_to_address`
+- [ ] Step 3d evaluation point mapping completed for all selected themes
+- [ ] Each theme has `evaluation_alignment` with mapped_criteria, estimated_point_contribution, point_contribution_pct
+- [ ] Themes with ZERO evaluation criteria alignment logged as warnings
+- [ ] `evaluation_point_coverage` summary included in output JSON
+- [ ] `client_tone_applied` flag included in output
 
 ### Skill Integration Quality Checks (capture-strategist + competitive-positioning)
 - [ ] Each theme has discriminator_type: "Hard" (provable) or "Soft" (qualitative)
