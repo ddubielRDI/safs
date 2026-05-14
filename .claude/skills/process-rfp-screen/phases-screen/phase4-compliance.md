@@ -214,6 +214,12 @@ state_match = re.search(r'### State Contracts(.*?)(?=###|\Z)', past_projects_md,
 if state_match:
     state_contracts_section = state_match.group(1)
 
+# WARNING: Patterns assume the current Past_Projects.md Government Contracts table
+# format (`| **State** | Contract ID Description |`). If that table is reformatted
+# (column reorder, whitespace changes, contract IDs renumbered), every pattern below
+# silently drops its match. When updating Past_Projects.md, re-verify each pattern
+# against the new content, or replace this list with a structured markdown-table
+# parser keyed on column position.
 state_contract_patterns = [
     (r'\*\*Alaska\*\*.*?TOPS.*?Task Order Procurement', "Alaska", "TOPS", "Task Order Procurement System"),
     (r'\*\*Minnesota\*\*.*?MNSITE.*?Professional.*?Technical', "Minnesota", "MNSITE", "Professional and Technical Services"),
@@ -449,11 +455,10 @@ write_json(f"{folder}/screen/compliance-check.json", compliance_check)
 ### Step 4: Load and Parse Past Projects
 
 ```python
-# Read Past_Projects.md from repo root
-past_projects_path = os.path.join(os.path.dirname(folder), "Past_Projects.md")
-# Or try the known location
-if not os.path.exists(past_projects_path):
-    past_projects_path = "Past_Projects.md"
+# Past_Projects.md lives at the safs repo root. Use the absolute path resolved
+# at skill load time (skill-screen.md Configuration block) — never derive from
+# the RFP folder, which can be nested at arbitrary depth.
+past_projects_path = PAST_PROJECTS
 
 if not os.path.exists(past_projects_path):
     write_json(f"{folder}/screen/past-projects-match.json", {
@@ -578,13 +583,17 @@ for project in projects:
     score += breakdown["industry"]
 
     # Technology overlap — tiered scoring (max 15)
-    # Uses tech_intelligence from Phase 1 for version/stack-aware matching
+    # Uses tech_intelligence from Phase 1 for version/stack-aware matching.
+    # Phase 1's schema (phase1-summary.md:1129-1143) writes stacks with the keys
+    # "stack_name" and "components" — NOT "name" and "technologies". Use the
+    # canonical Phase 1 keys here so the version-tier (5pt) and stack-tier (4pt)
+    # branches actually fire instead of falling back to the name-tier (3pt).
     rfp_tech_intel = rfp_summary.get("tech_intelligence", {})
     phase1_stacks = rfp_tech_intel.get("technology_stacks", [])
     # Build lookup of Phase 1 technology details for version matching
     phase1_tech_details = {}
     for stack in phase1_stacks:
-        for tech in stack.get("technologies", []):
+        for tech in stack.get("components", []):
             if isinstance(tech, dict):
                 phase1_tech_details[tech.get("name", "").lower()] = tech
             else:
@@ -592,8 +601,8 @@ for project in projects:
     # Build stack membership for stack-level matching
     stack_members = {}
     for stack in phase1_stacks:
-        stack_name = stack.get("name", "").lower()
-        for tech in stack.get("technologies", []):
+        stack_name = stack.get("stack_name", "").lower()
+        for tech in stack.get("components", []):
             tech_name = (tech.get("name", "") if isinstance(tech, dict) else str(tech)).lower()
             stack_members[tech_name] = stack_name
 
@@ -792,7 +801,8 @@ for proj in scored_projects:
         else:
             flat_sum += val
     if flat_sum != proj["relevance_score"]:
-        log(f"  WARNING: Score mismatch for {proj['project_name']}: breakdown sums to {flat_sum} but score is {proj['relevance_score']}")
+        proj_label = proj.get("title") or f"#{proj.get('project_number', '?')}"
+        log(f"  WARNING: Score mismatch for {proj_label}: breakdown sums to {flat_sum} but score is {proj['relevance_score']}")
         proj["relevance_score"] = flat_sum  # Use verified sum
 
 # Sort by score descending, take top 5
@@ -841,8 +851,22 @@ past_match = {
     "rfp_domain": rfp_domain,
     "rfp_keywords": rfp_keywords,
     "matched_projects": top_5,
-    "match_quality": "strong" if top_5 and top_5[0]["relevance_score"] > 15 else
-                     "moderate" if top_5 and top_5[0]["relevance_score"] > 8 else "weak",
+    # Thresholds align to the FAR 15.305 relevance scale used elsewhere in this phase
+    # (Step 6, lines 815-823): "Very Relevant" >= 25, "Relevant" >= 15.
+    # Phase 6 DOCX so-what classifier must use the same cutoffs.
+    #
+    # Downstream consumers of "match_quality":
+    #   - phase4.5-themes.md:156 -- includes past-project evidence in win themes
+    #     only when match_quality is "strong" or "moderate"
+    #   - phase5-recommendation.md:111 -- adds a risk flag when match_quality == "weak"
+    #   - phase5.5-questions.md:155 -- triggers clarifying questions when "weak"
+    # Tightening from the old (>15 strong / >8 moderate) cutoffs makes the screener
+    # more conservative: marginal projects (scores 9-14) now classify "weak" and
+    # cascade into theme-evidence exclusion, risk flagging, and question generation.
+    # This is intentional alignment to FAR 15.305 -- the old generous cutoffs
+    # called projects "moderate" that the FAR scale would call Not Relevant.
+    "match_quality": "strong" if top_5 and top_5[0]["relevance_score"] >= 25 else
+                     "moderate" if top_5 and top_5[0]["relevance_score"] >= 15 else "weak",
 
     # Enriched relationship data from Past_Projects.md
     "existing_relationship": {

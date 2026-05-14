@@ -1061,10 +1061,12 @@ Enrich the already-extracted `required_technologies` list with ecosystem mapping
 # Load company profile services for RDI alignment
 import json as _json
 
-company_profile_path = os.path.join(os.path.dirname(os.path.dirname(folder)), "company-profile.json")
-if not os.path.exists(company_profile_path):
-    # Try alternate location at project root
-    company_profile_path = os.path.join(folder, "company-profile.json")
+# Use the constant defined in skill-screen.md (Configuration block). The previous
+# logic — `dirname(dirname(folder))` — was always wrong: the profile lives at
+# safs/.claude/skills/process-rfp-win/config-win/company-profile.json, not relative
+# to the RFP folder. The bug was masked because the LLM tech-intel call would
+# hallucinate plausible rdi_alignment numbers from an empty service list.
+company_profile_path = COMPANY_PROFILE
 
 rdi_services = []
 if os.path.exists(company_profile_path):

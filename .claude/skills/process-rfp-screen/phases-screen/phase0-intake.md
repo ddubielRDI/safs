@@ -323,3 +323,4 @@ Output: screen/source-manifest.json
 - [ ] Combined text assembled in priority order (largest PDF first)
 - [ ] SCAN_LIMIT applied (80,000 chars)
 - [ ] ABORT if all conversions fail or text < 500 chars
+- [ ] **Combined text stays in memory only** — Phase 0 must NOT write per-document `.md` files to `screen/`. The only Phase 0 output to disk is `source-manifest.json`. If converted markdown is needed as an artifact, write to `{folder}/original/converted/` (alongside source PDFs), never to `screen/`.

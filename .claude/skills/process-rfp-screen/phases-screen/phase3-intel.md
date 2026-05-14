@@ -206,8 +206,18 @@ def _build_tech_validation(phase1_tech_intel, web_discovered_tech):
     """Cross-reference Phase 1 technology stacks against web research findings."""
     phase1_stacks = phase1_tech_intel.get("technology_stacks", [])
     phase1_tech_names = []
+    # Phase 1 writes the canonical key "components" (phase1-summary.md:1132), not
+    # "technologies". Each component is a dict with a "name" field. Reading the
+    # wrong key produced an empty list and silently bypassed every downstream
+    # cross-reference (stack-tier match, additional-tech discovery).
     for stack in phase1_stacks:
-        phase1_tech_names.extend(stack.get("technologies", []))
+        for tech in stack.get("components", []):
+            if isinstance(tech, dict):
+                name = tech.get("name", "")
+            else:
+                name = str(tech)
+            if name:
+                phase1_tech_names.append(name)
 
     # Normalize for comparison
     phase1_names_lower = [t.lower() for t in phase1_tech_names]

@@ -1,11 +1,14 @@
-# /process-rfp-screen - Lightweight RFP Screening Pipeline
-
 ---
 name: process-rfp-screen
-description: Lightweight RFP Screener — fast GO/NO-GO bid decision in ~15-30 minutes
-argument-hint: <path-to-rfp-folder> [--quick]
-allowed-tools: [Bash, Write, Edit, Glob, Grep, Read, WebFetch, WebSearch]
+description: Lightweight RFP screener that runs a 9-phase pipeline (~15-30 min) producing a GO/NO-GO bid decision in BID_SCREEN.docx. Use BEFORE /process-rfp-win (3+ hrs) to triage opportunities. Triggers on "screen rfp", "rfp screen", "bid screen", "go no-go", "go/no-go", "rfp triage", "should we bid", "quick rfp screen", "screen bid".
+argument-hint: "[path-to-rfp-folder] [--quick]"
+allowed-tools: [Bash, Read, Write, Glob, Grep, WebSearch]
+created: 2026-02-23
+updated: 2026-05-13 (added six-rule traceability audit gate after post-run audit caught honest-but-imprecise claims; see memory/gotchas.md)
+disable-model-invocation: true
 ---
+
+# /process-rfp-screen — Lightweight RFP Screening Pipeline
 
 ## Skill Description
 
@@ -27,6 +30,7 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 
 | Required Output | Phase | Min Size |
 |-----------------|-------|----------|
+| `screen/source-manifest.json` | 0 | 1KB |
 | `screen/rfp-summary.json` | 1 | 1KB |
 | `screen/go-nogo-score.json` | 2 | 1KB |
 | `screen/client-intel-snapshot.json` | 3 | 1KB (skipped with --quick) |
@@ -70,23 +74,47 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 ## Configuration
 
 ```python
-# Paths — resolved relative to this skill file
-SKILL_DIR = "/path/to/safs/.claude/skills/process-rfp-screen"
+import os
+
+# Paths — resolved at runtime from skill location.
+# Claude Code sets CLAUDE_SKILL_DIR to this skill's directory at load time.
+# Fall back to __file__-relative resolution if env var is absent; abort if neither works.
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or os.path.dirname(os.path.abspath(__file__))
+if not SKILL_DIR or not os.path.isdir(SKILL_DIR):
+    error("ABORT: Cannot resolve SKILL_DIR — set CLAUDE_SKILL_DIR or invoke from the skill directory")
+    halt()
 PHASES_DIR = f"{SKILL_DIR}/phases-screen"
-CONFIG_DIR = "/path/to/safs/.claude/skills/process-rfp-win/config-win"
+CONFIG_DIR = f"{SKILL_DIR}/../process-rfp-win/config-win"
 
 # Company profile — shared with full pipeline
 COMPANY_PROFILE = f"{CONFIG_DIR}/company-profile.json"
 
-# Past projects — shared with full pipeline
-PAST_PROJECTS = "Past_Projects.md"  # In repo root
+# Past projects — shared with full pipeline.
+# Search upward from SKILL_DIR for Past_Projects.md (more robust than fixed-depth
+# math, which would break if the skill is moved or symlinked). Cap the upward walk
+# at 6 levels so we never escape a repo unexpectedly.
+def _find_past_projects(start_dir, max_up=6):
+    cur = os.path.abspath(start_dir)
+    for _ in range(max_up):
+        candidate = os.path.join(cur, "Past_Projects.md")
+        if os.path.isfile(candidate):
+            return candidate
+        parent = os.path.dirname(cur)
+        if parent == cur:  # filesystem root reached
+            break
+        cur = parent
+    # Fallback: the historically-correct location three levels up. If this also
+    # doesn't exist, downstream phases will warn and continue with empty matches.
+    return os.path.abspath(os.path.join(start_dir, "..", "..", "..", "Past_Projects.md"))
+
+PAST_PROJECTS = _find_past_projects(SKILL_DIR)
 
 # Scan limits
 SCAN_LIMIT = 80000  # Max chars of RFP text to analyze
 MAX_WEB_SEARCHES = 8  # Client intel search budget
 
-# Domain skills — shared across both pipelines
-DOMAIN_SKILLS_DIR = "/path/to/safs/.claude/skills"
+# Domain skills — sibling directories of this skill
+DOMAIN_SKILLS_DIR = f"{SKILL_DIR}/.."
 
 # Scoring thresholds (identical to Phase 1.9)
 THRESHOLD_GO = 50
@@ -340,6 +368,121 @@ for phase in phases:
     results[phase_id] = {"status": "complete"}
 ```
 
+### Step 3.5: Pre-Phase-6 Traceability Audit Gate (MANDATORY)
+
+After all data-producing phases (0–5.5) complete and BEFORE Phase 6 renders the DOCX, perform the six-rule traceability audit on the assembled JSON outputs. This is the gate that prevents shipping honest-but-imprecise claims.
+
+**Execution model:** This gate runs as a fresh, adversarially-framed audit prompt — the same Claude that produced the outputs cannot self-audit without bias. The prompt below MUST be invoked as a discrete reasoning step with no carry-over from the data-production phases. Treat the six rules as the sole evaluation criteria; do not relax them for any output that "looks fine."
+
+```python
+# Load every JSON the audit needs to inspect.
+audit_inputs = {
+    "rfp_summary":  read_json(f"{folder}/screen/rfp-summary.json"),
+    "go_nogo":      read_json(f"{folder}/screen/go-nogo-score.json"),
+    "client_intel": read_json_safe(f"{folder}/screen/client-intel-snapshot.json") or {},
+    "compliance":   read_json(f"{folder}/screen/compliance-check.json"),
+    "past_proj":    read_json(f"{folder}/screen/past-projects-match.json"),
+    "themes":       read_json(f"{folder}/screen/preliminary-themes.json"),
+    "risk":         read_json(f"{folder}/screen/risk-assessment.json"),
+    "questions":    read_json(f"{folder}/screen/clarifying-questions.json"),
+}
+
+# Read the source-of-truth rule definitions so the audit can quote them.
+gotchas_path = f"{SKILL_DIR}/memory/gotchas.md"
+gotchas_text = read_file(gotchas_path) if os.path.exists(gotchas_path) else ""
+
+# Adversarial audit prompt — the LLM step that actually scans the data.
+audit_prompt = f"""You are an ADVERSARIAL traceability auditor with no prior context on
+this RFP. Your job is to find every place where the six traceability rules below have
+been violated. You are rewarded for finding violations; do not soften, defer, or
+"trust the writer." If a phrasing is ambiguous, flag it.
+
+THE SIX RULES (from memory/gotchas.md "Traceability discipline"):
+{gotchas_text}
+
+THE OUTPUTS UNDER AUDIT (JSON files produced by Phases 0–5.5):
+{json.dumps(audit_inputs, indent=2)[:60000]}
+
+For EACH violation you find, return one finding with this exact schema:
+{{
+  "rule":       <int 1-6>,
+  "file":       <"rfp_summary" | "go_nogo" | "client_intel" | "compliance"
+                 | "past_proj" | "themes" | "risk" | "questions">,
+  "json_path":  <dotted path into that JSON, e.g. "matched_projects[2].score_breakdown.contract_type">,
+  "quote":      <verbatim text from the JSON that violates the rule>,
+  "why":        <one-sentence explanation tied to the rule>,
+  "fix":        <concrete replacement text or the score adjustment required>
+}}
+
+Return JSON only: {{"findings": [...]}}. An empty findings array means CLEAN. Be
+exhaustive — re-reading a passage twice is acceptable; missing a violation is not."""
+
+audit_response = invoke_llm(audit_prompt)  # subagent/fresh-context call
+audit_findings = audit_response.get("findings", [])
+iterations_run = 0  # initialized so the post-loop metadata stamp never NameErrors
+
+def _persist_corrected(file_key, payload, screen_dir):
+    """Write a corrected JSON back to disk and verify it round-trips through json.loads.
+    A malformed correction would otherwise surface only in Phase 6, far from its cause."""
+    out_path = f"{screen_dir}/{file_key.replace('_','-')}.json"
+    write_json(out_path, payload)
+    try:
+        _ = read_json(out_path)  # parse-back validation
+    except Exception as e:
+        error(f"ABORT: traceability correction produced unparseable JSON at {out_path}: {e}")
+        halt()
+
+if audit_findings:
+    log(f"  TRACEABILITY AUDIT: {len(audit_findings)} finding(s) -- correcting JSON before Phase 6")
+    for f in audit_findings:
+        log(f"    - [Rule {f['rule']}] {f['file']}:{f['json_path']} -- {f['why']}")
+        # Apply the fix into the source JSON (in memory), then write it back to disk
+        # with parse-back validation so malformed corrections fail loudly here, not in Phase 6.
+        apply_finding_correction(audit_inputs[f["file"]], f["json_path"], f["fix"])
+        _persist_corrected(f["file"], audit_inputs[f["file"]], f"{folder}/screen")
+
+    # Re-run the audit against the corrected JSONs. Loop until clean (max 3 iterations
+    # to bound runaway). If the audit is non-empty after 3 passes, abort Phase 6 and
+    # surface the residual findings to the user.
+    iterations_run = 1  # the initial pass that produced the corrections counts as iteration 1
+    for iteration in range(3):
+        audit_response = invoke_llm(audit_prompt)
+        audit_findings = audit_response.get("findings", [])
+        iterations_run += 1
+        if not audit_findings:
+            break
+        log(f"  TRACEABILITY AUDIT (re-run {iteration+1}): {len(audit_findings)} residual finding(s)")
+        for f in audit_findings:
+            apply_finding_correction(audit_inputs[f["file"]], f["json_path"], f["fix"])
+            _persist_corrected(f["file"], audit_inputs[f["file"]], f"{folder}/screen")
+
+    if audit_findings:
+        error(f"ABORT Phase 6: traceability audit still has {len(audit_findings)} findings after 3 correction passes")
+        for f in audit_findings:
+            error(f"    - [Rule {f['rule']}] {f['file']}:{f['json_path']}")
+        halt()
+
+# Stamp the consolidated JSON so the audit ordering is provable from the output.
+# This must happen BEFORE Phase 6 reads BID_SCREEN.json — otherwise the DOCX
+# is built against unstamped data and the ordering proof is lost.
+log("  TRACEABILITY AUDIT: clean -- proceeding to Phase 6")
+bid_screen_path = f"{folder}/screen/BID_SCREEN.json"
+bid_screen = read_json(bid_screen_path)
+bid_screen["pipeline_metadata"] = {
+    "pre_phase6_audit":         "clean",
+    "audit_timestamp":          datetime.now().isoformat(),
+    "audit_iterations":         iterations_run,    # 0 = clean on first pass; 1+ = corrections applied
+    "gotchas_loaded":           bool(gotchas_text),
+    "gotchas_path":             gotchas_path,
+    "quick_mode":               quick_mode,
+}
+write_json(bid_screen_path, bid_screen)
+```
+
+Full rule definitions and worked examples are in `memory/gotchas.md` under "Traceability discipline — six anti-patterns caught during 2026-05-13 audit". When in doubt, re-read that section before judging an edge case.
+
+**Why an adversarial fresh-context call:** The same Claude that wrote the JSONs has a confirmation-bias incentive to declare its own work clean. A discrete audit prompt with no carry-over forces the model to treat the JSONs as untrusted input and the six rules as the binding standard. Self-audit from prior context is not acceptable for this gate.
+
 ### Step 4: Final Verification
 
 ```python
@@ -348,6 +491,7 @@ log("FINAL VERIFICATION")
 log("=" * 60)
 
 required_outputs = [
+    ("screen/source-manifest.json", "Source Manifest", 1),
     ("screen/rfp-summary.json", "RFP Summary", 1),
     ("screen/go-nogo-score.json", "Go/No-Go Score", 1),
     ("screen/compliance-check.json", "Compliance Check", 1),
@@ -415,6 +559,26 @@ log("=" * 60)
 
 ---
 
+## Memory Integration
+
+**On skill start (MANDATORY — observable):** Read `${CLAUDE_SKILL_DIR}/memory/`:
+- `gotchas.md` — known pitfalls and resolutions from prior runs (e.g., markitdown failures, `services` dict-vs-list trap in `company-profile.json`, malformed Past_Projects entries)
+- Recent dated entries (`YYYY-MM-DD-*.md`) for situational context
+
+Apply discovered corrections during execution — do not repeat past mistakes.
+
+**Observability:** Step 3.5 (Traceability Audit Gate) stamps `pipeline_metadata.gotchas_loaded` and `pipeline_metadata.gotchas_path` into `BID_SCREEN.json` so downstream audits can verify the memory protocol ran. If `gotchas.md` is missing at skill start, log a WARNING but do not abort — the gotchas file is optional context, not a hard prerequisite.
+
+**On skill end — write checklist:**
+- [ ] Did a phase fail unexpectedly (markitdown crash, web search exhausted, DOCX generation failure)? → **MUST** record in `gotchas.md`
+- [ ] Did an RFP structure surprise the pipeline (unusual document layout, missing client name, non-English text)? → **MUST** record
+- [ ] Did Phase 2 score diverge wildly from human judgment? → **MUST** record the divergence pattern
+- [ ] Did `company-profile.json` need to be re-flattened or reshaped to work? → **MUST** record
+- [ ] Did a phase file's procedural logic break (Python `KeyError`, JSON schema drift, missing input)? → **MUST** record
+- [ ] Routine screening with no surprises? → Skip — do NOT write "ran successfully"
+
+---
+
 ## Error Handling
 
 | Scenario | Action |
@@ -452,3 +616,13 @@ This ensures:
 - [ ] Recommendation follows threshold rules (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
 - [ ] DOCX uses python-docx with Calibri font, navy headings, Light Grid Accent 1 tables
 - [ ] `screen/` directory does not interfere with `shared/` or `outputs/`
+
+### Traceability Audit Quality Checks (added 2026-05-13)
+- [ ] Six-rule pre-Phase-6 audit performed against all assembled JSON outputs
+- [ ] Rule 1: contracting client vs end-user agency distinguished for every past-performance claim
+- [ ] Rule 2: regional/partial award scope qualifiers preserved verbatim from `Past_Projects.md`
+- [ ] Rule 3: internal monetary estimates labeled `[estimate — methodology: ...]`; upper bound matches actual calculation
+- [ ] Rule 4: single-source facts (e.g., news-article-only figures) carry source attribution in every appearance, not just the first
+- [ ] Rule 5: every `score_breakdown` value >= 2 traces to documented evidence in `Past_Projects.md`
+- [ ] Rule 6: assertions about buyer intent/motivation are labeled `[inference]` unless stated in the RFP
+- [ ] If any of these six fail, halt Phase 6, fix the JSON, re-verify, then proceed

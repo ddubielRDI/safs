@@ -369,19 +369,20 @@ comp_partnerships = compliance.get("partnerships", [])
 if comp_partnerships:
     md += f"**Technology Partnerships:** {'; '.join(comp_partnerships)}\n\n"
 
-md += "| Requirement | Category | Status |\n"
-md += "|-------------|----------|--------|\n"
+md += "| # | Requirement | Strength | Status | Confidence |\n"
+md += "|---|-------------|----------|--------|------------|\n"
 
 compliance_items = compliance.get("compliance_items", [])
 pass_count = 0
 gap_count = 0
 risk_count = 0
 
-for item in compliance_items:
+for idx, item in enumerate(compliance_items, 1):
     status = item.get("status", "UNKNOWN")
     req = item.get("requirement", "")[:80]
-    cat = item.get("category", "General")
-    md += f"| {req} | {cat} | {status} |\n"
+    strength = item.get("requirement_strength", "mandatory")  # mandatory | desirable
+    confidence = item.get("confidence_tier", "Unknown")       # Verified | Documented | Inferred | Claimed | Unknown
+    md += f"| {idx} | {req} | {strength} | {status} | {confidence} |\n"
 
     if status == "PASS":
         pass_count += 1
@@ -1222,18 +1223,27 @@ if matched:
         rating_val = proj.get("relevance_rating", "N/A")
         add_body_paragraph(doc, f"{i}. {client} -- {title} ({score_val}/51, {rating_val})", size=Pt(9))
 
-    # Tech gap analysis
-    tech_gap = projects.get("technology_gap_analysis", "")
-    if tech_gap:
-        add_key_value(doc, "Tech Gap Analysis", tech_gap)
+    # Tech gap analysis — Phase 4 writes the key as "tech_gap_analysis" (phase4-compliance.md:907).
+    # The value is a dict: technologies_with_coverage[], technologies_without_coverage[], gap_severity, gap_advisory.
+    tech_gap = projects.get("tech_gap_analysis") or {}
+    if tech_gap and tech_gap.get("gap_advisory"):
+        severity = tech_gap.get("gap_severity", "unknown")
+        advisory = tech_gap.get("gap_advisory", "")
+        without = tech_gap.get("technologies_without_coverage", [])
+        gap_text = f"{advisory} (severity: {severity})"
+        if without:
+            gap_text += f". Uncovered: {', '.join(without[:5])}"
+        add_key_value(doc, "Tech Gap Analysis", gap_text)
 
-    # So What
+    # So What — thresholds align to Phase 4's FAR 15.305 relevance scale
+    # (phase4-compliance.md:815-823): "Very Relevant" >= 25, "Relevant" >= 15.
+    # Keep these in sync with phase4-compliance.md "match_quality" classifier.
     proj_so_what = ""
     if matched:
         top_score = matched[0].get("relevance_score", 0)
-        if top_score >= 35:
+        if top_score >= 25:
             proj_so_what = "Strong past performance portfolio directly supports this opportunity."
-        elif top_score >= 20:
+        elif top_score >= 15:
             proj_so_what = "Moderate past performance match -- proposal narrative must bridge experience gaps."
         else:
             proj_so_what = "Weak past performance alignment -- consider teaming or highlighting transferable skills."
@@ -1592,7 +1602,18 @@ doc.save(f"{folder}/screen/BID_SCREEN.docx")
 ### Step 5: QA Check
 
 ```python
-import os
+import os, glob
+
+# Clean up build-time artifacts. If python-docx was invoked via a helper script
+# written to `screen/_build_report*.py`, remove it after a successful DOCX save —
+# the script is an execution intermediate, not a pipeline output. Leaving it in
+# screen/ pollutes the output directory and confuses re-run discovery.
+for script in glob.glob(f"{folder}/screen/_build_report*.py"):
+    try:
+        os.remove(script)
+        log(f"  Cleanup: removed intermediate {os.path.basename(script)}")
+    except OSError as e:
+        log(f"  WARNING: could not remove {script}: {e}")
 
 docx_path = f"{folder}/screen/BID_SCREEN.docx"
 md_path = f"{folder}/screen/BID_SCREEN.md"

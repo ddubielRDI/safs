@@ -253,8 +253,8 @@ The ceiling does NOT apply when the information IS known. It ensures scores refl
 - Preference points: veteran-owned, small business, HUBZone eligibility vs requirements
 - COTS positioning: whether COTS/low-code is preferred (disadvantaging custom builders)
 - **Buyer priority differentiation:** HIGH buyer priorities where the company has a differentiator = significant advantage. Where the company merely meets the bar = neutral. Where there's a gap = disadvantage
-- **Awards and recognition** — Multiple Esri Partner of the Year and SAG Awards, Top Workplaces #48 (2025) provide competitive differentiation evidence (see Company Intelligence in Past_Projects.md)
-- **Technology partnerships** — Esri Gold Partner since 1992 (34 years), Snowflake Services Partner, Databricks Consulting Services Partner — strong differentiators for relevant technology stacks
+- **Awards and recognition** — Multiple Esri Partner of the Year and SAG Awards, plus the most recent Top Workplaces ranking (verify year and regional scope verbatim from Past_Projects.md before citing — the ranking is regional, not national) provide competitive differentiation evidence (see Company Intelligence in Past_Projects.md)
+- **Technology partnerships** — Esri Gold Partner since 1992 ({datetime.now().year - 1992} years), Snowflake Services Partner, Databricks Consulting Services Partner — strong differentiators for relevant technology stacks. **Note:** the "X years" figure is derived from `datetime.now().year - 1992`, NOT hardcoded — do not paste a static number that will go stale.
 - **Evaluation point alignment (from `evaluation_model`):** Map RDI's strongest capabilities to the highest-point evaluation criteria from `evaluation_model.point_allocation`. For each assessment area, add a `point_alignment` output field listing which high-point criteria the company can address and estimated point capture potential. Example: if "Technical Approach" is worth 600/1000 points and RDI has strong alignment, note this as a major competitive advantage.
 
 **Where to find evidence:**
@@ -311,8 +311,8 @@ The ceiling does NOT apply when the information IS known. It ensures scores refl
 
 **Where to find evidence:**
 - `rfp-summary.json` estimated_value, contract_type, pricing_structure
-- `company-profile.json` employees, revenue (if available), bid_defaults
-- `Past_Projects.md` Company Intelligence: ~$36.1M estimated annual revenue (2025), ~200 employees, employee-owned
+- `company-profile.json` employees (~200), bid_defaults — **note:** the profile has no `revenue` field; the figure lives only in `Past_Projects.md`
+- `Past_Projects.md` Company Intelligence — sole source for revenue: ~$36.1M estimated annual revenue (2025), ~200 employees, employee-owned
 - `combined_text` for pricing clauses, rate ceilings, payment schedules, cost accounting standards
 
 **Scoring guidance:**
