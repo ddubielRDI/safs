@@ -1,14 +1,30 @@
 ---
 name: process-rfp-screen
-description: Lightweight RFP screener that runs a 9-phase pipeline (~15-30 min) producing a GO/NO-GO bid decision in BID_SCREEN.docx. Use BEFORE /process-rfp-win (3+ hrs) to triage opportunities. Triggers on "screen rfp", "rfp screen", "bid screen", "go no-go", "go/no-go", "rfp triage", "should we bid", "quick rfp screen", "screen bid".
-argument-hint: "[path-to-rfp-folder] [--quick]"
+description: Lightweight RFP screener that runs a 10-phase pipeline (~18-35 min including a ~3-5 min Past_Projects.md refresh at Phase 1.5) producing a GO/NO-GO bid decision in BID_SCREEN.docx. Use BEFORE /process-rfp-win (3+ hrs) to triage opportunities. Triggers on "screen rfp", "rfp screen", "bid screen", "go no-go", "go/no-go", "rfp triage", "should we bid", "quick rfp screen", "screen bid".
+argument-hint: "[path-to-rfp-folder] [--quick] [--skip-refresh]"
 allowed-tools: [Bash, Read, Write, Glob, Grep, WebSearch]
 created: 2026-02-23
-updated: 2026-05-13 (added six-rule traceability audit gate after post-run audit caught honest-but-imprecise claims; see memory/gotchas.md)
+updated: 2026-05-14 (added top-of-file Execution Discipline block with Read-Before-Execute Gate, Schema Fidelity rule, and Anomaly Protocol; strengthened phase-loop verification; recorded regression incident in memory/2026-05-14-regression-incident.md)
 disable-model-invocation: true
 ---
 
 # /process-rfp-screen — Lightweight RFP Screening Pipeline
+
+## ⛔ Execution Discipline (READ FIRST — BLOCKING)
+
+This skill is a multi-phase pipeline. Each phase has a prescriptive file with its OWN required-output JSON schema, scoring framework, and quality criteria. **Never improvise a phase from first principles — always read the phase file in full, in this conversation, immediately before executing that phase.** The "speed > polish" tagline in the Skill Description refers to skipping Grok review and Task-agent dispatch, NOT skipping schema fidelity.
+
+**Three non-negotiable rules:**
+
+1. **Read-Before-Execute Gate.** Before executing any phase (0, 1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 6), you MUST have called the Read tool on that phase's file in the current conversation turn. Reading the skill file (this file) does not satisfy this gate. If you have not Read the phase file, STOP and Read it first.
+
+2. **Schema Fidelity.** Each phase file declares its required output keys / sub-objects. The phase JSON you write to `screen/` must contain ALL keys the phase file lists. Do not omit, rename, or restructure. If a key cannot be populated due to insufficient evidence, fill it with `null` or the documented Rule-5 conservative score (0 or 1) — do not drop the key.
+
+3. **Anomaly Protocol.** If you detect an anomaly — conflicting evidence between phase outputs, ambiguous instruction, missing input, a phase-file schema element that contradicts a memory rule, or a baseline (e.g., prior `V1/screen/`) output that has materially more depth than your in-progress output — STOP and ASK the user before improvising. Never silently choose a shorter / thinner / faster path.
+
+**Regression baseline:** A reference V1 BID_SCREEN.docx is ~65 KB / ~430 paragraphs / ~70 KB markdown / ~137 KB consolidated BID_SCREEN.json. If your in-progress output is materially smaller than these scales without a documented reason (e.g., `--quick` mode, abort condition), you are likely regressing — stop and audit before continuing. (See `memory/2026-05-14-regression-incident.md` for the incident that established this baseline.)
+
+---
 
 ## Skill Description
 
@@ -48,12 +64,13 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 ## User Invocation
 
 ```
-/process-rfp-screen <path-to-rfp-folder> [--quick]
+/process-rfp-screen <path-to-rfp-folder> [--quick] [--skip-refresh]
 ```
 
 **Arguments:**
 - `path-to-rfp-folder` (required): Folder containing RFP source documents
 - `--quick` (optional): Skip Phase 3 (client intelligence), saves 4-6 min
+- `--skip-refresh` (optional): Skip Phase 1.5 (Past_Projects.md refresh), saves 3-5 min. Use when Past_Projects.md was recently curated by hand and a fresh refresh would burn web searches unnecessarily. The refresh skill also has its own 7-day stale check, so back-to-back screen runs auto-skip the refresh even without this flag.
 
 ---
 
@@ -67,7 +84,8 @@ Lightweight RFP screening pipeline that analyzes an RFP across 6 dimensions and 
 | Write | `{folder}/screen/**/*` | Create/overwrite screen outputs |
 | Create | `{folder}/screen/**/*` | New files and directories |
 | Bash | `markitdown`, `python3`, `pip` | Document conversion, DOCX generation |
-| WebSearch | Max 8 queries | Client intelligence (Phase 3 only) |
+| WebSearch | Max 8 (Phase 3) + Max 20 (Phase 1.5 refresh) | Client intel + Past_Projects.md refresh |
+| Read/Write | `Past_Projects.md`, `Past_Projects.backup-*.md`, `Past_Projects.refresh-log.md` | Phase 1.5 refresh outputs (in repo root, not `{folder}/screen/`) |
 
 ---
 
@@ -127,16 +145,19 @@ THRESHOLD_CONDITIONAL = 40
 ## Phase Execution Order
 
 ```
-Phase 0: Folder Setup & Document Intake     → phases-screen/phase0-intake.md     [BLOCKING]
-Phase 1: RFP Summary Extraction             → phases-screen/phase1-summary.md
-Phase 2: Go/No-Go Scoring                   → phases-screen/phase2-gonogo.md
-Phase 3: Client Intelligence Snapshot        → phases-screen/phase3-intel.md       [SKIP if --quick]
-Phase 4: Compliance Check & Project Match    → phases-screen/phase4-compliance.md
-Phase 4.5: Preliminary Win Themes            → phases-screen/phase4.5-themes.md
-Phase 5: Risk Assessment & Recommendation    → phases-screen/phase5-recommendation.md
-Phase 5.5: Clarifying Questions Generation   → phases-screen/phase5.5-questions.md
-Phase 6: Report Generation (DOCX)             → phases-screen/phase6-pdf.md         [MANDATORY]
+Phase 0:   Folder Setup & Document Intake     → phases-screen/phase0-intake.md     [BLOCKING]
+Phase 1:   RFP Summary Extraction             → phases-screen/phase1-summary.md
+Phase 1.5: Past_Projects.md Refresh           → ../update-past-projects/skill-update.md  [SKIP if --skip-refresh or stale-check passes]
+Phase 2:   Go/No-Go Scoring                   → phases-screen/phase2-gonogo.md
+Phase 3:   Client Intelligence Snapshot        → phases-screen/phase3-intel.md       [SKIP if --quick]
+Phase 4:   Compliance Check & Project Match    → phases-screen/phase4-compliance.md
+Phase 4.5: Preliminary Win Themes              → phases-screen/phase4.5-themes.md
+Phase 5:   Risk Assessment & Recommendation    → phases-screen/phase5-recommendation.md
+Phase 5.5: Clarifying Questions Generation     → phases-screen/phase5.5-questions.md
+Phase 6:   Report Generation (DOCX)             → phases-screen/phase6-pdf.md         [MANDATORY]
 ```
+
+**Why Phase 1.5 sits where it does:** the refresh skill accepts an optional `--context` JSON to scope new-project discovery toward RFP-relevant work. That context comes from Phase 1's `rfp-summary.json` (industry, agency, state, scope_keywords). Running the refresh *after* Phase 1 gives it context; running it *before* Phase 2 (competitive position uses Company Intelligence) and Phase 4 (project matching reads Past_Projects.md) ensures downstream phases consume the refreshed data.
 
 ---
 
@@ -152,6 +173,7 @@ from datetime import datetime
 args = user_input.strip().split()
 folder = args[0]
 quick_mode = "--quick" in args
+skip_refresh = "--skip-refresh" in args
 
 # Validate folder exists
 if not os.path.exists(folder):
@@ -227,6 +249,18 @@ phases = [
         ]  # v2: Phase 1 also loads tone + tech intelligence sub-skills
     },
     {
+        "id": 1.5,
+        "name": "Past_Projects.md Refresh",
+        "file": "../../update-past-projects/skill-update.md",  # resolved relative to PHASES_DIR
+        "blocking": False,
+        "skip_condition": "skip_refresh",  # also self-skips on 7-day stale check
+        "skill": None,                     # this entry is a sibling skill, not a phase-script
+        "is_external_skill": True,         # signals special invocation handling below
+        "external_args": [
+            "--context=" + f"{folder}/screen/rfp-summary.json",
+        ],
+    },
+    {
         "id": 2,
         "name": "Go/No-Go Scoring",
         "file": "phase2-gonogo.md",
@@ -298,10 +332,57 @@ for phase in phases:
         log(f"\nPhase {phase_id}: {phase_name} -- SKIPPED (--quick mode)")
         results[phase_id] = {"status": "skipped", "reason": "--quick mode"}
         continue
+    if phase["skip_condition"] == "skip_refresh" and skip_refresh:
+        log(f"\nPhase {phase_id}: {phase_name} -- SKIPPED (--skip-refresh)")
+        results[phase_id] = {"status": "skipped", "reason": "--skip-refresh"}
+        continue
+
+    # External-skill invocation (Phase 1.5 only): read the sibling skill file and
+    # follow its instructions inline with the supplied context arguments. The skill
+    # has its own stale check (7-day window) which will further self-skip if
+    # Past_Projects.md was modified recently. No phase Read/Write happens here —
+    # the refresh skill writes directly to repo root, not {folder}/screen/.
+    if phase.get("is_external_skill"):
+        external_path = os.path.normpath(f"{PHASES_DIR}/{phase['file']}")
+        log(f"\nPhase {phase_id}: {phase_name}")
+        log(f"  Loading external skill: {external_path}")
+        if not os.path.exists(external_path):
+            log(f"  WARNING: external skill not found at {external_path} -- skipping")
+            results[phase_id] = {"status": "skipped", "reason": "skill not found"}
+            continue
+        # >>> Use Read tool on external_path; then execute its Step 0–8 with these args: phase["external_args"] <<<
+        # The refresh skill is self-contained — it parses its own args, runs its own
+        # stale check, writes its own log. This pipeline only needs to invoke it and
+        # log completion. No JSON output flows back into screen/ (the side effect IS
+        # the refreshed Past_Projects.md that downstream phases will read).
+        results[phase_id] = {"status": "complete (external skill)"}
+        continue
 
     log(f"\n{'='*50}")
     log(f"Phase {phase_id}: {phase_name}")
     log(f"{'='*50}")
+
+    # ====================================================================
+    # ⛔ READ-BEFORE-EXECUTE GATE (BLOCKING — see top-of-file discipline)
+    # ====================================================================
+    # Before doing ANYTHING for this phase, you MUST:
+    #   1. Call the Read tool on {DOMAIN_SKILLS_DIR}/{skill}.md (and sub_skill if present)
+    #   2. Call the Read tool on {PHASES_DIR}/{phase["file"]} — read it IN FULL
+    #   3. Note the phase's "Required Output" JSON schema verbatim
+    #   4. Note any "Quality Checklist" or "Schema Fidelity" sections
+    #
+    # If you have not Read these files in the current conversation turn, STOP HERE.
+    # Do not improvise. Do not infer the schema from context. Read first.
+    #
+    # SCHEMA FIDELITY: The output JSON you write must contain every key listed in the
+    # phase file's required-output schema. Missing keys = incomplete phase = abort gate.
+    # If a key cannot be populated with evidence, set it to null or the documented
+    # conservative score (Rule 5: 0 or 1), but DO NOT DROP THE KEY.
+    #
+    # ANOMALY PROTOCOL: If the phase file's schema conflicts with another file you've
+    # read (memory rule, V1 baseline, prior phase output), ASK the user. Do not pick
+    # one silently. Do not skip a section because it "seems redundant."
+    # ====================================================================
 
     # --- SKILL LOADING (MANDATORY) ---
     # Before executing the phase, load domain expertise into context.
@@ -360,10 +441,19 @@ for phase in phases:
     # NOW read the phase file and execute its instructions.
     # The skill content already in context will inform the phase execution.
     phase_file = f"{PHASES_DIR}/{phase['file']}"
-    # >>> Use Read tool on phase_file, then follow its instructions <<<
+    # ⛔ MANDATORY: Use Read tool on phase_file BEFORE executing this phase.
+    # Read the file IN FULL (no offset/limit unless file > 2000 lines).
+    # Implement every step the phase file declares. Produce every key the
+    # phase file's "Required Output" schema declares. Match field names verbatim.
+    # If a phase-file step seems redundant with another phase, DO NOT skip it —
+    # downstream renderers (Phase 6) depend on the full schema.
 
     # After execution, verify outputs
     # (Phase-specific verification defined in each phase file)
+    # SCHEMA CHECK: read the file you just wrote and verify it has every key the
+    # phase file's required-output schema lists. If any are missing, the phase is
+    # NOT complete — go back and produce them. Do not advance to the next phase
+    # with a partial output.
 
     results[phase_id] = {"status": "complete"}
 ```
@@ -544,7 +634,8 @@ log("=" * 60)
 log(f"""
 Recommendation: {recommendation}
 Total Score: {total_score}/100
-Mode: {'QUICK' if quick_mode else 'FULL'}
+Mode: {'QUICK' if quick_mode else 'FULL'}{' + refresh skipped' if skip_refresh else ''}
+Past_Projects refresh: {results.get(1.5, {}).get('status', 'unknown')}
 
 Outputs: {folder}/screen/
 Primary: BID_SCREEN.docx
@@ -607,12 +698,21 @@ This ensures:
 
 ## Quality Checklist
 
+### Execution Discipline (from top-of-file BLOCKING rules)
+- [ ] **Every phase file Read in full** before that phase began execution (Read-Before-Execute Gate)
+- [ ] **Output JSONs contain every key** the corresponding phase file's required-output schema declares (Schema Fidelity)
+- [ ] **No anomaly was silently resolved** — every conflicting evidence / ambiguous schema / missing input was either resolved with the user or documented as a known limitation
+- [ ] **Final BID_SCREEN.json size sanity check** — if < 50 KB without a documented reason (--quick mode, abort), re-audit phase completeness
+- [ ] **Final BID_SCREEN.docx size sanity check** — if < 50 KB or < 200 paragraphs without a documented reason, re-audit phase completeness against `phase6-pdf.md` section list
+
+### Standard Pipeline
 - [ ] All phase files read from `phases-screen/` directory
 - [ ] Phases executed sequentially in main context (no Task agents)
 - [ ] Phase 3 skipped when `--quick` flag present
+- [ ] Phase 1.5 honored (refresh or skip per stale check)
 - [ ] All JSON outputs written to `{folder}/screen/`
 - [ ] `BID_SCREEN.docx` generated and > 30KB
-- [ ] `BID_SCREEN.json` contains data from all phases
+- [ ] `BID_SCREEN.json` is a CONSOLIDATION of all phase outputs (V1 baseline: ~137 KB), not a summary index
 - [ ] Recommendation follows threshold rules (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
 - [ ] DOCX uses python-docx with Calibri font, navy headings, Light Grid Accent 1 tables
 - [ ] `screen/` directory does not interfere with `shared/` or `outputs/`

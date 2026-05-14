@@ -64,6 +64,17 @@ services = [svc for cat in company_profile["services"].values() for svc in cat]
 
 ---
 
+## Depth regression — agent improvised phases instead of Reading phase files
+
+**Status:** ACTIVE — guarded by Read-Before-Execute Gate in skill-screen.md (added 2026-05-14)
+**Symptom:** BID_SCREEN.json/md/docx materially smaller than V1 baseline (~137 KB / ~70 KB / ~65 KB respectively). Phase JSONs missing prescriptive keys: `buyer_priorities`, `mandatory_requirements`, `assessment_areas` (0-100 weighted), `shipley_gate_assessment`, `bias_assessment`, 17-item `compliance_items`, theme-to-bid-section mapping, If/Then risks, HIGH/MED/LOW question priorities.
+**Cause:** Executing agent read `skill-screen.md` and `phase0-intake.md` only, then improvised phases 1–5 from inferred structure. Justified by misreading "speed > polish" in the skill description (which refers to skipping Grok review, NOT skipping schema fidelity).
+**Resolution:** At the start of EACH phase, Read its phase file in full BEFORE doing any other work. Phase files are large (some > 1000 lines) — they are large because they prescribe full output schemas. Do not skim. Do not infer. Read.
+**Detection:** If BID_SCREEN.json < 50 KB or BID_SCREEN.docx < 50 KB / < 200 paragraphs without `--quick` mode, the pipeline regressed — audit phase completeness before declaring done.
+**Full incident record:** `2026-05-14-regression-incident.md` in this directory.
+
+---
+
 ## Phase file line counts exceed 500-line cap (MONITORING)
 
 **Status:** MONITORING

@@ -13,7 +13,7 @@
 | **Founded** | 1986 |
 | **Headquarters** | Anchorage, Alaska |
 | **Ownership** | Employee-owned |
-| **Employees** | ~200-239 professionals ([Datanyze profile, April 2025 estimate: ~239](https://www.datanyze.com/companies/resource-data/89868286); company website states ~200) |
+| **Employees** | ~200 professionals |
 | **Projects Completed** | 1,000+ |
 | **Clients Served** | 100+ |
 | **Esri Partnership** | Gold Partner since 1992 — Specialties: Federal Small Business, State & Local Government, ArcGIS Cloud Services; 1,700+ ArcGIS projects delivered |
@@ -535,8 +535,6 @@ Data Engineering & AI, Software Services, Geographic Information Systems (GIS), 
 - Recently integrated Hawaii programs
 
 **Source:** [resourcedata.com/insight/a-long-term-partnership-strengthening-fisheries-management](https://www.resourcedata.com/insight/a-long-term-partnership-strengthening-fisheries-management/)
-
-**Status update (2026-05-14):** PSMFC operates an active labor-hour contract titled "General IT Support for NMFS Alaska Region Field Office" — programming of new and existing electronic reporting systems, development of fisheries management applications, and associated technical support for NOAA Fisheries Alaska Regional Office. RDI is the documented designer/developer/operator of **AKFIN** (Alaska Fisheries Information Network) consolidating commercial fisheries data for North Pacific and Alaska fisheries. AKFIN data warehouse, ETL, validation, datamarts, and BI repository were built by RDI under the 24-year PSMFC partnership. Contracting client: PSMFC; end-user: NOAA NMFS Alaska Region (Juneau). This PSMFC-funded delivery channel is parallel to (not the same as) the predecessor prime IT services IDIQ (held by IT Objects LLC, Herndon VA — see competitive intelligence). Solicitation 1305M326Q0143 (issued 2026-05-11, due 2026-05-29) is the 2026 successor to that prime IDIQ; whether/how PSMFC-channel scope is folded in is an open question for Q&A. ([source — PSMFC](https://www.psmfc.org/general-it-support-for-nmfs-alaska-region-field-office), [source — RDI](https://www.resourcedata.com/insight/a-long-term-partnership-strengthening-fisheries-management/))
 
 ---
 
