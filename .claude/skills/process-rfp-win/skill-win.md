@@ -1,10 +1,46 @@
-# /process-rfp-win - RFP Processing Pipeline (Mayor Orchestrator)
-
 ---
 name: process-rfp-win
-description: RFP Processing Pipeline - Mayor Orchestrator (WIN Edition)
-argument-hint: <path-to-docs-folder>
-allowed-tools: [Bash, Write, Edit, Glob, Grep, Read, Task, TodoWrite, WebFetch, WebSearch, mcp__grok__grok_chat, mcp__grok__grok_review_code]
+description: Full RFP-to-bid pipeline (~3-4 hrs, 46 execution units across 7 stages with 8 SVA quality gates) that ingests RFP source documents and produces evaluator-ready bid PDFs (Submittal, Management, Technical, Solution, Financial, Integration, plus Executive Summary). Use AFTER /process-rfp-screen returns a GO recommendation. Sprint mode (~14 units, skips Go/No-Go) is available for pre-approved bids on tight timelines.
+when_to_use: 'Triggers on "process rfp win", "rfp win", "win pipeline", "full rfp pipeline", "full bid pipeline", "bid pipeline", "generate bid", "draft full bid", "build the bid", "rfp bid generation", "post go-no-go", "process rfp full", "win edition".'
+argument-hint: "[path-to-docs-folder] [--sprint]"
+allowed-tools: [Bash, Read, Write, Glob, Grep, WebFetch, WebSearch, Agent, AskUserQuestion]
+created: 2026-02-23
+updated: 2026-05-18
+disable-model-invocation: true
+---
+
+<!-- Change log:
+  2026-05-18: First skills-excellence-update audit (Tranches A+B).
+    Frontmatter: relocated to line 1 (was after H1 — exact bug fixed in screen 2026-05-13); added created, updated, when_to_use, disable-model-invocation; rewrote description from title fragment to full descriptive sentence; cleaned allowed-tools (removed mcp__grok__* per docs convention, renamed Task→Agent, added AskUserQuestion); fixed XML in argument-hint.
+    Body: added Configuration block with ${CLAUDE_SKILL_DIR} resolution (replaces 5 hardcoded /home/ddubiel paths); added Required Helper Functions block with UTF-8 helpers (resolves NameError at line 1686 read_file undefined + bare open() encoding regression vector that hit screen 2026-05-18); added Execution Discipline block with Read-Before-Execute Gate, Schema Fidelity rule, Anomaly Protocol (38 phases means 4× the improvisation surface area vs screen); added Memory Integration section; created memory/ folder.
+    Background body code keeps Task(...) calls — backwards compatible with Agent dispatch, scheduled for rename in Tranche D.
+    Phase file fixes (Linux paths, bare open(), [:N] truncation in schema fields, traceability audit gate), CSS renderer documentation, and orphan-file decisions deferred to Tranches C-G pending user review.
+    See memory/last-audit.md for full audit record.
+-->
+
+
+# /process-rfp-win — Full RFP-to-Bid Pipeline (Mayor Orchestrator)
+
+## ⛔ Execution Discipline (READ FIRST — BLOCKING)
+
+This skill is a 46-unit multi-phase pipeline. Each phase has a prescriptive file with its OWN required-output JSON schema, scoring framework, and quality criteria. **Never improvise a phase from first principles — always Read the phase file in full, in this conversation, immediately before executing that phase.**
+
+**Why this gate exists:** the sibling pipeline `/process-rfp-screen` regressed on 2026-05-14 when an executing agent improvised phases instead of Reading their prescriptive files in full — output dropped from 65 KB / 430 paragraphs (V1 baseline) to 47 KB / 70 paragraphs. The win pipeline has 38 phases vs screen's 10, so the improvisation surface area is roughly 4× larger. Phase files exceed 500 lines specifically because they prescribe full output schemas — they are large by design, not by accident.
+
+**Three non-negotiable rules:**
+
+1. **Read-Before-Execute Gate.** Before dispatching any phase via the Task / Agent tool, the dispatching prompt MUST instruct the subagent to Read the phase file in FULL before generating any output. Skimming, inferring, or selectively reading produces silently-degraded output. Reading the orchestrator file (this file) does NOT satisfy this gate for the individual phase files.
+
+2. **Schema Fidelity.** Each phase file declares its required output keys / sub-objects (e.g., `BID_SCREEN.json.pipeline_metadata.pre_phase6_audit`, `chain_links[]`, `score_breakdown.technology`). The phase JSON written must contain ALL keys the phase file lists. Do not omit, rename, or restructure. If a key cannot be populated due to insufficient evidence, fill it with `null` or the documented conservative score (0 or 1) — do not drop the key. Schema verification happens at SVA gates; missing keys → SVA failure → retry → cap hit → halt.
+
+3. **Anomaly Protocol.** If you detect an anomaly — conflicting evidence between phase outputs, ambiguous instruction in a phase file, missing input from an upstream phase, a phase-file schema element that contradicts a memory rule, a hardcoded path that doesn't resolve, or a baseline output that has materially more depth than your in-progress output — STOP and ASK the user via the AskUserQuestion tool before improvising. Never silently choose a shorter / thinner / faster path.
+
+**Regression sentinels:** if any of the following occur, halt and audit before continuing:
+- A phase JSON output is materially smaller than the size declared in the phase file's "Min Size" column without a documented reason
+- An SVA report fails schema validation (cross-check against `schemas/sva-report.schema.json`)
+- A `read_file` / `read_json` / `write_json` call raises NameError (helpers must be defined per the Required Helper Functions section below)
+- A pipeline run finishes Stage 7 without producing PDFs in `outputs/bid/` (phase8e MUST execute; markdown-only output is failure, not success)
+
 ---
 
 ## Skill Description
@@ -300,9 +336,94 @@ SPRINT_STAGES = {
 **Rationale:** User explicitly invokes skill on this folder, granting full access for RFP processing.
 
 **Also pre-approved:**
-- Read skill files from `/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/`
+- Read skill files from this skill's own directory (resolved via `${CLAUDE_SKILL_DIR}` — see Configuration block below)
 - Run `npx` commands from skill directory (for mermaid, md-to-pdf)
 - Execute `markitdown` for document conversion
+
+---
+
+## Configuration
+
+```python
+import os
+
+# Paths — resolved at runtime from skill location.
+# Claude Code sets CLAUDE_SKILL_DIR to this skill's directory at load time.
+# Fall back to __file__-relative resolution if env var is absent; abort if neither works.
+# Pattern mirrored from sibling skill /process-rfp-screen (2026-05-13 audit).
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or os.path.dirname(os.path.abspath(__file__))
+if not SKILL_DIR or not os.path.isdir(SKILL_DIR):
+    error("ABORT: Cannot resolve SKILL_DIR — set CLAUDE_SKILL_DIR or invoke from the skill directory")
+    halt()
+
+PHASES_DIR        = f"{SKILL_DIR}/phases-win"
+SKILLS_DIR        = PHASES_DIR  # legacy alias used by execute_phase / SVA dispatch
+DOMAIN_SKILLS_DIR = f"{SKILL_DIR}/.."          # sibling domain skills: capture-strategist, procurement-analyst, etc.
+CONFIG_DIR        = f"{SKILL_DIR}/config-win"
+SCHEMAS_DIR       = f"{SKILL_DIR}/schemas"
+HOOKS_DIR         = f"{SKILL_DIR}/hooks-win"
+
+# Shared with /process-rfp-screen (intentional — both pipelines read same company profile)
+COMPANY_PROFILE   = f"{CONFIG_DIR}/company-profile.json"
+
+# Shared registries / schemas referenced by SVA gates
+SVA_RULES_REGISTRY = f"{CONFIG_DIR}/sva-rules-registry.json"
+SVA_REPORT_SCHEMA  = f"{SCHEMAS_DIR}/sva-report.schema.json"
+UNIFIED_RTM_SCHEMA = f"{SCHEMAS_DIR}/unified-rtm.schema.json"
+```
+
+---
+
+## ⛔ Required Helper Functions (BLOCKING — define BEFORE any phase runs)
+
+**MANDATORY:** This orchestrator and the phase files reference `read_json` / `read_json_safe` / `write_json` / `read_file` / `write_file` throughout. These are NOT auto-defined — Claude must define them in the runtime Python before phase execution. **They MUST be defined exactly as shown below.**
+
+**Why this matters (incident-driven, not theoretical):**
+1. The sibling pipeline `/process-rfp-screen` regressed on 2026-05-18 with em-dash mojibake (`â€"` in place of `—`) because helpers were defined without `encoding='utf-8'`. On Windows the default encoding is cp1252, which silently corrupts UTF-8 em-dash bytes (`E2 80 94`) into three cp1252 chars on read-back.
+2. This orchestrator (skill-win.md) calls `read_file(bf)` at the USER INPUT MARKERS reporting step. Without the definition below, that call raises NameError and the pipeline crashes during final reporting.
+3. Several phase files (`phase-addendum-win.md`, `phase8-bid-author-win.md`, `phase6c-context-bundle-win.md`, `sva1`, `sva5`, and inline scripts in `hooks-win/theme-validation.json`) define their own LOCAL helpers using bare `open()` without `encoding='utf-8'` — they will reproduce the screen regression. Phase-file fixes are scheduled for Tranche D; until then, executing agents should use the helpers defined HERE in preference to any locally-redefined ones in phase files.
+
+```python
+import json, os, sys
+
+# ── ENCODING DISCIPLINE (MANDATORY) ──
+# Every file open in this pipeline MUST specify encoding='utf-8'.
+# Windows default (cp1252) corrupts em dashes (—) into "â€"" mojibake.
+# Stdout must also be reconfigured before any print() that may include unicode.
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
+def read_json(path):
+    """Read JSON with explicit UTF-8. Never rely on platform default."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def read_json_safe(path):
+    """Same as read_json but returns None if file missing/invalid (some phases produce optional artifacts)."""
+    try:
+        return read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+def write_json(path, data):
+    """Write JSON with UTF-8 + ensure_ascii=False so em dashes survive round-trip.
+    Forces LF line endings so byte-level diffs across machines stay clean."""
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def read_file(path):
+    """Read plain text with explicit UTF-8."""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def write_file(path, text):
+    """Write plain text with explicit UTF-8 + LF line endings."""
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+```
+
+**Why `ensure_ascii=False`:** the older default (`True`) escapes em dashes as `—` but does the same to mojibake `â€"`, hiding the corruption. With `ensure_ascii=False` and `encoding='utf-8'`, mojibake becomes immediately visible as `â€"` on inspection, catching bugs at the file boundary.
+
+**This applies to:** inline Python invoked via Bash, generated `.py` scripts dropped into `{folder}/shared/`, the Phase 4 RTM builder, the Phase 6c context bundle, the Phase 8 bid authoring chain, ALL SVA validators, AND the Phase 8e PDF renderer. Do not write a `with open(...)` line in this pipeline without `encoding='utf-8'`.
 
 ---
 
@@ -970,13 +1091,20 @@ PHASES = [
 
 ```python
 MAX_RETRIES = 3
-SKILLS_DIR = "/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/phases-win"
-DOMAIN_SKILLS_DIR = "/home/ddubiel/repos/safs/.claude/skills"
+# SKILLS_DIR and DOMAIN_SKILLS_DIR are defined in the Configuration block at the
+# top of this file (resolved from ${CLAUDE_SKILL_DIR}). Do NOT redefine here.
 
-def execute_phase(phase, folder):
+def execute_phase(phase, folder, enhanced_instruction=None):
     """
     Execute a single phase via Task agent with retry logic.
     Returns True if phase completed successfully, False otherwise.
+
+    Args:
+        phase: phase dict from PHASES table
+        folder: working folder for the run
+        enhanced_instruction: optional corrective guidance string appended to the
+            dispatch prompt. Used by SVA auto-correction to pass targeted re-run
+            instructions back into the next attempt.
     """
     phase_id = phase["id"]
     subskill = phase["subskill"]
@@ -1023,14 +1151,20 @@ Execute the subskill: {SKILLS_DIR}/{subskill}
 {chr(10).join(f"- {o.replace('{folder}', folder)}" for o in required_outputs)}
 
 **Instructions:**
-1. {"Read the domain skill file(s) listed above to load expertise context" if skill_name else "Read the subskill file for detailed instructions"}
-2. Read the subskill file for detailed instructions
+1. {"Read the domain skill file(s) listed above to load expertise context" if skill_name else "Read the subskill file in FULL before generating any output. Do not skim, infer, or selectively read. The file is prescriptive — output schemas and quality criteria live in it."}
+2. **Read the subskill file in FULL before generating any output. Do not skim, infer, or selectively read. The file is prescriptive — output schemas and quality criteria live in it.**
 3. Execute as the expert role specified
 4. Create ALL required outputs
 5. Verify outputs exist before completing
 
 **CRITICAL:** Do not report completion until all required outputs exist.
 """
+
+        # Append enhanced instruction (e.g., SVA auto-correction guidance) if provided.
+        # This lets a re-dispatch carry corrective context from an SVA finding into the
+        # subagent prompt without recompiling the whole dispatch logic.
+        if enhanced_instruction:
+            prompt += f"\n\n**Corrective guidance (from prior SVA finding):**\n{enhanced_instruction}\n"
 
         # Invoke Task agent
         Task(
@@ -1094,12 +1228,12 @@ You are a **Stage Validation Agent ({sva_id})** performing {'a ' + color_team.up
 Execute the subskill: {SKILLS_DIR.replace('phases-win', 'phases-win')}/{sva_subskill}
 
 **Working folder:** {folder}
-**SVA Rules Registry:** /home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/sva-rules-registry.json
-**SVA Report Schema:** /home/ddubiel/repos/safs/.claude/skills/process-rfp-win/schemas/sva-report.schema.json
+**SVA Rules Registry:** {SVA_RULES_REGISTRY}
+**SVA Report Schema:** {SVA_REPORT_SCHEMA}
 **Report Output:** {sva_report_file}
 
 **Instructions:**
-1. Read the SVA subskill file for detailed validation instructions
+1. **Read the SVA subskill file in FULL before generating any output. Do not skim, infer, or selectively read. The file is prescriptive — output schemas and quality criteria live in it.**
 2. Read the SVA rules registry for {sva_id} rule definitions
 3. Validate all artifacts produced by Stage {stage_num}
 4. Produce a structured JSON report conforming to sva-report.schema.json
@@ -1859,7 +1993,7 @@ run_pipeline(folder, sprint_mode=sprint_mode)
 After each phase, display progress bar grouped by stage with SVA results:
 
 ```
-📊 Pipeline Progress (WIN Edition v2) - 39 phases + 7 SVA gates = 46 units
+📊 Pipeline Progress (WIN Edition v2) - 38 phases + 8 SVA gates = 46 units
 ==================================================================
 
 STAGE 1: Document Intake
@@ -1966,6 +2100,29 @@ When a phase fails, display in RED:
    2. Approve gaps with user confirmation
    3. Abort pipeline
 ```
+
+---
+
+## Memory Integration
+
+**On skill start — read:** `${CLAUDE_SKILL_DIR}/memory/`
+- `gotchas.md` — known pitfalls (UTF-8 encoding, table-cell truncation, hardcoded paths, schema-conformance, fitz.Story CSS constraints, orphaned phase files, false coverage claims, etc.). Read in full before dispatching Stage 1.
+- `last-audit.md` — previous audit's findings + scores. Use as delta baseline if running an audit; use as context for what was recently changed/why if running the pipeline.
+- Recent dated entries (`YYYY-MM-DD-*.md`) for run-specific incidents.
+
+**On skill end — write checklist:**
+- [ ] Did a phase fail unexpectedly (NameError, FileNotFoundError, schema validation reject)? → **MUST** record file:line + cause + resolution.
+- [ ] Did an SVA gate cap-hit or halt? → **MUST** record which SVA, what cap was hit, what findings remained OPEN.
+- [ ] Did the executing agent improvise output (smaller than baseline, missing schema keys, dropped JSON fields)? → **MUST** record — this is the Phase-File-Improvisation regression pattern.
+- [ ] Did a hardcoded path cause a runtime failure? → **MUST** record (until Tranche C hardens all phase files).
+- [ ] Did UTF-8 mojibake (`â€"` in any output) appear? → **MUST** record which phase produced it; confirm the phase is using helpers from skill-win.md.
+- [ ] Did `[:N]` truncation of requirement text corrupt the RTM chain or bid content? → **MUST** record file:line.
+- [ ] Did fitz.Story render badly (ghost-fill, missing hr, em-dash mojibake in PDF)? → **MUST** record + cross-check `phase8e-pdf-win.md` inline CSS.
+- [ ] Did the user reject a bid section or correct positioning? → **SHOULD** record what they changed and why.
+- [ ] Was a new evaluator-feedback pattern discovered worth reusing? → **SHOULD** record in `patterns.md`.
+- [ ] Routine run with no surprises? → Skip (do NOT write "ran successfully").
+
+**Always:** Update `${CLAUDE_SKILL_DIR}/memory/last-audit.md` with this run's outcome IF an audit was performed (not for normal pipeline runs).
 
 ---
 

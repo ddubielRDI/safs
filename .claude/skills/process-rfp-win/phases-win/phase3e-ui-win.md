@@ -10,7 +10,7 @@ domain-expertise: User interfaces, accessibility, wireframes
 
 You are a **UX Designer** with deep expertise in:
 - User interface design
-- Accessibility (WCAG 2.1)
+- Accessibility (WCAG 2.2 AA — current W3C Recommendation, October 2023; baseline for public-sector procurements 2025+)
 - Wireframe and mockup creation
 - User experience research
 
@@ -46,6 +46,57 @@ ui_reqs = [
     if any(kw in req.get("text", "").lower() for kw in ui_keywords)
     or req.get("category") == "UI"
 ]
+```
+
+### Step 1b: Detect WCAG Version Mandate from RFP
+
+```python
+# V1-F3 fix 2026-05-18: WCAG version is RFP-driven, not hardcoded.
+# Scan requirements for explicit version mentions. Default to WCAG 2.2 AA
+# (current W3C Recommendation, October 2023; current baseline for federal/state
+# procurement after DOJ's April 2024 ADA Title II rule).
+# Source: https://www.w3.org/TR/WCAG22/ (verified at phase execution time)
+all_req_text = " ".join(
+    req.get("text", "") + " " + req.get("full_context", "")
+    for req in requirements.get("requirements", [])
+).lower()
+
+if "wcag 2.2" in all_req_text or "wcag2.2" in all_req_text:
+    wcag_version = "2.2"
+    wcag_note = "RFP explicitly cites WCAG 2.2"
+elif "wcag 2.1" in all_req_text or "wcag2.1" in all_req_text:
+    wcag_version = "2.1"
+    wcag_note = "RFP-mandated WCAG 2.1; current public-sector baseline is 2.2 — confirm with client whether 2.2 SC may also apply"
+elif "section 508" in all_req_text:
+    # Section 508 currently incorporates WCAG 2.0 Level A and AA; many agencies
+    # have moved to WCAG 2.1 or 2.2 administratively. Default to 2.2 with note.
+    wcag_version = "2.2"
+    wcag_note = "RFP cites Section 508. Section 508 baseline references WCAG 2.0 A/AA; default to 2.2 unless RFP narrower"
+else:
+    wcag_version = "2.2"
+    wcag_note = "RFP did not specify WCAG version; using current baseline 2.2 AA (W3C Recommendation, Oct 2023)"
+
+log(f"WCAG version selected: {wcag_version} AA — {wcag_note}")
+log(f"Source: https://www.w3.org/TR/WCAG22/")
+
+# Build version-specific format helpers for template substitution
+wcag_version_compact = wcag_version.replace(".", "")  # "22" or "21" for URL path
+
+# WCAG 2.2 added 9 new Success Criteria. Include them when version >= 2.2.
+# Source: https://www.w3.org/TR/WCAG22/#new-features-in-wcag-2-2
+if wcag_version == "2.2":
+    wcag22_operable_sc = """- [ ] 2.4.11 Focus Not Obscured (Minimum) — AA new in 2.2
+- [ ] 2.4.12 Focus Not Obscured (Enhanced) — AAA new in 2.2
+- [ ] 2.4.13 Focus Appearance — AAA new in 2.2
+- [ ] 2.5.7 Dragging Movements — AA new in 2.2
+- [ ] 2.5.8 Target Size (Minimum) — AA new in 2.2 (24x24 CSS pixels)"""
+    wcag22_understandable_sc = """- [ ] 3.2.6 Consistent Help — A new in 2.2
+- [ ] 3.3.7 Redundant Entry — A new in 2.2
+- [ ] 3.3.8 Accessible Authentication (Minimum) — AA new in 2.2
+- [ ] 3.3.9 Accessible Authentication (Enhanced) — AAA new in 2.2"""
+else:
+    wcag22_operable_sc = ""
+    wcag22_understandable_sc = ""
 ```
 
 ### Step 2: Generate UI Specifications
@@ -186,30 +237,36 @@ def generate_ui_specs(ui_reqs, domain_context):
 
 ---
 
-## Accessibility Requirements (WCAG 2.1 AA)
+## Accessibility Requirements (WCAG {wcag_version} AA)
+
+> **Source:** https://www.w3.org/TR/WCAG{wcag_version_compact}/ — {wcag_note}
+> Verified at phase execution: {datetime.now().strftime('%Y-%m-%d')}
 
 ### Perceivable
-- [ ] All images have alt text
-- [ ] Color is not sole indicator
-- [ ] Minimum contrast ratio 4.5:1
-- [ ] Text resizable to 200%
+- [ ] All images have alt text (1.1.1)
+- [ ] Color is not sole indicator (1.4.1)
+- [ ] Minimum contrast ratio 4.5:1 for text, 3:1 for UI components (1.4.3, 1.4.11)
+- [ ] Text resizable to 200% (1.4.4)
 
 ### Operable
-- [ ] All functions keyboard accessible
-- [ ] Skip navigation link
-- [ ] Focus visible and logical
-- [ ] No keyboard traps
+- [ ] All functions keyboard accessible (2.1.1)
+- [ ] Skip navigation link (2.4.1)
+- [ ] Focus visible and logical (2.4.7)
+- [ ] No keyboard traps (2.1.2)
+{wcag22_operable_sc}
 
 ### Understandable
-- [ ] Language declared
-- [ ] Labels for all inputs
-- [ ] Error identification
-- [ ] Consistent navigation
+- [ ] Language declared (3.1.1)
+- [ ] Labels for all inputs (3.3.2)
+- [ ] Error identification (3.3.1)
+- [ ] Consistent navigation (3.2.3)
+{wcag22_understandable_sc}
 
 ### Robust
 - [ ] Valid HTML
-- [ ] ARIA attributes where needed
+- [ ] ARIA attributes where needed (4.1.2)
 - [ ] Works with assistive technology
+- [ ] Status messages announced to assistive tech (4.1.3)
 
 ---
 
@@ -282,5 +339,6 @@ write_file(f"{folder}/outputs/UI_SPECS.md", ui_specs)
 - [ ] Design system defined
 - [ ] Page templates included
 - [ ] Component library documented
-- [ ] WCAG 2.1 AA requirements addressed
+- [ ] WCAG 2.2 AA requirements addressed (or RFP-mandated version if narrower) — including the 9 new Success Criteria added in 2.2
+- [ ] WCAG version source URL cited with verification date
 - [ ] Responsive design specified

@@ -189,9 +189,101 @@ for item in compliance_items:
                 item["confidence_tier"] = "Unknown"  # Cannot determine compliance
 ```
 
+### Step 2a: Load Past_Projects.md (BLOCKING -- consumed by Steps 2b, 2c, 2d, and Part B)
+
+Steps 2b–2d cross-reference `past_projects_md` (raw markdown) and `projects` (parsed
+list of project dicts). They MUST be loaded here, before the cross-reference steps,
+or the prescribed code NameErrors at Step 2b. Part B (Past Project Matching) reuses
+the same parsed `projects` list — no re-parse is needed.
+
+```python
+# Past_Projects.md lives at the safs repo root. Use the absolute path resolved
+# at skill load time (skill-screen.md Configuration block) -- never derive from
+# the RFP folder, which can be nested at arbitrary depth.
+past_projects_path = PAST_PROJECTS
+
+if not os.path.exists(past_projects_path):
+    # Hard fallback: write the empty past-project-match output and skip Part B downstream.
+    # Steps 2b/2c/2d will degrade gracefully via empty-string / empty-list defaults.
+    write_json(f"{folder}/screen/past-projects-match.json", {
+        "phase": "4b",
+        "timestamp": datetime.now().isoformat(),
+        "status": "no_data",
+        "note": "Past_Projects.md not found",
+        "matched_projects": []
+    })
+    log("WARNING: Past_Projects.md not found. Steps 2b/2c/2d will operate on empty inputs; Part B will be skipped.")
+    past_projects_md = ""
+    projects = []
+else:
+    past_projects_md = read_file(past_projects_path)
+
+    # Parse projects from markdown. Projects start with "#### N. Project Title" headings.
+    # Extract: number, title, client, industry, technologies, metrics, timeline, etc.
+    import re
+    projects = []
+    project_sections = re.split(r'\n####\s+(\d+)\.\s+', past_projects_md)
+
+    # project_sections[0] is the preamble, then alternating: number, content
+    for i in range(1, len(project_sections)-1, 2):
+        proj_num = int(project_sections[i])
+        content = project_sections[i+1]
+
+        # Extract title (first line)
+        title = content.split('\n')[0].strip()
+
+        # Extract quote text and attribution if present
+        quote_match = re.search(r'\*["""](.+?)["""]\*\s*(?:—|–|-)\s*(.+?)$', content, re.MULTILINE)
+        quote_text = quote_match.group(1).strip() if quote_match else None
+        quote_attribution = quote_match.group(2).strip() if quote_match else None
+
+        # Extract team size
+        team_size_match = re.search(r'\|\s*\*\*Team Size\*\*\s*\|\s*(.+?)\s*\|', content)
+        team_size = team_size_match.group(1).strip() if team_size_match else None
+
+        # Extract cost info
+        cost_match = re.search(r'\|\s*\*\*Cost\*\*\s*\|\s*(.+?)\s*\|', content)
+        cost_info = cost_match.group(1).strip() if cost_match else None
+
+        # Extract key outcomes as list (lines starting with "- " under Key Outcomes)
+        outcomes_section = re.search(r'\*\*Key Outcomes:\*\*(.*?)(?=\*\*Challenges|\*\*Source|\*\*Quote|\*\*Approach|\Z)', content, re.DOTALL)
+        key_outcomes = []
+        if outcomes_section:
+            key_outcomes = re.findall(r'-\s+(.+?)(?:\n|$)', outcomes_section.group(1))
+            key_outcomes = [o.strip() for o in key_outcomes if o.strip()]
+
+        # Extract challenges addressed
+        challenges_section = re.search(r'\*\*Challenges Addressed:\*\*(.*?)(?=\*\*Source|\*\*Quote|\*\*Note|\Z)', content, re.DOTALL)
+        challenges = []
+        if challenges_section:
+            challenges = re.findall(r'-\s+(.+?)(?:\n|$)', challenges_section.group(1))
+            challenges = [c.strip() for c in challenges if c.strip()]
+
+        project = {
+            "project_number": proj_num,
+            "title": title,
+            "content": content,
+            "client": extract_field(content, "Client"),
+            "industry": extract_field(content, "Industry"),
+            "technologies": extract_technologies(content),
+            "timeline": extract_field(content, "Timeline|Duration|Period"),
+            "key_metrics": extract_metrics(content),
+            "key_outcomes": key_outcomes[:5],
+            "challenges": challenges[:3],
+            "team_size": team_size,
+            "cost_info": cost_info,
+            "has_metrics_table": bool(re.search(r'\|.*\|.*\|', content)),
+            "has_quote": quote_text is not None,
+            "quote_text": quote_text,
+            "quote_attribution": quote_attribution,
+            "description": content[:500]
+        }
+        projects.append(project)
+```
+
 ### Step 2b: Contract Vehicle Matching (from Past_Projects.md)
 
-Parse the Government Contracts Summary from Past_Projects.md and check if the RFP's state or agency matches an existing contract vehicle. An existing vehicle is a major compliance advantage.
+Parse the Government Contracts Summary from Past_Projects.md and check if the RFP's state or agency matches an existing contract vehicle. An existing vehicle is a major compliance advantage. Uses `past_projects_md` loaded in Step 2a.
 
 ```python
 # Parse Government Contracts from Past_Projects.md
@@ -452,95 +544,17 @@ write_json(f"{folder}/screen/compliance-check.json", compliance_check)
 
 ## Part B: Past Project Matching
 
-### Step 4: Load and Parse Past Projects
+> **Note:** Past_Projects.md was loaded and parsed in **Step 2a** (top of this phase),
+> so `past_projects_md` and `projects` are already in memory. If `projects == []`
+> here, Step 2a wrote the empty `past-projects-match.json` and Part B can skip
+> straight to Step 8 reporting.
 
 ```python
-# Past_Projects.md lives at the safs repo root. Use the absolute path resolved
-# at skill load time (skill-screen.md Configuration block) — never derive from
-# the RFP folder, which can be nested at arbitrary depth.
-past_projects_path = PAST_PROJECTS
-
-if not os.path.exists(past_projects_path):
-    write_json(f"{folder}/screen/past-projects-match.json", {
-        "phase": "4b",
-        "timestamp": datetime.now().isoformat(),
-        "status": "no_data",
-        "note": "Past_Projects.md not found",
-        "matched_projects": []
-    })
-    log("WARNING: Past_Projects.md not found. Skipping project matching.")
-    return
-
-past_projects_md = read_file(past_projects_path)
-```
-
-### Step 5: Parse Projects from Markdown
-
-```python
-# Projects start with "#### N. Project Title" headings
-# Extract: number, title, client, industry, technologies, metrics, timeline
-import re
-
-projects = []
-# Split by project headings — format: "#### N. Title"
-project_sections = re.split(r'\n####\s+(\d+)\.\s+', past_projects_md)
-
-# project_sections[0] is the preamble, then alternating: number, content
-for i in range(1, len(project_sections)-1, 2):
-    proj_num = int(project_sections[i])
-    content = project_sections[i+1]
-
-    # Extract title (first line)
-    title = content.split('\n')[0].strip()
-
-    # Extract fields from the content (enriched for 35-project Past_Projects.md)
-    # Extract quote text and attribution if present
-    quote_match = re.search(r'\*["""](.+?)["""]\*\s*(?:—|–|-)\s*(.+?)$', content, re.MULTILINE)
-    quote_text = quote_match.group(1).strip() if quote_match else None
-    quote_attribution = quote_match.group(2).strip() if quote_match else None
-
-    # Extract team size
-    team_size_match = re.search(r'\|\s*\*\*Team Size\*\*\s*\|\s*(.+?)\s*\|', content)
-    team_size = team_size_match.group(1).strip() if team_size_match else None
-
-    # Extract cost info
-    cost_match = re.search(r'\|\s*\*\*Cost\*\*\s*\|\s*(.+?)\s*\|', content)
-    cost_info = cost_match.group(1).strip() if cost_match else None
-
-    # Extract key outcomes as list (lines starting with "- " under Key Outcomes)
-    outcomes_section = re.search(r'\*\*Key Outcomes:\*\*(.*?)(?=\*\*Challenges|\*\*Source|\*\*Quote|\*\*Approach|\Z)', content, re.DOTALL)
-    key_outcomes = []
-    if outcomes_section:
-        key_outcomes = re.findall(r'-\s+(.+?)(?:\n|$)', outcomes_section.group(1))
-        key_outcomes = [o.strip() for o in key_outcomes if o.strip()]
-
-    # Extract challenges addressed
-    challenges_section = re.search(r'\*\*Challenges Addressed:\*\*(.*?)(?=\*\*Source|\*\*Quote|\*\*Note|\Z)', content, re.DOTALL)
-    challenges = []
-    if challenges_section:
-        challenges = re.findall(r'-\s+(.+?)(?:\n|$)', challenges_section.group(1))
-        challenges = [c.strip() for c in challenges if c.strip()]
-
-    project = {
-        "project_number": proj_num,
-        "title": title,
-        "content": content,
-        "client": extract_field(content, "Client"),
-        "industry": extract_field(content, "Industry"),
-        "technologies": extract_technologies(content),
-        "timeline": extract_field(content, "Timeline|Duration|Period"),
-        "key_metrics": extract_metrics(content),
-        "key_outcomes": key_outcomes[:5],  # Top 5 outcomes
-        "challenges": challenges[:3],  # Top 3 challenges
-        "team_size": team_size,
-        "cost_info": cost_info,
-        "has_metrics_table": bool(re.search(r'\|.*\|.*\|', content)),
-        "has_quote": quote_text is not None,
-        "quote_text": quote_text,
-        "quote_attribution": quote_attribution,
-        "description": content[:500]
-    }
-    projects.append(project)
+if not projects:
+    log("Part B SKIPPED -- no projects parsed (Past_Projects.md absent or empty)")
+    # Step 2a already wrote screen/past-projects-match.json with status="no_data"
+else:
+    pass  # Continue to Step 6
 ```
 
 ### Step 6: Score Each Project

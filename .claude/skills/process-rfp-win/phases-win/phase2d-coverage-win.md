@@ -92,7 +92,10 @@ for wf_item in workflow_candidates:
     match = find_best_match(wf_item, all_requirements)
     coverage_matrix.append({
         "workflow_id": wf_item.get("id"),
-        "workflow_text": wf_item.get("description", "")[:100],
+        # V2-F7 fix 2026-05-18: store full workflow description. Previous [:100]
+        # truncation in persisted JSON destroyed evidence for downstream phases;
+        # log display below already truncates for readability.
+        "workflow_text": wf_item.get("description", ""),
         "category": wf_item.get("category"),
         **match
     })
@@ -109,6 +112,24 @@ def calculate_coverage(matrix):
 
     coverage_pct = (matched / total * 100) if total > 0 else 100
 
+    # HUNT-B-008 fix 2026-05-18: zero-input case (no workflow candidates from
+    # Phase 2a) was previously vacuously passing — a BLOCKING gate that always
+    # passes on empty input provides no defense against document misclassification.
+    # Surface a structural warning that downstream phases / human reviewers can act
+    # on. The gate still vacuously passes by design (nothing to BLOCK on), but the
+    # zero-input signal is explicit in the output.
+    zero_input_warning = None
+    if total == 0:
+        zero_input_warning = (
+            "WARNING: Phase 2d coverage check ran with ZERO workflow candidates "
+            "from Phase 2a. Possible causes: (a) Phase 2a extraction failed, "
+            "(b) input documents are not actually an RFP (cover letter, specification "
+            "document, scope summary), (c) RFP uses non-standard requirement language "
+            "that Phase 2a's extractor didn't recognize. Verify input documents before "
+            "relying on downstream Stage 3-7 outputs."
+        )
+        log(f"⚠️  {zero_input_warning}")
+
     # Quality breakdown
     high_quality = sum(1 for item in matrix if item.get("match_quality") == "HIGH")
     medium_quality = sum(1 for item in matrix if item.get("match_quality") == "MEDIUM")
@@ -124,7 +145,8 @@ def calculate_coverage(matrix):
             "medium": medium_quality,
             "low": low_quality
         },
-        "gate_passed": coverage_pct == 100
+        "gate_passed": coverage_pct == 100,
+        "zero_input_warning": zero_input_warning,
     }
 
 coverage_stats = calculate_coverage(coverage_matrix)
@@ -222,7 +244,9 @@ if not coverage_stats["gate_passed"]:
     log("")
     log("Unmatched Items:")
     for gap in gaps[:10]:
-        log(f"  ❌ {gap['workflow_id']}: {gap['description'][:60]}...")
+        # Display-only truncation (60 chars). Full text preserved in workflow-coverage.json.
+        desc = gap.get('description', '')
+        log(f"  ❌ {gap['workflow_id']}: {desc[:60]}{'...' if len(desc) > 60 else ''}")
 
     if len(gaps) > 10:
         log(f"  ... and {len(gaps) - 10} more")

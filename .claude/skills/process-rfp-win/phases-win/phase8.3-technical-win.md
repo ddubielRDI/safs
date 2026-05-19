@@ -95,6 +95,11 @@ evaluator_messages = context.get("evaluator_messages", positioning.get("evaluato
 section_content_guide = context.get("section_content_guide", {})
 eval_to_bid_mapping = context.get("evaluation_to_bid_mapping", {})
 
+# V4-F7 fix 2026-05-18: load ghost_strategy so technical approach weaves
+# competitive contrast (especially in Sections 3 Solution Architecture and
+# 6 Quality Assurance where incumbent weaknesses are typically highlighted).
+ghost_strategy = context.get("ghost_strategy", positioning.get("ghost_strategy", {}))
+
 # Get technical-specific section mandates
 tech_section_keys = [k for k in section_theme_mandates if any(
     kw in k.lower() for kw in ["technical", "solution", "architecture", "security", "quality", "approach"]
@@ -184,6 +189,8 @@ Before writing, review `section_content_guide` for all technical-related section
 - Risk Management: RISK persona
 
 **Content Priority Integration:** Use `tech_top_requirements` (sorted by composite_score descending) to determine which requirements deserve the most detailed treatment. Address the top 10 requirements with the most evidence, proof points, and detail.
+
+**Ghost Strategy Integration:** Use `ghost_strategy.counter_narratives[]` to insert competitive contrast language. Use `ghost_strategy.ghost_phrases[]` to subtly position against incumbent without naming them. Ghost phrases must appear at least once per major win theme.
 
 Write a comprehensive technical approach with these sections, ordered by evaluation weight:
 
@@ -546,3 +553,4 @@ Output: outputs/bid-sections/03_TECHNICAL.md
 - [ ] `content_priority_guide` used to prioritize highest composite-score requirements first
 - [ ] `theme_eval_mapping` used to connect theme references to evaluation factors
 - [ ] Every win theme appears >= 3 times across the entire document
+- [ ] At least one ghost phrase per major win theme woven into differentiator sections

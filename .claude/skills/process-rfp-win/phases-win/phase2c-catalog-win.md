@@ -92,9 +92,16 @@ def generate_catalog_md(requirements, domain_context):
 
         for req in sorted(reqs, key=lambda x: x.get("canonical_id", "")):
             req_id = req.get("display_id", req.get("id", "N/A"))
-            text = req.get("text", "")[:100] + ("..." if len(req.get("text", "")) > 100 else "")
+            # NO TRUNCATION on canonical requirement text. HUNT-B-003 fix 2026-05-18:
+            # markdown table cells break on embedded newlines (renderer treats \n as
+            # row separator) — replace newlines with space before pipe-escape. Order
+            # matters: collapse whitespace BEFORE escaping pipes so \n→\\n doesn't
+            # double-escape, and AFTER all transforms there are no raw newlines.
+            text = req.get("text", "")
+            text = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+            text = text.replace("|", "\\|")
             priority = req.get("priority", "MEDIUM")
-            source = req.get("source", "manual")[:15]
+            source = req.get("source", "manual")[:15]  # source field is a short identifier; truncation safe
 
             sections.append(f"| {req_id} | {text} | {priority} | {source} |\n")
 
@@ -204,7 +211,13 @@ json_catalog = {
             "priority": r.get("priority"),
             "type": r.get("type"),
             "source": r.get("source"),
-            "validation_score": r.get("validation", {}).get("score")
+            "validation_score": r.get("validation", {}).get("score"),
+            # V2-F6 fix 2026-05-18: preserve RTM traceability fields. Previously
+            # catalog dropped requirement_type/source_ids/parent_id, breaking
+            # Phase 4 traceability chain rebuild from this artifact.
+            "requirement_type": r.get("requirement_type"),
+            "source_ids": r.get("source_ids", []),
+            "parent_id": r.get("parent_id"),
         }
         for r in valid_reqs
     ]

@@ -185,29 +185,48 @@ query_results.append(run_f3())
 
 # --- F4: Mandatory-Item-Bid-Location ---
 def run_f4():
-    addressed = 0
+    # V4-F10 fix 2026-05-18: previously counted coverage_status alone as full
+    # success, which masked items addressed in the matrix but never verified
+    # in bid text. Now: fully-verified items (coverage + bid_loc) count 1.0;
+    # coverage-only items count 0.5; gaps count 0. Reviewers see both signals
+    # in the response so partial credit doesn't disguise a real coverage gap.
+    full_match_count = 0
+    coverage_only_count = 0.0
     gaps = []
 
     for m in mandatory_items:
         has_coverage = m.get("coverage_status") == "ADDRESSED"
         has_bid_loc = m.get("bid_location") is not None
         if has_coverage and has_bid_loc:
-            addressed += 1
+            full_match_count += 1
         elif has_coverage and not has_bid_loc:
-            # Addressed but not yet verified in bid
-            addressed += 1  # Count as partial success
+            coverage_only_count += 0.5  # Partial — in matrix but unverified in text
         else:
             gaps.append(m["mandatory_id"])
 
-    score = addressed / len(mandatory_items) * 100 if mandatory_items else 100
+    total_mandatory = max(1, len(mandatory_items))
+    fully_addressed = (full_match_count + coverage_only_count) / total_mandatory
+    score = fully_addressed * 100
+    fully_verified_pct = round(full_match_count / total_mandatory * 100, 1)
+    coverage_claimed_only_pct = round(coverage_only_count / total_mandatory * 100 * 2, 1)  # back to raw %
+
+    # Pass criterion: 95% blended score AND full_match alone >= 90% before partial credit counts
+    passed = score >= 95.0 and fully_verified_pct >= 90.0
+
     return {
         "query_id": "F4",
         "query_name": "Mandatory-Item-Bid-Location",
         "direction": "forward",
-        "passed": score >= 95.0,
+        "passed": passed,
         "score": round(score, 1),
-        "details": f"{addressed}/{len(mandatory_items)} mandatory items addressed. "
-                   f"Gaps: {', '.join(gaps[:10])}"
+        "fully_verified_pct": fully_verified_pct,
+        "coverage_claimed_only_pct": coverage_claimed_only_pct,
+        "details": (
+            f"{full_match_count}/{len(mandatory_items)} fully verified in bid "
+            f"({fully_verified_pct}%); {int(coverage_only_count * 2)} coverage-claimed "
+            f"but unverified in bid text ({coverage_claimed_only_pct}%). "
+            f"Gaps: {', '.join(gaps[:10])}"
+        )
     }
 
 query_results.append(run_f4())

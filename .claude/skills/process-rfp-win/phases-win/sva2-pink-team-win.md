@@ -283,6 +283,57 @@ def check_compliance_mapping():
 findings.append(check_compliance_mapping())
 
 
+# --- SVA2-WORKFLOW-SCHEMA-CONTRACT (CRITICAL) ---
+# HUNT-C-0006 fix 2026-05-18: workflow-extracted-reqs.json is consumed by phase3d
+# (demo skill) which reads specific keys (category_distribution as DICT,
+# requirement_candidates[] as list-of-dicts with .category field). SVA-2
+# previously did NOT verify these keys exist — a structurally wrong JSON file
+# with correct text-content alignment would pass SVA-2 while crashing phase3d.
+def check_workflow_schema_contract():
+    """Verify workflow-extracted-reqs.json has the schema fields downstream consumers expect."""
+    if not workflow_reqs:
+        return {
+            "rule_id": "SVA2-WORKFLOW-SCHEMA-CONTRACT", "severity": "CRITICAL",
+            "passed": True, "score": 100, "threshold": None,
+            "details": {"note": "No workflow_reqs loaded — schema check skipped"},
+            "corrective_action": None
+        }
+    missing_keys = []
+    if "category_distribution" not in workflow_reqs:
+        missing_keys.append("category_distribution (DICT — required by phase3d demo skill)")
+    elif not isinstance(workflow_reqs.get("category_distribution"), dict):
+        missing_keys.append(f"category_distribution (wrong type: expected DICT, got {type(workflow_reqs.get('category_distribution')).__name__})")
+    if "requirement_candidates" not in workflow_reqs:
+        missing_keys.append("requirement_candidates (LIST — required by phase3d demo skill)")
+    elif not isinstance(workflow_reqs.get("requirement_candidates"), list):
+        missing_keys.append(f"requirement_candidates (wrong type: expected LIST, got {type(workflow_reqs.get('requirement_candidates')).__name__})")
+    else:
+        # Spot-check first 3 items for required .category field
+        sample = workflow_reqs["requirement_candidates"][:3]
+        items_missing_cat = [i for i, item in enumerate(sample) if not isinstance(item, dict) or "category" not in item]
+        if items_missing_cat:
+            missing_keys.append(f"requirement_candidates[].category (missing on items {items_missing_cat} of first 3 sampled)")
+
+    passed = len(missing_keys) == 0
+    return {
+        "rule_id": "SVA2-WORKFLOW-SCHEMA-CONTRACT",
+        "severity": "CRITICAL",
+        "passed": passed,
+        "score": 100 if passed else 0,
+        "threshold": None,
+        "details": {
+            "missing_or_invalid_keys": missing_keys,
+            "consumer_skill": "phase3d-demos-win.md (currently restoring; demos pipeline)"
+        },
+        "corrective_action": {
+            "type": "retry_phase", "target_phase": "2a", "auto_correctable": True,
+            "instruction": f"Phase 2a must emit workflow-extracted-reqs.json with: {missing_keys}"
+        } if not passed else None
+    }
+
+findings.append(check_workflow_schema_contract())
+
+
 # --- SVA2-WORKFLOW-ALIGNMENT (CRITICAL) ---
 def check_workflow_alignment():
     """Verify workflow requirements align with extracted requirements."""
@@ -294,7 +345,13 @@ def check_workflow_alignment():
             "corrective_action": None
         }
 
-    wf_reqs = workflow_reqs.get("requirements", workflow_reqs.get("workflow_requirements", []))
+    # V2-F5 fix: Phase 2a writes the list under `requirement_candidates`, not
+    # `requirements` / `workflow_requirements`. Read the canonical key first;
+    # legacy keys preserved as fallback so this gate keeps working on older runs.
+    wf_reqs = workflow_reqs.get(
+        "requirement_candidates",
+        workflow_reqs.get("requirements", workflow_reqs.get("workflow_requirements", []))
+    )
     if not wf_reqs:
         return {
             "rule_id": "SVA2-WORKFLOW-ALIGNMENT", "severity": "CRITICAL",
@@ -306,7 +363,9 @@ def check_workflow_alignment():
     # Check alignment: each workflow req should match at least one normalized req
     aligned = 0
     for wf in wf_reqs:
-        wf_text = wf.get("text", wf.get("requirement", "")).lower()[:100]
+        # V2-F5 fix: Phase 2a candidate items use `description` as the text field;
+        # `text`/`requirement` retained as fallbacks for legacy runs.
+        wf_text = wf.get("description", wf.get("text", wf.get("requirement", ""))).lower()[:100]
         # Simple check: any normalized req shares significant words
         for req in all_reqs:
             req_text = req.get("text", "").lower()
@@ -350,11 +409,32 @@ def check_sample_data():
 
     entities = sample_data.get("entities", sample_data.get("data_entities", []))
     if not entities:
+        # HUNT-C-0007 fix 2026-05-18: previously returned PASS score=100 vacuously
+        # when entities[] was empty, silently masking the case where phase2.5 found
+        # no entities OR the file was structurally empty. Now: emit a structural
+        # warning at score 50 (passes the >=50% threshold but visible in report).
+        # Distinguish the legitimate-empty case (no spreadsheets in RFP) from a
+        # likely extraction failure by checking field_definitions presence.
+        has_field_defs = bool(sample_data.get("field_definitions"))
+        spreadsheet_count = len(sample_data.get("spreadsheet_analysis", []))
+        note = (
+            f"Empty entities[]. spreadsheet_analysis count={spreadsheet_count}, "
+            f"field_definitions={'present' if has_field_defs else 'absent'}. "
+            "If RFP genuinely has no sample data attachments, this is expected. "
+            "If RFP has .xlsx/.csv attachments but entities is empty, phase2.5 may have failed."
+        )
+        # If there ARE spreadsheets but no entities, that's a likely extraction bug — fail.
+        passed = spreadsheet_count == 0
         return {
             "rule_id": "SVA2-SAMPLE-DATA-INTEGRATION", "severity": "MEDIUM",
-            "passed": True, "score": 100, "threshold": None,
-            "details": {"note": "No data entities found in sample data"},
-            "corrective_action": None
+            "passed": passed,
+            "score": 100 if passed else 30,
+            "threshold": 50.0,
+            "details": {"note": note, "spreadsheet_count": spreadsheet_count},
+            "corrective_action": {
+                "type": "retry_phase", "target_phase": "2.5", "auto_correctable": True,
+                "instruction": "Spreadsheets present but no entities extracted — re-run phase 2.5"
+            } if not passed else None
         }
 
     all_req_text = " ".join(r.get("text", "").lower() for r in all_reqs)

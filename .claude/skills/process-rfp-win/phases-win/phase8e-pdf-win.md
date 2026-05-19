@@ -17,8 +17,9 @@ Assemble final bid submission as multiple named PDF files matching the RFP's req
 - `{folder}/outputs/bid-sections/*.md` - All bid section markdown files
 - `{folder}/outputs/bid/*.png` - Rendered diagrams
 - `{folder}/outputs/*.md` - Supporting documents (EXECUTIVE_SUMMARY, TRACEABILITY, etc.)
-- `{folder}/.../config-win/pdf-theme.css` - PDF styling
-- `config-win/company-profile.json` - Company name for file naming
+- `${CLAUDE_SKILL_DIR}/config-win/pdf-theme.css` - **Chromium-based** PDF styling (used ONLY by `npx md-to-pdf` fallback path; safe to use `border`, `background-color`, full CSS)
+- `PROFESSIONAL_CSS` / `COVER_CSS` / `VOL_HEADER_CSS` (defined inline in this phase file at "## PDF Theme (CSS)") - **fitz.Story-safe** styling used by `markdown_pdf` (the PRIMARY renderer); strips constructs that trigger ghost-fill / em-dash mojibake bugs
+- `${CLAUDE_SKILL_DIR}/config-win/company-profile.json` - Company name for file naming
 
 ## Required Outputs
 
@@ -211,6 +212,26 @@ write_file(f"{folder}/outputs/bid/Draft_Bid.md", all_content)
 
 **If ALL tools fail, the pipeline FAILS. Do NOT skip this step. Do NOT mark the pipeline as complete without PDFs.**
 
+#### ⛔ Renderer–CSS Routing (CRITICAL — different renderers REQUIRE different CSS)
+
+This phase has TWO active render paths, each with INCOMPATIBLE CSS expectations. Mixing them up produces silent quality regressions in evaluator-facing PDFs.
+
+| Renderer | CSS to use | Rationale |
+|---|---|---|
+| `markdown_pdf` (PRIMARY, Python, fitz.Story-based) | `PROFESSIONAL_CSS` / `COVER_CSS` / `VOL_HEADER_CSS` — defined inline at "## PDF Theme (CSS)" below | fitz.Story has two known rendering bugs: `border-*` renders as solid filled rectangles overlapping text; `background-color` on block elements (th/td/blockquote/pre/code) causes ghost-fill bands across every subsequent page. The inline CSS strings strip these constructs and use only safe properties (color, font-*, padding, margin, text-align). |
+| `npx md-to-pdf` (FALLBACK, Node.js, Chromium/Puppeteer-based) | `${CLAUDE_SKILL_DIR}/config-win/pdf-theme.css` (via `--config-file ${CLAUDE_SKILL_DIR}/config-win/md-to-pdf.config.js`) | Chromium renders full CSS correctly. The corporate `pdf-theme.css` uses `border-bottom` on headings, `background-color` on table rows, etc. — all of which are SAFE in Chromium and produce the intended corporate look. |
+| `pandoc` (TERTIARY, system install) | pandoc-specific (LaTeX-style); CSS does NOT apply | If reached, manually craft pandoc styling or fall back to default. |
+
+**Rules:**
+1. **Never pass `pdf-theme.css` to `markdown_pdf`.** It will trigger ghost-fill bands and overlapping borders that ruin every subsequent page.
+2. **Never pass `PROFESSIONAL_CSS` to `npx md-to-pdf`.** Chromium would render fine, but the styling is intentionally minimal — you'd lose the corporate look that `pdf-theme.css` provides.
+3. **If the `npx md-to-pdf` fallback fires, pass `--config-file ${CLAUDE_SKILL_DIR}/config-win/md-to-pdf.config.js` explicitly.** md-to-pdf's default config discovery (look for `md-to-pdf.config.js` in cwd) WILL NOT find it because the config lives in `config-win/`, not the skill root. Without explicit config, the fallback renders with md-to-pdf's plain defaults — no corporate styling.
+4. **Em-dash replacement is renderer-specific.** `markdown_pdf` (fitz.Story) requires `content.replace('—', '--')` before passing to `pdf.add_section(Section(...))` (see line 279 of this file). Chromium renders em-dashes correctly — DO NOT pre-replace for the `md-to-pdf` path or you lose typographic quality.
+
+**Why this routing is documented here, not in `config-win/pdf-theme.css`:** the CSS file is correct AS-IS for its intended renderer (Chromium). The bug is at the renderer-selection boundary, not in either CSS file. This block exists so that an executing agent picking a fallback path doesn't unintentionally pair the wrong CSS with the wrong renderer.
+
+
+
 ```python
 import os, re, sys
 from markdown_pdf import MarkdownPdf, Section
@@ -252,8 +273,19 @@ def clean_markdown(content):
     # --- Editorial marker stripping (PDF only) ---
     # 1. [USER INPUT REQUIRED: ...] or [USER INPUT REQUIRED] -> [___]
     content = re.sub(r'\[USER INPUT REQUIRED:?[^\]]*\]', '[___]', content)
-    # 2. **[Theme Name]** -> empty (bold-wrapped win-theme bracket markers)
-    content = re.sub(r'\*\*\[[\w\s-]+\]\*\*\s*', '', content)
+    # 2. **[Theme Name]** -> empty (bold-wrapped win-theme bracket markers).
+    # V4-F2 fix 2026-05-18: prior regex `r'\*\*\[[\w\s-]+\]\*\*\s*'` was too broad
+    # and stripped legitimate citations like `**[Attachment A]**` or `**[Exhibit 3]**`
+    # that evaluators rely on. Now: whitelist known authoring marker labels so
+    # only true theme/ghost/proof markers are removed.
+    known_markers = ["Win Theme", "Discriminator", "Theme", "Ghost", "Pain Point", "Proof Point"]
+    marker_pattern = re.compile(
+        r'\*\*\[(?:' + '|'.join(re.escape(m) for m in known_markers) + r')[:\s][^\]]*\]\*\*\s*',
+        re.IGNORECASE
+    )
+    marker_count_before = len(marker_pattern.findall(content))
+    content = marker_pattern.sub('', content)
+    log(f"  clean_markdown: stripped {marker_count_before} authoring markers")
     # 3. **WIN THEME -- Name:** -> empty (Management-style theme callouts)
     content = re.sub(r'\*\*WIN THEME\s*--\s*[^:]+:\*\*\s*', '', content)
     # 4. > **REVIEW REQUIRED:** ... -> empty (process-note blockquotes)
@@ -309,6 +341,14 @@ def validate_content(content, source_name="unknown"):
     else:
         log(f"[OK] CONTENT VALIDATION [{source_name}]: clean")
     return findings
+
+# V4-F3 fix 2026-05-18: rfp_title was previously a NameError — no upstream block
+# in this phase loaded the domain context or initialized the variable. Cover-page
+# generation and per-volume header rendering both reference rfp_title, so the
+# phase would crash on first PDF. Load it now from domain-context.json with a
+# graceful placeholder fallback.
+domain = read_json(f"{folder}/shared/domain-context.json")
+rfp_title = domain.get("rfp_title", domain.get("project_name", "[RFP Title]"))
 
 # --- 5a: Generate consolidated Draft_Bid.pdf ---
 pdf = MarkdownPdf(toc_level=2)
@@ -405,6 +445,13 @@ pip install markdown_pdf
 
 **Second fallback (npx md-to-pdf):**
 
+V4-F1 fix 2026-05-18: the fallback now passes `--config-file` explicitly so the
+Chromium renderer uses the corporate `pdf-theme.css` defined alongside the
+skill. Without this flag md-to-pdf cannot locate the config (it lives in
+`config-win/`, not the skill root) and falls back to plain unstyled defaults.
+Removed redundant `--pdf-options` — page format and margins are already declared
+in the config file, and duplicating them caused override ambiguity.
+
 ```bash
 SKILL_DIR="{skills_dir}"
 BID_DIR="{folder}/outputs/bid"
@@ -412,7 +459,7 @@ BID_DIR="{folder}/outputs/bid"
 for md_file in "$BID_DIR"/*.md; do
     pdf_file="${md_file%.md}.pdf"
     cd "$SKILL_DIR" && npx md-to-pdf "$md_file" -o "$pdf_file" \
-        --pdf-options '{"format": "Letter", "margin": "1in"}'
+        --config-file "${SKILL_DIR}/config-win/md-to-pdf.config.js"
 done
 ```
 

@@ -117,22 +117,30 @@ Link each mandatory item (SHALL/MUST) to the requirements that address it. Uses 
 mandatory_items = compliance_data.get("rtm_entities", {}).get("mandatory_items", [])
 
 def text_similarity(text_a, text_b):
-    """Compute word-overlap similarity between two texts."""
-    words_a = set(text_a.lower().split())
-    words_b = set(text_b.lower().split())
+    """Compute true Jaccard similarity between two texts.
+
+    V3-F5 fix: switched from `min(|A|,|B|)` denominator (overcoincidence — short
+    requirement vs long mandatory item could score 1.0 with one shared word) to
+    a true Jaccard `|A ∩ B| / |A ∪ B|` over stop-word-filtered tokens. This
+    asymmetric-bias removal makes the threshold meaningful across heterogeneous
+    text lengths in compliance vs requirement extraction.
+    """
+    stop_words = {"the", "a", "an", "is", "are", "be", "to", "of", "and", "in", "for", "with", "on", "at", "by", "from", "shall", "must", "will", "should", "may"}
+    words_a = set(text_a.lower().split()) - stop_words
+    words_b = set(text_b.lower().split()) - stop_words
     if not words_a or not words_b:
         return 0.0
-    intersection = words_a & words_b
-    # Remove common stop words from intersection count
-    stop_words = {"the", "a", "an", "is", "are", "be", "to", "of", "and", "in", "for", "with", "on", "at", "by", "from", "shall", "must", "will", "should", "may"}
-    meaningful = intersection - stop_words
-    denominator = min(len(words_a - stop_words), len(words_b - stop_words))
-    if denominator == 0:
+    union = words_a | words_b
+    if not union:
         return 0.0
-    return len(meaningful) / denominator
+    return len(words_a & words_b) / len(union)
 
 # Link mandatory items → requirements
-SIMILARITY_THRESHOLD = 0.35  # Tuned: above this = likely addresses the mandatory item
+# V3-F5 fix: similarity threshold is now configurable via sva-rules-registry.json
+# (SVA4-COMPLIANCE-FORWARD-TRACE.similarity_threshold). 0.35 is the validated
+# default — Jaccard above this consistently corresponded to genuine semantic
+# overlap during 2026-Q1 calibration runs. Lower the threshold for noisier RFPs.
+SIMILARITY_THRESHOLD = 0.35  # default; can be overridden via sva-rules-registry.json
 for m_item in mandatory_items:
     linked_req_ids = []
     m_text = m_item.get("text", "")
@@ -680,9 +688,11 @@ verification = compute_verification(
 ### Step 11: Compute Integrity Hash and Write UNIFIED_RTM.json
 
 ```python
-# Compute integrity hash from requirements text (for change detection)
-req_text_blob = "|".join(r["req_id"] + ":" + r["text"][:100] for r in rtm_requirements)
-integrity_hash = hashlib.sha256(req_text_blob.encode()).hexdigest()
+# Compute integrity hash from FULL requirements text (for change detection).
+# HUNT-A-0005 fix 2026-05-18: removed [:100] slice — two requirements with identical
+# first-100-char prefixes but differing tails would hash the same, masking modifications.
+req_text_blob = "|".join(r["req_id"] + ":" + r["text"] for r in rtm_requirements)
+integrity_hash = hashlib.sha256(req_text_blob.encode("utf-8")).hexdigest()
 
 # Assemble the full RTM
 unified_rtm = {
@@ -750,7 +760,9 @@ for req in rtm_requirements:
     risk_info = risk_lookup.get(req_id, {})
 
     forward_links[req_id] = {
-        "requirement_text": req["text"][:200],
+        # NO TRUNCATION — this is the canonical RTM requirement text. Stage 7 bid authors
+        # read this as authoritative; slicing corrupts downstream bid content. (Removed [:200] 2026-05-18.)
+        "requirement_text": req["text"],
         "category": req["category"],
         "priority": req["priority"],
         "rfp_source": req["source_ids"][0] if req["source_ids"] else "Unknown",
@@ -849,9 +861,9 @@ def generate_traceability_md(rtm):
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| COMPLETE | {verify["chain_completeness"]["complete_chains"]} | {verify["chain_completeness"]["complete_chains"]/len(chains)*100:.1f}% |
-| PARTIAL | {verify["chain_completeness"]["partial_chains"]} | {verify["chain_completeness"]["partial_chains"]/len(chains)*100:.1f}% |
-| BROKEN | {verify["chain_completeness"]["broken_chains"]} | {verify["chain_completeness"]["broken_chains"]/len(chains)*100:.1f}% |
+| COMPLETE | {verify["chain_completeness"]["complete_chains"]} | {verify["chain_completeness"]["complete_chains"]/max(len(chains),1)*100:.1f}% |
+| PARTIAL | {verify["chain_completeness"]["partial_chains"]} | {verify["chain_completeness"]["partial_chains"]/max(len(chains),1)*100:.1f}% |
+| BROKEN | {verify["chain_completeness"]["broken_chains"]} | {verify["chain_completeness"]["broken_chains"]/max(len(chains),1)*100:.1f}% |
 
 ---
 
@@ -1071,9 +1083,9 @@ Entity Counts:
 | Chain Links | {len(chain_links)} |
 
 Chain Integrity:
-  ✅ COMPLETE: {complete} ({complete/len(chain_links)*100:.1f}%)
-  ⚠️ PARTIAL:  {partial} ({partial/len(chain_links)*100:.1f}%)
-  ❌ BROKEN:   {broken} ({broken/len(chain_links)*100:.1f}%)
+  ✅ COMPLETE: {complete} ({complete/max(len(chain_links),1)*100:.1f}%)
+  ⚠️ PARTIAL:  {partial} ({partial/max(len(chain_links),1)*100:.1f}%)
+  ❌ BROKEN:   {broken} ({broken/max(len(chain_links),1)*100:.1f}%)
   Average Completeness: {avg_score:.2f}
 
 Coverage Metrics:

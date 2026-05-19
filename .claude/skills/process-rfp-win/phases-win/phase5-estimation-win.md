@@ -38,7 +38,21 @@ risks = read_json(f"{folder}/shared/REQUIREMENT_RISKS.json")
 domain_context = read_json(f"{folder}/shared/domain-context.json")
 
 all_reqs = requirements.get("requirements", [])
-risk_map = {r["id"]: r["risk"] for r in risks.get("requirements", [])}
+
+# V3-F1 fix: build risk_map as req_id → risk_level (string) via reverse lookup
+# from rtm_risks[].linked_requirement_ids. The prior implementation read a
+# non-existent `risks.requirements[]` shape; the canonical structure (per
+# unified-rtm schema) is `risks.rtm_risks[]` with each risk carrying a list of
+# linked_requirement_ids. We keep the highest severity per requirement so a
+# requirement linked to both a HIGH and a LOW risk inherits HIGH.
+risk_map = {}
+RISK_LEVEL_ORDER = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+for r in risks.get("rtm_risks", []):
+    risk_level = r.get("risk_level", "MEDIUM")
+    for req_id in r.get("linked_requirement_ids", []):
+        existing = risk_map.get(req_id, "LOW")
+        if RISK_LEVEL_ORDER.index(risk_level) > RISK_LEVEL_ORDER.index(existing):
+            risk_map[req_id] = risk_level
 ```
 
 ### Step 2: Define Estimation Parameters
@@ -59,7 +73,9 @@ CATEGORY_BASE_EFFORT = {
 }
 
 # Risk multipliers
+# V3-F1 fix: include CRITICAL — rtm_risks emit CRITICAL/HIGH/MEDIUM/LOW.
 RISK_MULTIPLIERS = {
+    "CRITICAL": 1.75,
     "HIGH": 1.5,
     "MEDIUM": 1.2,
     "LOW": 1.0
@@ -101,7 +117,8 @@ def estimate_requirement(req, risk_map):
         complexity_factor += 0.15
 
     # Apply risk multiplier
-    risk_level = risk_map.get(req_id, {}).get("risk_level", "MEDIUM")
+    # V3-F1 fix: risk_map values are now risk-level strings (not dicts).
+    risk_level = risk_map.get(req_id, "MEDIUM")
     risk_multiplier = RISK_MULTIPLIERS.get(risk_level, 1.2)
 
     # Calculate total effort
@@ -127,7 +144,37 @@ for req in all_reqs:
 ### Step 4: Generate Summary Statistics
 
 ```python
-def calculate_summary(requirements):
+def derive_team_size(domain_context, total_hours):
+    """V3-F6 fix: team size is no longer hardcoded.
+
+    Resolution order:
+    1. `domain_context.estimation.team_size_recommended` (operator-set, wins)
+    2. Compute from total_hours using a sensible scale-tier heuristic:
+         <= 2,000 hrs  → 2 FTE
+         <= 10,000 hrs → 4 FTE
+         <= 25,000 hrs → 6 FTE
+         <= 50,000 hrs → 8 FTE
+         else          → 12 FTE
+       These tiers approximate a 6-12 month delivery window per scale band.
+    3. The breakdown by role lives in the Resource Plan section below; this
+       function returns the headline FTE count used for duration math.
+    """
+    override = (domain_context or {}).get("estimation", {}).get("team_size_recommended")
+    if isinstance(override, (int, float)) and override > 0:
+        return int(override), "domain-context override"
+
+    if total_hours <= 2000:
+        return 2, "scale-tier: <=2k hrs"
+    elif total_hours <= 10000:
+        return 4, "scale-tier: 2k-10k hrs"
+    elif total_hours <= 25000:
+        return 6, "scale-tier: 10k-25k hrs"
+    elif total_hours <= 50000:
+        return 8, "scale-tier: 25k-50k hrs"
+    return 12, "scale-tier: >50k hrs"
+
+
+def calculate_summary(requirements, domain_context):
     """Calculate project-wide estimation summary."""
     total_hours = sum(r["estimation"]["total_hours"] for r in requirements)
     ai_assisted_hours = sum(r["estimation"]["ai_assisted_hours"] for r in requirements)
@@ -142,6 +189,13 @@ def calculate_summary(requirements):
         by_category[cat]["hours"] += req["estimation"]["total_hours"]
         by_category[cat]["count"] += 1
 
+    # V3-F6 fix: team size derived from scale tier or domain-context override.
+    team_size, team_size_source = derive_team_size(domain_context, total_hours)
+    # Duration uses the AI-assisted hour total (more realistic given AI ratios)
+    # divided by (FTE × 40 hrs/week). Falls back to total_hours if AI hours are 0.
+    effective_hours = ai_assisted_hours if ai_assisted_hours > 0 else total_hours
+    estimated_weeks = effective_hours / (team_size * 40) if team_size else 0
+
     return {
         "total_requirements": len(requirements),
         "total_hours": round(total_hours, 0),
@@ -149,11 +203,12 @@ def calculate_summary(requirements):
         "ai_savings_hours": round(ai_savings, 0),
         "ai_savings_percent": round(ai_savings / total_hours * 100, 1) if total_hours > 0 else 0,
         "by_category": by_category,
-        "estimated_duration_weeks": round(total_hours / 40 / 3, 1),  # 3 developers
-        "team_size_recommended": 3
+        "estimated_duration_weeks": round(estimated_weeks, 1),
+        "team_size_recommended": team_size,
+        "team_size_source": team_size_source
     }
 
-summary = calculate_summary(all_reqs)
+summary = calculate_summary(all_reqs, domain_context)
 ```
 
 ### Step 5: Generate Effort Document
@@ -278,6 +333,14 @@ def generate_estimation_md(requirements, summary, domain):
 4. AI tools available (Copilot, Claude)
 5. Standard 40-hour work weeks
 
+### Items Requiring Pre-Submission Verification
+
+[USER INPUT REQUIRED] Verify team composition and labor rates against company GL before submission. Market-rate defaults sourced from GSA MAS IT Category (verify staleness).
+
+[USER INPUT REQUIRED] Confirm AI-tool licensing costs for AI-assisted hours (currently estimated at 35% savings — verify achievable per RDI engineering plan).
+
+[USER INPUT REQUIRED] Insurance / bonding requirements per RFP Section [cite] if total > $500K.
+
 ---
 
 ## Risk Adjustments
@@ -295,7 +358,8 @@ Medium-risk requirements include 20% buffer
 
     for req in requirements:
         est = req["estimation"]
-        risk = risk_map.get(req.get("canonical_id"), {}).get("risk_level", "N/A")
+        # V3-F1 fix: risk_map values are risk-level strings.
+        risk = risk_map.get(req.get("canonical_id"), "N/A")
         doc += f"| {req.get('canonical_id', 'N/A')} | {req.get('category', 'N/A')} | {req.get('priority', 'N/A')} | {risk} | {est['total_hours']} | {est['ai_assisted_hours']} |\n"
 
     return doc

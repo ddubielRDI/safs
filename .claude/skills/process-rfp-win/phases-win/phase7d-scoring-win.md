@@ -314,15 +314,6 @@ win_probability = calculate_win_probability(scores, disqualifiers)
 ### Step 9: Write Output
 
 ```python
-win_scorecard = {
-    "calculated_at": datetime.now().isoformat(),
-    "win_probability": win_probability,
-    "scores": scores,
-    "disqualifiers": disqualifiers,
-    "scoring_model": SCORING_MODEL,
-    "recommendations": generate_win_recommendations(scores, disqualifiers)
-}
-
 def generate_win_recommendations(scores, disqualifiers):
     """Generate recommendations to improve win probability."""
     recs = []
@@ -343,14 +334,31 @@ def generate_win_recommendations(scores, disqualifiers):
 
     return recs
 
+# V5-F5 fix: flatten win_probability to a top-level scalar for SVA-6 compatibility.
+# win_probability is the calculated dict from Step 8 (probability/confidence/weighted_score).
+# Downstream SVA-6 reads win_scorecard.get("win_probability", 0) and expects a number.
+win_probability_detail = win_probability  # full dict preserved under a separate key
+win_probability_scalar = win_probability_detail.get("probability", 0)
+
+win_scorecard = {
+    "calculated_at": datetime.now().isoformat(),
+    "win_probability": win_probability_scalar,
+    "win_probability_detail": win_probability_detail,
+    "scores": scores,
+    "disqualifiers": disqualifiers,
+    "scoring_model": SCORING_MODEL,
+    "recommendations": generate_win_recommendations(scores, disqualifiers)
+}
+
 write_json(f"{folder}/shared/WIN_SCORECARD.json", win_scorecard)
 ```
 
 ### Step 10: Report Results
 
 ```python
-prob = win_probability["probability"]
-conf = win_probability["confidence"]
+# Note: post-V5-F5 fix, win_probability_detail carries the full dict.
+prob = win_probability_detail["probability"]
+conf = win_probability_detail["confidence"]
 
 log(f"""
 🎯 Bid Scoring Model Complete

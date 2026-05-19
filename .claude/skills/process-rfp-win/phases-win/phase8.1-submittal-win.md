@@ -78,6 +78,11 @@ section_theme_mandates = context.get("section_theme_mandates", {})
 evaluator_messages = context.get("evaluator_messages", positioning.get("evaluator_messages", {}))
 section_content_guide = context.get("section_content_guide", {})
 
+# V4-F7 fix 2026-05-18: load ghost_strategy so the cover letter can weave
+# subtle competitive contrast against the incumbent. Without this, ghost
+# phrases generated in Phase 8.0 went unused.
+ghost_strategy = context.get("ghost_strategy", positioning.get("ghost_strategy", {}))
+
 # Identify which eval factors the submittal addresses
 # The submittal is a cover letter — it touches ALL factors at summary level
 # but primarily addresses the executive/overview factors
@@ -138,6 +143,8 @@ Write the full letter using NOSE formula with these sections:
 **Win Theme Mandates:** The submittal MUST reference at least 3 win themes. Check `section_theme_mandates` for any themes explicitly mandated for the submittal/cover-letter section. If no explicit mandate exists, use the top 3 themes from `win_themes`.
 
 **Evaluator Message Integration:** Open with the EXECUTIVE evaluator message headline. If the primary evaluator for the submittal section is identified in `evaluator_messages`, use that message's `key_message` to frame the value proposition.
+
+**Ghost Strategy Integration:** Use `ghost_strategy.counter_narratives[]` to insert competitive contrast language. Use `ghost_strategy.ghost_phrases[]` to subtly position against incumbent without naming them. Ghost phrases must appear at least once per major win theme.
 
 ```markdown
 # Letter of Submittal
@@ -272,3 +279,4 @@ Output: outputs/bid-sections/01_SUBMITTAL.md
 - [ ] Outcomes section invokes >= 2 win themes with explicit **[Theme Name]** format
 - [ ] EXECUTIVE evaluator message headline/proof points integrated into Solution section
 - [ ] section_theme_mandates checked for submittal-specific theme requirements
+- [ ] At least one ghost phrase per major win theme woven into differentiator sections

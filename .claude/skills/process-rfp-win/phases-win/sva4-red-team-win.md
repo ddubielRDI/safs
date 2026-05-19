@@ -61,6 +61,33 @@ rtm_eval = entities.get("evaluation_criteria", [])
 chain_links = rtm.get("chain_links", [])
 rtm_verification = rtm.get("verification", {})
 
+# ─── RTM CONTRACT ASSERTION (bug-hunt 2026-05-18 HUNT-C P1 fix) ───
+# SVA gates that read non-existent keys silently pass at 0% — every bid passes
+# regardless of actual quality. Assert the RTM schema contract loudly at entry
+# so field-name drift fails the SVA immediately instead of producing vacuous PASS.
+_required_rtm_keys = ["entities", "chain_links", "verification"]
+_missing_top = [k for k in _required_rtm_keys if k not in rtm]
+if _missing_top:
+    error(f"SVA-4 ABORT: UNIFIED_RTM.json missing required top-level keys: {_missing_top}")
+    halt()
+_required_verification_keys = ["forward_coverage", "backward_coverage", "chain_completeness"]
+_missing_v = [k for k in _required_verification_keys if k not in rtm_verification]
+if _missing_v:
+    error(f"SVA-4 ABORT: rtm.verification missing required keys: {_missing_v} — schema drift suspected")
+    halt()
+if rtm_reqs and "req_id" not in rtm_reqs[0]:
+    error(f"SVA-4 ABORT: rtm.entities.requirements[0] missing 'req_id' field — schema drift suspected. Got fields: {list(rtm_reqs[0].keys())}")
+    halt()
+
+# ─── REVERSE-LOOKUP: req_id → [spec_ids] ───
+# Specifications carry `linked_requirement_ids[]`. There is no `linked_spec_ids`
+# on the requirement side — building reverse lookup once at entry. (Replaces 5
+# broken `req.get("linked_spec_ids")` reads — HUNT-C-0001 fix.)
+specs_by_req_id = {}
+for spec in rtm_specs:
+    for rid in spec.get("linked_requirement_ids", []):
+        specs_by_req_id.setdefault(rid, []).append(spec.get("spec_id"))
+
 all_reqs = norm_reqs.get("requirements", [])
 mandatory_items = compliance.get("mandatory_items", compliance.get("rtm_entities", {}).get("mandatory_items", []))
 eval_factors = evaluation.get("evaluation_factors", evaluation.get("factors", []))
@@ -81,7 +108,10 @@ def check_bidirectional_trace():
     reqs_missing_specs = []
 
     for req in rtm_reqs:
-        linked_specs = req.get("linked_spec_ids", [])
+        # HUNT-C-0001 fix: use reverse lookup (specs_by_req_id) — requirements
+        # don't have `linked_spec_ids`; the link lives on the spec side.
+        req_id = req.get("req_id")
+        linked_specs = specs_by_req_id.get(req_id, [])
         if linked_specs:
             reqs_with_specs += 1
         else:
@@ -89,7 +119,7 @@ def check_bidirectional_trace():
             priority = req.get("priority", "MEDIUM")
             if priority in ["CRITICAL", "HIGH"]:
                 reqs_missing_specs.append({
-                    "requirement_id": req.get("requirement_id"),
+                    "req_id": req_id,
                     "priority": priority,
                     "text_preview": req.get("text", "")[:80]
                 })
@@ -97,21 +127,34 @@ def check_bidirectional_trace():
     forward_pct = (reqs_with_specs / total_reqs * 100) if total_reqs else 0
 
     # BACKWARD: specification -> requirements
+    # V3-F3 fix: intentionally_unlinked specs (glossary, overview, appendix)
+    # are excluded from the denominator so they don't false-fail backward coverage.
     total_specs = len(rtm_specs)
     specs_with_reqs = 0
     specs_orphaned = []
+    intentionally_unlinked_count = 0
+    intentionally_unlinked_specs = []
 
     for spec in rtm_specs:
+        if spec.get("intentionally_unlinked") is True:
+            intentionally_unlinked_count += 1
+            intentionally_unlinked_specs.append({
+                "spec_id": spec.get("spec_id"),
+                "section_title": spec.get("section_title", "")[:60],
+                "reason": spec.get("unlinked_reason", "no reason provided")
+            })
+            continue
         linked_reqs = spec.get("linked_requirement_ids", [])
         if linked_reqs:
             specs_with_reqs += 1
         else:
             specs_orphaned.append({
                 "spec_id": spec.get("spec_id"),
-                "title": spec.get("title", "")[:60]
+                "title": spec.get("section_title", spec.get("title", ""))[:60]
             })
 
-    backward_pct = (specs_with_reqs / total_specs * 100) if total_specs else 0
+    in_scope_specs = total_specs - intentionally_unlinked_count
+    backward_pct = (specs_with_reqs / in_scope_specs * 100) if in_scope_specs else 0
 
     # Overall: both forward and backward must exceed 90%
     overall_score = (forward_pct + backward_pct) / 2
@@ -134,6 +177,9 @@ def check_bidirectional_trace():
             },
             "backward": {
                 "total_specs": total_specs,
+                "in_scope_specs": in_scope_specs,
+                "intentionally_unlinked_count": intentionally_unlinked_count,
+                "intentionally_unlinked_specs": intentionally_unlinked_specs[:10],
                 "with_req_links": specs_with_reqs,
                 "coverage_pct": round(backward_pct, 1),
                 "orphaned_specs": specs_orphaned[:5]
@@ -165,23 +211,27 @@ def check_trace_quality():
 
     for chain in sample:
         chain_id = chain.get("chain_id", "")
-        req_id = chain.get("requirement_id", "")
+        # HUNT-C-0002 fix: phase4 chain_links emit "requirement" (not "requirement_id").
+        req_id = chain.get("requirement", "")
         completeness = chain.get("completeness_score", 0)
 
         # Find the requirement text
         req_text = ""
         for r in rtm_reqs:
-            if r.get("requirement_id") == req_id:
+            # HUNT-C-0001 fix: phase4 builds requirements with "req_id".
+            if r.get("req_id") == req_id:
                 req_text = r.get("text", "").lower()
                 break
 
         # Check spec links for semantic relevance
-        spec_ids = chain.get("spec_ids", [])
+        # V3-F4 fix: chain_links use `specifications[]` (per unified-rtm schema),
+        # not `spec_ids[]`. And spec entities expose `section_title`, not `title`.
+        spec_ids = chain.get("specifications", [])
         for spec_id in spec_ids:
             spec_title = ""
             for s in rtm_specs:
                 if s.get("spec_id") == spec_id:
-                    spec_title = s.get("title", "").lower()
+                    spec_title = s.get("section_title", "").lower()
                     break
 
             # Simple semantic check: at least 2 shared meaningful words
@@ -293,7 +343,8 @@ def check_red_team_scoring():
             reqs_with_specs = 0
             for rid in linked_reqs:
                 for r in rtm_reqs:
-                    if r.get("requirement_id") == rid and r.get("linked_spec_ids"):
+                    # HUNT-C-0001 fix: req_id field name + reverse-lookup for spec links.
+                    if r.get("req_id") == rid and specs_by_req_id.get(rid):
                         reqs_with_specs += 1
                         break
             spec_coverage = reqs_with_specs / len(linked_reqs) if linked_reqs else 0.5
@@ -303,7 +354,8 @@ def check_red_team_scoring():
         if rtm_factor:
             for rid in rtm_factor.get("linked_requirement_ids", []):
                 for cl in chain_links:
-                    if cl.get("requirement_id") == rid:
+                    # HUNT-C-0002 fix: chain_links use "requirement" key.
+                    if cl.get("requirement") == rid:
                         chain_scores.append(cl.get("completeness_score", 0))
                         break
 
@@ -375,10 +427,24 @@ def check_compliance_forward_trace():
     complete_chains = 0
     broken_at_req = []
     broken_at_spec = []
+    # V3-F3 fix: WAIVED mandatory items are user-approved gaps and must NOT
+    # count as broken_at_req. Track them separately so reviewers can audit
+    # waivers and verify they were intentional.
+    waived_count = 0
+    waived_items = []
 
     for m in rtm_mandatory:
         m_id = m.get("mandatory_id", m.get("id", "?"))
         linked_reqs = m.get("linked_requirement_ids", [])
+
+        # V3-F3 fix: skip WAIVED items — exempted from the chain check.
+        if m.get("coverage_status") == "WAIVED":
+            waived_count += 1
+            waived_items.append({
+                "item_id": m_id,
+                "reason": m.get("waiver_reason", m.get("waiver_note", "no reason provided"))
+            })
+            continue
 
         if not linked_reqs:
             broken_at_req.append({
@@ -392,8 +458,9 @@ def check_compliance_forward_trace():
         has_spec = False
         for rid in linked_reqs:
             for r in rtm_reqs:
-                if r.get("requirement_id") == rid:
-                    if r.get("linked_spec_ids"):
+                # HUNT-C-0001 fix: req_id + reverse-lookup for spec presence.
+                if r.get("req_id") == rid:
+                    if specs_by_req_id.get(rid):
                         has_spec = True
                         break
             if has_spec:
@@ -408,7 +475,10 @@ def check_compliance_forward_trace():
         else:
             complete_chains += 1
 
-    chain_pct = (complete_chains / total_mandatory * 100) if total_mandatory else 0
+    # V3-F3 fix: WAIVED items are excluded from the denominator (they are
+    # user-approved gaps, not in-scope chain failures).
+    effective_total = total_mandatory - waived_count
+    chain_pct = (complete_chains / effective_total * 100) if effective_total else 100
     passed = chain_pct >= 90
 
     return {
@@ -421,6 +491,9 @@ def check_compliance_forward_trace():
         "threshold": 90.0,
         "details": {
             "total_mandatory_items": total_mandatory,
+            "in_scope_mandatory_items": effective_total,
+            "waived_count": waived_count,
+            "waived_items": waived_items[:10],
             "complete_chains": complete_chains,
             "chain_coverage_pct": round(chain_pct, 1),
             "broken_at_requirement": broken_at_req[:10],
@@ -439,7 +512,23 @@ findings.append(check_compliance_forward_trace())
 
 # --- SVA4-ESTIMATION-CONSISTENCY (HIGH) ---
 def check_estimation_consistency():
-    """Effort per requirement is reasonable. Total between 500-50,000 hours."""
+    """Effort per requirement is reasonable. Total between threshold_min-threshold_max
+    hours (configurable via sva-rules-registry.json SVA4-ESTIMATION-CONSISTENCY.params).
+    """
+    # V3-F2 fix: load threshold range from the rules registry so large RFPs
+    # (>50k hours, e.g. multi-year DOD bids) don't false-fail.
+    try:
+        rules_registry = read_json(SVA_RULES_REGISTRY)
+        sva4_rules = rules_registry.get("svas", {}).get("SVA-4", {}).get("rules", [])
+        consistency_rule = next(
+            (r for r in sva4_rules if r.get("id") == "SVA4-ESTIMATION-CONSISTENCY"), {}
+        )
+        params = consistency_rule.get("params", {})
+    except Exception:
+        params = {}
+    threshold_min = params.get("threshold_min", 500)
+    threshold_max = params.get("threshold_max", 100000)
+
     if not effort:
         return {
             "rule_id": "SVA4-ESTIMATION-CONSISTENCY",
@@ -457,8 +546,8 @@ def check_estimation_consistency():
     total_hours = effort.get("total_hours", effort.get("summary", {}).get("total_hours", 0))
     phase_estimates = effort.get("phases", effort.get("work_packages", effort.get("estimates", [])))
 
-    # Check total range
-    total_in_range = 500 <= total_hours <= 50000
+    # Check total range (configurable; defaults 500..100000 hours)
+    total_in_range = threshold_min <= total_hours <= threshold_max
 
     # Check per-requirement average
     req_count = len(all_reqs)
@@ -498,6 +587,8 @@ def check_estimation_consistency():
         "details": {
             "total_hours": total_hours,
             "total_in_range": total_in_range,
+            "threshold_min": threshold_min,
+            "threshold_max": threshold_max,
             "requirement_count": req_count,
             "avg_hours_per_req": round(avg_per_req, 1),
             "avg_reasonable": avg_reasonable,
@@ -533,9 +624,10 @@ def check_estimation_risk_alignment():
     # Build risk severity map from RTM risks
     req_risk_map = {}  # req_id -> highest risk severity
     for risk in rtm_risks:
-        severity = risk.get("severity", "MEDIUM")
-        sev_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(severity, 2)
-        affected_reqs = risk.get("affected_requirement_ids", [])
+        # HUNT-C-0005 + HUNT-C-0014 fix: schema uses `risk_level` and `linked_requirement_ids`.
+        risk_level = risk.get("risk_level", "LOW")
+        sev_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(risk_level, 1)
+        affected_reqs = risk.get("linked_requirement_ids", [])
         for rid in affected_reqs:
             current = req_risk_map.get(rid, 0)
             req_risk_map[rid] = max(current, sev_rank)
@@ -633,10 +725,18 @@ overall_score = sum(f["score"] for f in findings) / len(findings) if findings el
 ### Step 4: Build Red Team Report
 
 ```python
-# Extract traceability integrity metrics from RTM verification
-fwd_coverage = rtm_verification.get("forward_coverage", {}).get("requirements_with_specs_pct", 0)
-bwd_coverage = rtm_verification.get("backward_coverage", {}).get("specs_with_requirements_pct", 0)
-chain_avg = rtm_verification.get("chain_coverage", {}).get("average_completeness", 0)
+# Extract traceability integrity metrics from RTM verification.
+# HUNT-C-0003 fix: phase4 writes `forward_coverage.spec_coverage_pct`, no
+# `requirements_with_specs_pct` exists. `backward_coverage` has no per-pct field
+# at all — compute from raw counts. Verification block is `chain_completeness`
+# (not `chain_coverage`) with `avg_completeness_score` (not `average_completeness`).
+fwd_cov_block = rtm_verification.get("forward_coverage", {})
+fwd_coverage = fwd_cov_block.get("spec_coverage_pct", 0)
+bwd_cov_block = rtm_verification.get("backward_coverage", {})
+_bwd_total = bwd_cov_block.get("bid_sections_total", 0)
+_bwd_with = bwd_cov_block.get("bid_sections_with_requirements", 0)
+bwd_coverage = round(_bwd_with / _bwd_total * 100, 1) if _bwd_total else 0
+chain_avg = rtm_verification.get("chain_completeness", {}).get("avg_completeness_score", 0)
 
 # Get evaluator simulation from SVA4-RED-TEAM-SCORING finding
 eval_sim = None
@@ -681,7 +781,7 @@ red_team_report = {
     },
     "risk_assessment": {
         "total_risks_in_rtm": len(rtm_risks),
-        "high_critical_risks": sum(1 for r in rtm_risks if r.get("severity") in ["HIGH", "CRITICAL"]),
+        "high_critical_risks": sum(1 for r in rtm_risks if r.get("risk_level") in ["HIGH", "CRITICAL"]),
         "risks_with_mitigations": sum(1 for r in rtm_risks if r.get("mitigation_strategies")),
         "mitigations_with_owners": sum(
             1 for r in rtm_risks

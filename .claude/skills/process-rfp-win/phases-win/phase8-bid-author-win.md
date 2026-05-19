@@ -111,8 +111,13 @@ All outputs go in `{folder}/outputs/` (markdown files, NOT in `outputs/bid/`):
 ```python
 import json
 
-# Load the aggregated context bundle (created by Phase 6c)
-with open(f"{folder}/shared/bid-context-bundle.json", 'r') as f:
+# Load the aggregated context bundle (created by Phase 6c).
+# NOTE (2026-05-18 audit): This phase file is orphaned — not in skill-win.md PHASES array.
+# Slated for .deprecated marking in Tranche F. Encoding fix applied for safety in case
+# the file is invoked manually before deprecation lands.
+# ENCODING DISCIPLINE: prefer skill-win.md helpers (read_json). Bare open kept here as
+# in-line literal because this orphan phase doesn't import the shared helpers.
+with open(f"{folder}/shared/bid-context-bundle.json", 'r', encoding='utf-8') as f:
     context = json.load(f)
 
 # Extract key elements
@@ -616,7 +621,8 @@ def verify_theme_threading(folder, themes):
 
     for section in sections:
         path = f"{folder}/outputs/{section}"
-        with open(path, 'r') as f:
+        # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).
+        with open(path, 'r', encoding='utf-8') as f:
             content = f.read().lower()
 
         results[section] = {}
@@ -654,7 +660,8 @@ def verify_case_study_placeholders(folder):
     found = []
     for section in sections:
         path = f"{folder}/outputs/{section}"
-        with open(path, 'r') as f:
+        # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).
+        with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
 
         if placeholder in content:

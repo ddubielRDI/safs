@@ -64,7 +64,13 @@ Use these predefined values for consistency across all outcome entries:
 import os, json
 from datetime import datetime
 
-skill_dir = "/home/ddubiel/repos/safs/.claude/skills/process-rfp-win"
+try:
+    _file_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+except NameError:
+    _file_fallback = None
+skill_dir = os.environ.get("CLAUDE_SKILL_DIR") or _file_fallback
+if not skill_dir:
+    raise RuntimeError("CLAUDE_SKILL_DIR env var not set and __file__ unavailable — cannot resolve skill directory")
 
 # Load bid context from this RFP
 context_bundle = read_json_safe(f"{folder}/shared/bid-context-bundle.json")

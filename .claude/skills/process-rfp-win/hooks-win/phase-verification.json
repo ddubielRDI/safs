@@ -19,7 +19,7 @@
           "name": "phase-tracking",
           "description": "Track phase execution for progress reporting",
           "type": "command",
-          "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Phase execution started\" >> /tmp/rfp-pipeline.log",
+          "command": "python -c \"from datetime import datetime; print(f'[{datetime.now().strftime(\\\"%Y-%m-%d %H:%M:%S\\\")}] Phase execution started')\" >> \"${TMPDIR:-${TEMP:-/tmp}}/rfp-pipeline.log\"",
           "timeout": 5000
         }
       ]

@@ -96,20 +96,21 @@ for pattern, req_type in REQUIREMENT_PATTERNS:
         text = match.group(1).strip()
         text = re.sub(r'\s+', ' ', text)
 
-        # Normalize for deduplication
-        text_normalized = text.lower()[:50]
-        if text_normalized not in seen_text:
-            seen_text.add(text_normalized)
-            requirements.append({
-                "id": f"REQ{req_id:03d}",
-                "text": text[:500],
-                "type": req_type,
-                "source": "pattern_extraction",
-                "full_context": match.group(0)[:600],
-                "position": match.start(),
-                "sub_items": []
-            })
-            req_id += 1
+        # Phase 2 emits all extractions raw; phase2b owns dedup via SequenceMatcher
+        # (single authoritative pass). V2-F8 fix 2026-05-18: removed prefix-50 dedup
+        # that conflicted with phase2b's full-text similarity check and accidentally
+        # collided requirements that shared identical first-50 chars (e.g. all
+        # "the system shall provide a user interface that ..." variants).
+        requirements.append({
+            "id": f"REQ{req_id:03d}",
+            "text": text[:500],
+            "type": req_type,
+            "source": "pattern_extraction",
+            "full_context": match.group(0)[:600],
+            "position": match.start(),
+            "sub_items": []
+        })
+        req_id += 1
 ```
 
 ### Step 4: Aggressive Sub-Item Extraction
@@ -232,24 +233,22 @@ requirements.extend(promoted_reqs)
 ### Step 6: Merge Workflow Requirements
 
 ```python
-# Add workflow-derived requirements
+# Add workflow-derived requirements.
+# V2-F8 fix 2026-05-18: phase2 no longer dedups — phase2b owns the single
+# authoritative dedup pass via SequenceMatcher. Emit all workflow candidates raw.
 workflow_candidates = workflow_reqs.get("requirement_candidates", [])
 for wf_req in workflow_candidates:
-    # Check for duplicates
-    text_normalized = wf_req["description"].lower()[:50]
-    if text_normalized not in seen_text:
-        seen_text.add(text_normalized)
-        requirements.append({
-            "id": f"REQ{req_id:03d}",
-            "text": wf_req["description"],
-            "type": "WORKFLOW",
-            "source": "workflow_extraction",
-            "workflow_id": wf_req["id"],
-            "actors": wf_req.get("actors", []),
-            "category": wf_req.get("category"),
-            "sub_items": []
-        })
-        req_id += 1
+    requirements.append({
+        "id": f"REQ{req_id:03d}",
+        "text": wf_req["description"],
+        "type": "WORKFLOW",
+        "source": "workflow_extraction",
+        "workflow_id": wf_req["id"],
+        "actors": wf_req.get("actors", []),
+        "category": wf_req.get("category"),
+        "sub_items": []
+    })
+    req_id += 1
 ```
 
 ### Step 7: Categorize Requirements
@@ -517,8 +516,15 @@ Classification Confidence:
 ## RTM CONTRIBUTION: Link each requirement to its RFP source location
 ## Phase 4 will use these source_ids to build full traceability chains
 
-# Load existing rfp_sources from compliance phase (if available)
-compliance_data = read_json(f"{folder}/shared/COMPLIANCE_MATRIX.json")
+# Load existing rfp_sources from compliance phase (if available).
+# V2-F3 fix 2026-05-18: COMPLIANCE_MATRIX.json may not exist yet during early
+# pipeline runs (it's a Phase 3 output). Previous unconditional read raised
+# FileNotFoundError and halted Phase 2 entirely. Now: try/except so missing file
+# starts fresh source list at SRC-001 — exactly the right behavior.
+try:
+    compliance_data = read_json(f"{folder}/shared/COMPLIANCE_MATRIX.json")
+except (FileNotFoundError, Exception):
+    compliance_data = {}
 existing_sources = compliance_data.get("rtm_entities", {}).get("rfp_sources", [])
 source_id_counter = len(existing_sources) + 1
 

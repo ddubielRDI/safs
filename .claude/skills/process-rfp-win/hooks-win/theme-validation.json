@@ -33,7 +33,8 @@
           "    if not os.path.exists(bundle_path):",
           "        return {'valid': False, 'error': 'Context bundle not found'}",
           "    ",
-          "    with open(bundle_path, 'r') as f:",
+          "    # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).",
+          "    with open(bundle_path, 'r', encoding='utf-8') as f:",
           "        bundle = json.load(f)",
           "    ",
           "    themes = [t['theme'] for t in bundle.get('win_themes', {}).get('themes', [])]",
@@ -58,7 +59,8 @@
           "            results['valid'] = False",
           "            continue",
           "        ",
-          "        with open(section_path, 'r') as f:",
+          "        # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).",
+          "        with open(section_path, 'r', encoding='utf-8') as f:",
           "            content = f.read().lower()",
           "        ",
           "        found_themes = []",
@@ -150,8 +152,9 @@
     }
   },
   "verification_command": {
-    "description": "Manual verification command",
-    "command": "grep -l -i '{theme}' {folder}/outputs/*.md",
-    "usage": "Run for each theme to verify presence"
+    "description": "Manual verification command. POSIX (Linux/macOS/Git Bash): `grep -l -i '{theme}' {folder}/outputs/bid-sections/*.md`. Windows PowerShell: `Select-String -Pattern '{theme}' -Path {folder}/outputs/bid-sections/*.md -List`. Path note: the active bid output set is `outputs/bid-sections/0X_*.md` (post-2026-05 restructure), NOT the legacy `outputs/*.md`.",
+    "command_posix": "grep -l -i '{theme}' {folder}/outputs/bid-sections/*.md",
+    "command_powershell": "Select-String -Pattern '{theme}' -Path '{folder}/outputs/bid-sections/*.md' -List | Select-Object -ExpandProperty Path",
+    "usage": "Run for each theme to verify presence in active bid sections (01_SUBMITTAL.md through 06_INTEGRATION.md)."
   }
 }

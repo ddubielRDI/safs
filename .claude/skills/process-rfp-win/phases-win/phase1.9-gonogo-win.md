@@ -19,7 +19,7 @@ Assess the RFP opportunity across 7 weighted assessment areas using LLM narrativ
 - `{folder}/shared/COMPLIANCE_MATRIX.json` - Mandatory items, compliance requirements
 - `{folder}/shared/SUBMISSION_STRUCTURE.json` - Volume structure, submission requirements
 - `{folder}/flattened/*.md` - Full RFP text for analysis
-- Company profile: read from `/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/company-profile.json`
+- Company profile: read from `${CLAUDE_SKILL_DIR}/config-win/company-profile.json`
 - (Optional) bid-context-bundle if available from prior capture/intelligence activities
 
 ## Required Output
@@ -47,8 +47,17 @@ combined_text = ""
 for fp in flattened_files:
     combined_text += read_file(fp) + "\n\n"
 
-# Load company profile
-company = read_json("/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/company-profile.json")
+# Load company profile (resolve skill directory from env, fall back to file-relative)
+import os
+try:
+    _file_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+except NameError:
+    # HUNT-B-012 fix 2026-05-18: `__file__` undefined under inline execution.
+    _file_fallback = None
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or _file_fallback
+if not SKILL_DIR:
+    raise RuntimeError("CLAUDE_SKILL_DIR env var not set and __file__ unavailable — cannot resolve skill directory")
+company = read_json(f"{SKILL_DIR}/config-win/company-profile.json")
 ```
 
 Prepare reference data for the assessment:

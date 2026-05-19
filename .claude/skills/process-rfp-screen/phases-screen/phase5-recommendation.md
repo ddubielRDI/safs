@@ -367,13 +367,15 @@ eval_point_coverage = (preliminary_themes or {}).get("evaluation_point_coverage"
 total_theme_points = eval_point_coverage.get("total_theme_points", 0)
 total_available_points = eval_point_coverage.get("total_available_points", "unknown")
 
-# Tone-adapted rationale framing prefix
+# Tone-adapted rationale framing prefix.
+# Keys MUST match Phase 1's valid_styles enum (phase1-summary.md:1006):
+# formal_bureaucratic | outcomes_focused | innovation_driven | compliance_heavy | mission_driven
 tone_framing = {
     "formal_bureaucratic": "",  # Default — no special framing
-    "technical_precise": "Technical assessment: ",
-    "collaborative_partnership": "Partnership opportunity assessment: ",
-    "results_oriented": "Results-focused assessment: ",
-    "innovation_forward": "Innovation opportunity assessment: ",
+    "outcomes_focused":   "Results-focused assessment: ",
+    "innovation_driven":  "Innovation opportunity assessment: ",
+    "compliance_heavy":   "Compliance-focused assessment: ",
+    "mission_driven":     "Mission alignment assessment: ",
 }.get(primary_style, "")
 
 if recommendation == "GO":
@@ -452,7 +454,7 @@ elif recommendation == "CONDITIONAL":
     if weakest_area:
         rationale += f"Weakest area: {weakest_area.get('name', '')} ({weakest_area.get('score', 0)}/100). "
     if dealbreakers:
-        rationale += f"{len(dealbreakers)} potential dealbreaker(s) require resolution: {'; '.join(d[:60] for d in dealbreakers[:2])}. "
+        rationale += f"{len(dealbreakers)} potential dealbreaker(s) require resolution: {'; '.join(d.get('risk', '')[:60] for d in dealbreakers[:2])}. "
     if high_gaps:
         rationale += f"Unaddressed HIGH buyer priorities: {', '.join(high_gaps)}. "
     rationale += "Review risks before committing resources."

@@ -143,8 +143,14 @@ def check_win_probability(win_scorecard):
     This is advisory-only (MEDIUM severity) -- low probability
     does not block the pipeline but should be flagged.
     """
-    win_prob = win_scorecard.get("win_probability",
-                   win_scorecard.get("summary", {}).get("win_probability", 0))
+    # V5-F5 fix: phase7d emits win_probability as a top-level scalar
+    # (was previously a nested dict {probability, confidence, weighted_score}).
+    # The nested form is preserved under win_probability_detail for callers that
+    # need it, but this gate just needs the scalar.
+    win_prob = win_scorecard.get("win_probability", 0)
+    # Defensive: if upstream still emits a dict (older runs), unwrap it.
+    if isinstance(win_prob, dict):
+        win_prob = win_prob.get("probability", 0)
     # Handle percentage stored as 0-1 or 0-100
     if isinstance(win_prob, (int, float)) and win_prob <= 1.0:
         win_prob = win_prob * 100
@@ -248,7 +254,7 @@ def check_gap_analysis(gap_analysis_md):
         },
         "corrective_action": None if passed else {
             "type": "retry_phase",
-            "target_phase": "7b",
+            "target_phase": "7",
             "instruction": f"{len(unique_high_gaps)} HIGH/CRITICAL gaps remain open. Resolve or downgrade before bid authoring.",
             "auto_correctable": True
         }

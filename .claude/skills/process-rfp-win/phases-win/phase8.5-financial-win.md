@@ -181,7 +181,7 @@ Emphasize value over lowest price if applicable.]
 
 **Rate Source Legend:**
 - **COMPANY RATE**: Rate set by Resource Data in company-profile.json (authoritative)
-- **MARKET DEFAULT**: Baseline rate from GSA IT Schedule 70 / industry benchmarks (last updated: {market_rate_date}). [USER INPUT REQUIRED: Review and adjust market default rates before submission]
+- **MARKET DEFAULT**: Baseline rate from GSA MAS IT Category (formerly IT Schedule 70, consolidated 2020) / industry benchmarks (last updated: {market_rate_date}). [USER INPUT REQUIRED: Review and adjust market default rates before submission]
 - **UNPOPULATED**: No rate available — must be populated before submission
 
 > **Rate Sources:** {rate_sources["company_rates_used"]} company rates, {rate_sources["market_defaults_used"]} market defaults, {rate_sources["unpopulated"]} unpopulated

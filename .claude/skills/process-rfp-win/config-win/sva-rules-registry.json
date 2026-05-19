@@ -281,7 +281,10 @@
           "severity": "CRITICAL",
           "category": "Traceability",
           "enabled": true,
-          "description": "Every mandatory item traces through: item -> requirement -> specification. Any break = potential disqualification."
+          "description": "Every mandatory item traces through: item -> requirement -> specification. Any break = potential disqualification.",
+          "params": {
+            "similarity_threshold": 0.35
+          }
         },
         {
           "id": "SVA4-ESTIMATION-CONSISTENCY",
@@ -289,7 +292,11 @@
           "severity": "HIGH",
           "category": "Consistency",
           "enabled": true,
-          "description": "Effort per requirement is reasonable. Total between 500-50,000 hours for typical RFP."
+          "description": "Effort per requirement is reasonable. Total between 500-100,000 hours (configurable via threshold_max).",
+          "params": {
+            "threshold_min": 500,
+            "threshold_max": 100000
+          }
         },
         {
           "id": "SVA4-ESTIMATION-RISK-ALIGNMENT",

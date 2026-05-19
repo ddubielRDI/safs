@@ -209,42 +209,15 @@ if len(combined_text.strip()) < 500:
 log(f"  Combined text ready for analysis: {len(combined_text)} chars")
 ```
 
-### Step 5: Write Source Manifest
-
-```python
-import json
-from datetime import datetime
-
-manifest = {
-    "phase": "0",
-    "timestamp": datetime.now().isoformat(),
-    "folder": folder,
-    "documents": [
-        {
-            "filename": doc["filename"],
-            "path": doc["path"],
-            "extension": doc["extension"],
-            "size_bytes": doc["size_bytes"],
-            "conversion_status": doc["conversion_status"],
-            "converted_chars": doc["converted_chars"],
-            "conversion_method": doc["conversion_method"]
-        }
-        for doc in documents
-    ],
-    "total_documents": len(documents),
-    "successful_conversions": success_count,
-    "failed_conversions": failed_count,
-    "combined_text_chars": len(combined_text),
-    "scan_limit": SCAN_LIMIT,
-    "truncated": truncated
-}
-
-### Step 5b: Clean Conversion Artifacts
+### Step 4.5: Clean Conversion Artifacts (BEFORE manifest -- so combined_text_chars reflects cleaned length)
 
 ```python
 # Page header/footer patterns commonly embedded by markitdown when converting PDFs.
 # These appear as run-on text like "Bid 2015-100-BCity of Plano6/8/2015 8:55 AMp. 5"
 # and can confuse LLM extraction. Strip them before downstream consumption.
+# IMPORTANT: this runs BEFORE Step 5 builds the manifest, so combined_text_chars
+# reflects the cleaned length rather than the pre-cleaning length (which downstream
+# phases would never see -- they consume the cleaned combined_text).
 import re
 
 # Pattern: repeated page footers/headers (bid number + org name + date + page number)
@@ -273,9 +246,41 @@ if header_patterns:
     log(f"  Stripped {stripped_count} repeated header/footer lines from combined text")
 ```
 
+### Step 5: Write Source Manifest
+
+```python
+import json
+from datetime import datetime
+
+manifest = {
+    "phase": "0",
+    "timestamp": datetime.now().isoformat(),
+    "folder": folder,
+    "documents": [
+        {
+            "filename": doc["filename"],
+            "path": doc["path"],
+            "extension": doc["extension"],
+            "size_bytes": doc["size_bytes"],
+            "conversion_status": doc["conversion_status"],
+            "converted_chars": doc["converted_chars"],
+            "conversion_method": doc["conversion_method"]
+        }
+        for doc in documents
+    ],
+    "total_documents": len(documents),
+    "successful_conversions": success_count,
+    "failed_conversions": failed_count,
+    "combined_text_chars": len(combined_text),  # post-cleaning length, matches what downstream phases see
+    "scan_limit": SCAN_LIMIT,
+    "truncated": truncated
+}
+
 manifest_path = f"{folder}/screen/source-manifest.json"
-with open(manifest_path, "w") as f:
-    json.dump(manifest, f, indent=2)
+# ENCODING DISCIPLINE: utf-8 + ensure_ascii=False so em dashes survive round-trip.
+# Default cp1252 on Windows is what corrupts em dashes to "â€"" mojibake on re-read.
+with open(manifest_path, "w", encoding="utf-8", newline="\n") as f:
+    json.dump(manifest, f, indent=2, ensure_ascii=False)
 
 log(f"  Written: screen/source-manifest.json")
 ```

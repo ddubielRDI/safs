@@ -8,8 +8,8 @@
   "properties": {
     "validator": {
       "type": "string",
-      "pattern": "^SVA-[1-7]$",
-      "description": "Which validation agent produced this report"
+      "pattern": "^SVA-[0-7]$",
+      "description": "Which validation agent produced this report. SVA-0 is the Blue Team pre-authoring gate (runs before Stage 7); SVA-1..SVA-7 are post-stage validators."
     },
     "validated_at": {
       "type": "string",
@@ -17,9 +17,9 @@
     },
     "stage_validated": {
       "type": "integer",
-      "minimum": 1,
+      "minimum": 0,
       "maximum": 7,
-      "description": "Which stage was just completed before this SVA ran"
+      "description": "Which stage was just completed before this SVA ran. SVA-0 (Blue Team) reports stage=6 because it runs after Stage 6 completes (before Stage 7 begins)."
     },
     "disposition": {
       "type": "string",
@@ -28,8 +28,8 @@
     },
     "color_team": {
       "type": ["string", "null"],
-      "enum": ["pink", "red", "gold", null],
-      "description": "Shipley/APMP color team mapping. null for non-color-team SVAs."
+      "enum": ["pink", "red", "gold", "blue", null],
+      "description": "Shipley/APMP color team mapping. SVA-0=blue (pre-authoring strategic readiness), SVA-2=pink (early-draft review), SVA-4=red (adversarial pre-bid review), SVA-7=gold (final evaluator-perspective sign-off). null for non-color-team SVAs (SVA-1/3/5/6)."
     },
     "summary": {
       "type": "object",
@@ -154,7 +154,7 @@
       "properties": {
         "rule_id": {
           "type": "string",
-          "pattern": "^SVA[1-7]-[A-Z]+-[A-Z]+",
+          "pattern": "^SVA[0-7]-[A-Z]+-[A-Z]+",
           "description": "Unique rule ID (e.g., SVA2-REQ-COVERAGE)"
         },
         "rule_name": {

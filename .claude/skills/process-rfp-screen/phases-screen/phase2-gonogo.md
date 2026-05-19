@@ -429,9 +429,61 @@ else:
 
 ## Step 5: Write Output
 
-Write `{folder}/screen/go-nogo-score.json` with this schema:
+Write `{folder}/screen/go-nogo-score.json` with this schema.
+
+**Order matters:** compute `buyer_priority_coverage` and the deadline-passed flag BEFORE
+the `go_nogo` dict literal -- both are referenced inside the dict. Inlining them as
+forward references produces a NameError.
 
 ```python
+# --- Build buyer_priority_coverage by assessing each HIGH priority against company capabilities ---
+# (buyer_priorities was loaded in Step 1)
+high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
+addressed = []
+gaps = []
+
+for priority in high_priorities:
+    priority_name = priority.get("name", "")
+    linked_kws = [kw.lower() for kw in priority.get("linked_scope_keywords", [])]
+
+    # Check if any linked keyword appears in company services or capabilities
+    company_match = False
+    for kw in linked_kws:
+        for svc in all_services:
+            if kw in svc.lower() or svc.lower() in kw:
+                company_match = True
+                break
+        if company_match:
+            break
+
+    if company_match:
+        addressed.append(priority_name)
+    else:
+        gaps.append(priority_name)
+
+buyer_priority_coverage = {
+    "high_total": len(high_priorities),
+    "high_addressed": len(addressed),
+    "high_addressed_list": addressed,
+    "high_gaps": gaps
+}
+
+# --- Deadline-passed flag (consumed by Phase 6 historical-RFP banner). ---
+# Per "DEADLINE-NEUTRAL SCORING" rules above, this is a structured flag for
+# downstream rendering; it does NOT reduce any area score.
+from datetime import datetime as _dt
+deadline_passed = False
+submission_deadline_raw = rfp_summary.get("submission_deadline") or ""
+if submission_deadline_raw:
+    for _fmt in ("%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y", "%b %d, %Y", "%d %B %Y"):
+        try:
+            _dt_val = _dt.strptime(submission_deadline_raw.strip(), _fmt)
+            deadline_passed = _dt_val.date() < _dt.now().date()
+            break
+        except ValueError:
+            continue
+
+# --- Now assemble the output dict. ---
 go_nogo = {
     "phase": "2",
     "phase_name": "Go/No-Go Scoring",
@@ -465,6 +517,10 @@ go_nogo = {
     "override_allowed": True,
     "user_decision_required": user_decision_required,
 
+    # Deadline-passed flag for Phase 6 historical-RFP banner (deadline-neutral scoring).
+    "deadline_passed": deadline_passed,
+    "submission_deadline": submission_deadline_raw,
+
     # Buyer priority coverage tracking (from Phase 1 enrichment)
     "buyer_priority_coverage": buyer_priority_coverage,
 
@@ -482,39 +538,6 @@ go_nogo = {
     # Phase 1 intelligence layer pass-through (for downstream consumption by Phases 4.5, 5, 5.5)
     "client_tone": client_tone,  # Pass through from rfp-summary.json for theme/question tone adaptation
 }
-
-# Build buyer_priority_coverage by assessing each HIGH priority against company capabilities
-high_priorities = [p for p in buyer_priorities if p.get("importance") == "HIGH"]
-addressed = []
-gaps = []
-
-for priority in high_priorities:
-    priority_name = priority.get("name", "")
-    linked_kws = [kw.lower() for kw in priority.get("linked_scope_keywords", [])]
-
-    # Check if any linked keyword appears in company services or capabilities
-    company_match = False
-    for kw in linked_kws:
-        for svc in all_services:
-            if kw in svc.lower() or svc.lower() in kw:
-                company_match = True
-                break
-        if company_match:
-            break
-
-    if company_match:
-        addressed.append(priority_name)
-    else:
-        gaps.append(priority_name)
-
-buyer_priority_coverage = {
-    "high_total": len(high_priorities),
-    "high_addressed": len(addressed),
-    "high_addressed_list": addressed,
-    "high_gaps": gaps
-}
-
-go_nogo["buyer_priority_coverage"] = buyer_priority_coverage
 
 write_json(f"{folder}/screen/go-nogo-score.json", go_nogo)
 ```

@@ -1,12 +1,19 @@
 ---
 name: process-rfp-screen
-description: Lightweight RFP screener that runs a 10-phase pipeline (~18-35 min including a ~3-5 min Past_Projects.md refresh at Phase 1.5) producing a GO/NO-GO bid decision in BID_SCREEN.docx. Use BEFORE /process-rfp-win (3+ hrs) to triage opportunities. Triggers on "screen rfp", "rfp screen", "bid screen", "go no-go", "go/no-go", "rfp triage", "should we bid", "quick rfp screen", "screen bid".
+description: Lightweight RFP screener that runs a 10-phase pipeline (~18-35 min including a ~3-5 min Past_Projects.md refresh at Phase 1.5) producing a GO/NO-GO bid decision in BID_SCREEN.docx. Use BEFORE /process-rfp-win (3+ hrs) to triage opportunities.
+when_to_use: 'Triggers on "screen rfp", "rfp screen", "bid screen", "go no-go", "go/no-go", "rfp triage", "should we bid", "quick rfp screen", "screen bid".'
 argument-hint: "[path-to-rfp-folder] [--quick] [--skip-refresh]"
-allowed-tools: [Bash, Read, Write, Glob, Grep, WebSearch]
+allowed-tools: [Bash, Read, Write, Glob, Grep, WebSearch, AskUserQuestion]
 created: 2026-02-23
-updated: 2026-05-14 (added top-of-file Execution Discipline block with Read-Before-Execute Gate, Schema Fidelity rule, and Anomaly Protocol; strengthened phase-loop verification; recorded regression incident in memory/2026-05-14-regression-incident.md)
+updated: 2026-05-17
 disable-model-invocation: true
 ---
+
+<!-- Change log:
+  2026-05-17: Phase 3b migration (description→when_to_use split); added AskUserQuestion to allowed-tools (referenced by Anomaly Protocol); updated date normalized to plain ISO. Body unchanged.
+  2026-05-14: Added top-of-file Execution Discipline block (Read-Before-Execute Gate, Schema Fidelity, Anomaly Protocol); strengthened phase-loop verification; recorded regression incident in memory/2026-05-14-regression-incident.md.
+  2026-05-13: First skills-excellence-update audit — frontmatter relocation, hardcoded paths replaced, memory infrastructure created. -->
+
 
 # /process-rfp-screen — Lightweight RFP Screening Pipeline
 
@@ -139,6 +146,54 @@ THRESHOLD_GO = 50
 THRESHOLD_CONDITIONAL = 40
 # Below THRESHOLD_CONDITIONAL = NO-GO
 ```
+
+---
+
+## ⛔ Required Helper Functions (BLOCKING — define BEFORE any phase runs)
+
+**MANDATORY:** The phase files reference `read_json` / `write_json` / `read_file` / `write_file` and similar helpers. These are NOT auto-defined — Claude must define them in the runtime Python before phase execution. **They MUST be defined exactly as shown below.** Every recurrence of em-dash mojibake (`â€"` in place of `—`) traces to one of these helpers being defined without `encoding='utf-8'`, because Windows defaults to cp1252 and silently mangles UTF-8 bytes on read-back.
+
+```python
+import json, os, sys
+
+# ── ENCODING DISCIPLINE (MANDATORY) ──
+# Every file open in this pipeline MUST specify encoding='utf-8'.
+# Windows default (cp1252) corrupts em dashes (—) into "â€"" mojibake.
+# Stdout must also be reconfigured before any print() that may include unicode.
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
+def read_json(path):
+    """Read JSON with explicit UTF-8. Never rely on platform default."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def read_json_safe(path):
+    """Same as read_json but returns None if file missing/invalid (Phase 3 client_intel may be optional)."""
+    try:
+        return read_json(path)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+def write_json(path, data):
+    """Write JSON with UTF-8 + ensure_ascii=False so em dashes survive round-trip.
+    Forces LF line endings so byte-level diffs across machines stay clean."""
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def read_file(path):
+    """Read plain text with explicit UTF-8."""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def write_file(path, text):
+    """Write plain text with explicit UTF-8 + LF line endings."""
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+```
+
+**Why `ensure_ascii=False`:** the older default (`True`) escapes em dashes as `—` but does the same to mojibake `â€”`, hiding the corruption. With `ensure_ascii=False` and `encoding='utf-8'`, mojibake becomes immediately visible as `â€"` on inspection, catching bugs at the file boundary.
+
+**This applies to inline Python invoked via Bash, generated `.py` scripts dropped into `screen/`, AND the Phase 6 DOCX renderer.** Do not write a `with open(...)` line in this pipeline without `encoding='utf-8'`.
 
 ---
 
@@ -463,6 +518,12 @@ for phase in phases:
 After all data-producing phases (0–5.5) complete and BEFORE Phase 6 renders the DOCX, perform the six-rule traceability audit on the assembled JSON outputs. This is the gate that prevents shipping honest-but-imprecise claims.
 
 **Execution model:** This gate runs as a fresh, adversarially-framed audit prompt — the same Claude that produced the outputs cannot self-audit without bias. The prompt below MUST be invoked as a discrete reasoning step with no carry-over from the data-production phases. Treat the six rules as the sole evaluation criteria; do not relax them for any output that "looks fine."
+
+**Placeholder convention (read first):** Two calls in the prescribed Python below — `invoke_llm(audit_prompt)` and `apply_finding_correction(audit_inputs[f["file"]], f["json_path"], f["fix"])` — are **agent-reasoning placeholders**, not Python helpers like `read_json`. They cannot be defined as functions in the conventional sense because the LLM (Claude, executing this skill) IS the reasoning engine. Treat them as:
+- **`invoke_llm(prompt)`** — "I, Claude, will perform this LLM reasoning step inline in a fresh sub-context, returning the JSON I would have produced." Equivalent to the `llm(prompt, json_mode=True)` convention used in phase1-summary.md, except scoped to a discrete adversarial reasoning pass with no carry-over from prior phase data.
+- **`apply_finding_correction(json_obj, json_path, fix)`** — "I, Claude, will apply this finding's `fix` value at the given `json_path` inside `json_obj`, mutating in place." For a `json_path` like `"matched_projects[2].score_breakdown.contract_type"`, walk the path and assign the fix value.
+
+Do NOT attempt to import or define these as Python functions; instead, perform the reasoning/mutation inline when the prescribed code reaches each call. If either step cannot be performed (e.g., the audit prompt produces malformed JSON), abort the gate per the existing 3-iteration cap rather than falling back to a no-op.
 
 ```python
 # Load every JSON the audit needs to inspect.

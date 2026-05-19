@@ -537,9 +537,20 @@ client_tone = go_nogo.get("client_tone", {})
 primary_style = client_tone.get("primary_style", "formal_bureaucratic")
 mirroring_vocab = client_tone.get("mirroring_vocabulary", [])
 adaptation_rules = client_tone.get("adaptation_rules", {})
-preferred_terms = adaptation_rules.get("preferred_terms", [])
+# NOTE: Phase 1 writes adaptation_rules.prefer_terms (NOT "preferred_terms") and
+# formality_level at client_tone top level (NOT inside adaptation_rules).
+# Match the producer's schema exactly -- the wrong path silently returned defaults
+# and broke tone adaptation on every run.
+preferred_terms = adaptation_rules.get("prefer_terms", [])
 avoid_terms = adaptation_rules.get("avoid_terms", [])
-formality_level = adaptation_rules.get("formality_level", "formal")
+# Phase 1 writes formality_level as 1-5 numeric (phase1-summary.md:1018). Convert
+# to a label for downstream prompt phrasing -- the LLM consumes prose, not an int.
+formality_int = int(client_tone.get("formality_level", 3) or 3)
+formality_level = ("very informal" if formality_int <= 1
+                   else "informal" if formality_int == 2
+                   else "moderate" if formality_int == 3
+                   else "formal" if formality_int == 4
+                   else "highly formal")
 
 for theme in selected:
     # Gather all available context for this theme
@@ -680,6 +691,15 @@ evaluation_model = rfp_summary.get("evaluation_model", {})
 point_allocation = evaluation_model.get("point_allocation", [])
 total_available_points = sum(c.get("points", 0) for c in point_allocation) or 1000
 
+# Build subfactor lookup from rfp_summary.evaluation_subfactors (canonical location).
+# Subfactors do NOT live on point_allocation entries -- they live in a sibling array
+# keyed by criterion name. Phase 1 stores each entry as {criterion, weight, subfactors[]}.
+_evaluation_subfactors = rfp_summary.get("evaluation_subfactors", [])
+_subfactor_map = {
+    (sf.get("criterion") or "").strip().lower(): (sf.get("subfactors") or [])
+    for sf in _evaluation_subfactors if isinstance(sf, dict)
+}
+
 if point_allocation:
     for theme in selected:
         theme_name_lower = theme.get("name", "").lower()
@@ -692,14 +712,16 @@ if point_allocation:
             criterion_name = criterion.get("criterion", "")
             criterion_name_lower = criterion_name.lower()
             criterion_points = criterion.get("points", 0)
-            subfactors = criterion.get("subfactors", [])
+            # Look up subfactors by criterion name in the canonical evaluation_subfactors array.
+            subfactors = _subfactor_map.get(criterion_name_lower, [])
 
             # Check for keyword overlap between theme and criterion
             criterion_words = set(criterion_name_lower.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
             theme_words = set(theme_text.split()) - {"the", "and", "or", "for", "a", "an", "in", "of", "to"}
             overlap = criterion_words & theme_words
 
-            # Also check subfactor alignment
+            # Also check subfactor alignment.
+            # Phase 1's evaluation_subfactors[].subfactors is a list of strings, not dicts.
             subfactor_overlap = []
             for sf in subfactors:
                 sf_name = (sf.get("name", "") if isinstance(sf, dict) else str(sf)).lower()

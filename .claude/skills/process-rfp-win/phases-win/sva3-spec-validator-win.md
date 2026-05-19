@@ -86,6 +86,65 @@ all_spec_text = "\n".join(spec_files.values()).lower()
 findings = []
 ```
 
+### Step 1b: Rule SVA3-SPEC-MIN-FILE-SIZE (CRITICAL — added 2026-05-18 HUNT-C-0008 fix)
+
+Detect stub / partially-written / empty spec files BEFORE any content-based rule runs.
+A spec that crashed mid-write or wrote 0 bytes will silently pass keyword-coverage checks
+(because there's nothing to fail against), masking the underlying generation failure.
+
+```python
+# Minimum byte sizes per spec file — derived from quality checklists in each phase file.
+# Numbers chosen below the phase file's stated minimums (15KB / 8KB / 5KB) so a slightly
+# under-target spec still passes this gate but a stub / empty file fails loudly.
+MIN_SPEC_BYTES = {
+    "ARCHITECTURE": 5000,         # phase3a target 15KB; gate at 5KB catches stubs
+    "INTEROPERABILITY": 2000,     # phase3b target 5KB
+    "SECURITY_REQUIREMENTS": 3000,  # phase3c target 8KB
+    "UI_SPECS": 2000,             # phase3e target 5KB
+    "ENTITY_DEFINITIONS": 2000,   # phase3f target 5KB
+}
+
+def check_spec_min_file_size(spec_files):
+    undersize = []
+    for spec_name, spec_content in spec_files.items():
+        size_bytes = len(spec_content.encode("utf-8")) if spec_content else 0
+        threshold = MIN_SPEC_BYTES.get(spec_name, 1000)
+        if size_bytes < threshold:
+            undersize.append({
+                "spec": spec_name,
+                "size_bytes": size_bytes,
+                "min_threshold": threshold,
+                "likely_cause": ("file not generated" if size_bytes == 0
+                                else "stub / partial write / mid-write crash")
+            })
+    passed = len(undersize) == 0
+    # Map spec_name → phase that produces it (for accurate corrective_action — HUNT-C-0013 partial fix)
+    spec_to_phase = {
+        "ARCHITECTURE": "3a", "INTEROPERABILITY": "3b",
+        "SECURITY_REQUIREMENTS": "3c", "UI_SPECS": "3e",
+        "ENTITY_DEFINITIONS": "3f"
+    }
+    failing_phases = sorted({spec_to_phase.get(u["spec"], "3a") for u in undersize})
+    return {
+        "rule_id": "SVA3-SPEC-MIN-FILE-SIZE",
+        "severity": "CRITICAL",
+        "passed": passed,
+        "score": 100 if passed else max(0, 100 - len(undersize) * 25),
+        "threshold": None,
+        "details": {
+            "undersize_specs": undersize,
+            "all_specs_checked": list(spec_files.keys())
+        },
+        "corrective_action": {
+            "type": "retry_phases", "target_phases": failing_phases,
+            "auto_correctable": True,
+            "instruction": f"Re-run phase(s) {failing_phases} — each produces a spec that is under minimum size, suggesting the phase crashed mid-write or didn't produce content."
+        } if not passed else None
+    }
+
+findings.append(check_spec_min_file_size(spec_files))
+```
+
 ### Step 2: Rule SVA3-SPEC-REQ-COVERAGE (CRITICAL)
 
 Every CRITICAL and HIGH priority requirement must be addressed by at least one specification document.
@@ -151,11 +210,33 @@ def check_spec_req_coverage(all_reqs, spec_files):
         },
         "corrective_action": None if passed else {
             "type": "retry_phase",
-            "target_phase": "3a",
+            # HUNT-C-0013 fix 2026-05-18: route corrective action to the most likely
+            # spec-producing phase by category of uncovered requirement. Default to
+            # 3a (Architecture) when no clear single phase dominates.
+            "target_phase": _infer_target_phase_from_uncovered(uncovered_reqs),
             "instruction": f"Re-examine uncovered requirements and update specifications. {len(uncovered_reqs)} CRITICAL/HIGH reqs have no spec coverage.",
             "auto_correctable": True
         }
     }
+
+
+def _infer_target_phase_from_uncovered(uncovered_reqs):
+    """Map uncovered-requirement categories to the most likely spec phase that should fix them.
+    HUNT-C-0013 fix 2026-05-18."""
+    if not uncovered_reqs:
+        return "3a"
+    # Category → phase mapping (matches phase3a/b/c/e/f domains).
+    cat_to_phase = {
+        "SEC": "3c", "INT": "3b", "UI": "3e", "APP": "3f",
+        "TEC": "3a", "ADM": "3a", "ENR": "3f", "BUD": "3a", "RPT": "3a", "STF": "3a"
+    }
+    counts = {}
+    for r in uncovered_reqs:
+        cat = r.get("category") or r.get("priority", "TEC")
+        phase = cat_to_phase.get(cat, "3a")
+        counts[phase] = counts.get(phase, 0) + 1
+    # Most-affected phase wins; ties broken in favor of earliest phase
+    return max(counts.items(), key=lambda kv: (kv[1], -ord(kv[0][-1])))[0]
 
 findings.append(check_spec_req_coverage(all_reqs, spec_files))
 ```
@@ -236,6 +317,154 @@ def check_internal_consistency(spec_files):
     }
 
 findings.append(check_internal_consistency(spec_files))
+```
+
+### Step 3b: Rule SVA3-TECH-STACK-LTS-VERIFIED (CRITICAL — BLOCKING)
+
+Every primary technology component cited in Stage 3 specifications MUST trace back to a vendor lifecycle lookup performed within the last 7 days. The lookup evidence lives in `shared/tech-lifecycle-evidence.json` (produced by Phase 3a Step 4). This rule enforces the structural gate: no specs may pass SVA-3 if the evidence file is missing, stale, or contains any component whose EOL date falls inside `contract_years + 2`.
+
+**Why this rule exists (incident-driven, not theoretical):** Stage 3 has twice produced ARCHITECTURE.md with the wrong .NET version — once with `.NET 8 LTS` (EOL Nov 2026, falling inside a 5-yr contract) and once with `.NET 9 LTS` (a category error — .NET 9 is STS, not LTS, EOL May 2026). Both errors traced to agents relying on training-data knowledge instead of running the lookup the phase file mandated. This rule moves enforcement from "the phase file said to" to "evidence on disk or BLOCK".
+
+```python
+def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
+    """
+    BLOCKING: Verify shared/tech-lifecycle-evidence.json exists, is fresh,
+    and every component passes contract+2yr lifecycle.
+    """
+    evidence_path = f"{folder}/shared/tech-lifecycle-evidence.json"
+    findings_detail = {
+        "evidence_file_exists": False,
+        "evidence_age_days": None,
+        "components_checked": 0,
+        "components_failed_lifecycle": [],
+        "components_missing_source_url": [],
+        "components_missing_fetched_at": [],
+        "specs_mentioning_unverified_versions": [],
+    }
+
+    # Gate 1: file must exist
+    if not os.path.exists(evidence_path):
+        return {
+            "rule_id": "SVA3-TECH-STACK-LTS-VERIFIED",
+            "rule_name": "Tech Stack LTS Lifecycle Verified",
+            "category": "Tech Stack Governance",
+            "severity": "CRITICAL",
+            "passed": False,
+            "score": 0.0,
+            "threshold": 100.0,
+            "details": findings_detail,
+            "corrective_action": {
+                "type": "retry_phase",
+                "target_phase": "3a",
+                "instruction": "Re-run Phase 3a Step 4 with real WebFetch/WebSearch lookups. shared/tech-lifecycle-evidence.json is missing — no version may be cited without it.",
+                "auto_correctable": True
+            }
+        }
+
+    evidence = read_json(evidence_path)
+    generated_at = datetime.fromisoformat(evidence.get("generated_at", "1970-01-01T00:00:00"))
+    age_days = (datetime.now() - generated_at).days
+    findings_detail["evidence_file_exists"] = True
+    findings_detail["evidence_age_days"] = age_days
+    findings_detail["components_checked"] = len(evidence.get("components", []))
+
+    # Gate 2: freshness — evidence older than 7 days is considered stale
+    # because LTS schedules update with new releases / out-of-band patches.
+    if age_days > 7:
+        return {
+            "rule_id": "SVA3-TECH-STACK-LTS-VERIFIED",
+            "rule_name": "Tech Stack LTS Lifecycle Verified",
+            "category": "Tech Stack Governance",
+            "severity": "CRITICAL",
+            "passed": False,
+            "score": 30.0,
+            "threshold": 100.0,
+            "details": findings_detail,
+            "corrective_action": {
+                "type": "retry_phase",
+                "target_phase": "3a",
+                "instruction": f"tech-lifecycle-evidence.json is {age_days} days old. Re-run Phase 3a Step 4 to refresh.",
+                "auto_correctable": True
+            }
+        }
+
+    # Gate 3: per-component validity
+    for c in evidence.get("components", []):
+        if not c.get("source_url"):
+            findings_detail["components_missing_source_url"].append(c.get("component"))
+        if not c.get("fetched_at"):
+            findings_detail["components_missing_fetched_at"].append(c.get("component"))
+        if not c.get("passes_contract_lifecycle", False):
+            findings_detail["components_failed_lifecycle"].append({
+                "component": c.get("component"),
+                "version": c.get("recommended_version"),
+                "classification": c.get("classification"),
+                "eol_date": c.get("eol_date"),
+                "min_required_eol": c.get("min_required_eol"),
+            })
+
+    # Gate 4: cross-check — every version string the ARCHITECTURE.md prose
+    # actually cites must appear in the evidence file. Catches the case
+    # where the agent ran the lookup but then ignored the result and wrote
+    # a different version into the prose.
+    import re
+    version_pattern = re.compile(r"\.NET\s+(\d+)|Node(?:\.js)?\s+(\d+)|React\s+(\d+)|PostgreSQL\s+(\d+)|SQL Server\s+(\d{4})|Java\s+(\d+)|Python\s+(\d+\.\d+)", re.IGNORECASE)
+    arch_text = spec_files.get("ARCHITECTURE", "")
+    cited_versions = set()
+    for match in version_pattern.finditer(arch_text):
+        for group in match.groups():
+            if group:
+                cited_versions.add(group)
+    evidence_versions = set()
+    for c in evidence.get("components", []):
+        v = str(c.get("recommended_version", ""))
+        # capture just the numeric prefix (e.g., "10" from ".NET 10" / "10.0.0")
+        m = re.match(r"(\d+(?:\.\d+)?)", v)
+        if m:
+            evidence_versions.add(m.group(1))
+    unverified = cited_versions - evidence_versions
+    if unverified:
+        findings_detail["specs_mentioning_unverified_versions"] = sorted(unverified)
+
+    # Disposition
+    failed_lifecycle = len(findings_detail["components_failed_lifecycle"]) > 0
+    missing_evidence = (
+        len(findings_detail["components_missing_source_url"]) > 0
+        or len(findings_detail["components_missing_fetched_at"]) > 0
+    )
+    cited_but_unverified = len(findings_detail["specs_mentioning_unverified_versions"]) > 0
+
+    passed = not (failed_lifecycle or missing_evidence or cited_but_unverified)
+    score = 100.0 if passed else (
+        0.0 if failed_lifecycle else
+        50.0 if missing_evidence else
+        60.0  # cited_but_unverified only
+    )
+
+    return {
+        "rule_id": "SVA3-TECH-STACK-LTS-VERIFIED",
+        "rule_name": "Tech Stack LTS Lifecycle Verified",
+        "category": "Tech Stack Governance",
+        "severity": "CRITICAL",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 100.0,
+        "details": findings_detail,
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "3a",
+            "instruction": (
+                "Failed lifecycle: " + ", ".join(c["component"] for c in findings_detail["components_failed_lifecycle"])
+                if failed_lifecycle else
+                "Architecture cites version(s) not in evidence file: " + ", ".join(findings_detail["specs_mentioning_unverified_versions"])
+                if cited_but_unverified else
+                "Evidence entries missing source_url or fetched_at — re-run lookup."
+            ),
+            "auto_correctable": True
+        }
+    }
+
+findings.append(check_tech_stack_lts_verified(spec_files, folder, contract_years=5))
 ```
 
 ### Step 4: Rule SVA3-SPEC-DOMAIN-ALIGNMENT (HIGH)

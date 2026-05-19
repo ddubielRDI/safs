@@ -137,6 +137,15 @@
               "spec_type": {
                 "type": "string",
                 "enum": ["ARCHITECTURE", "SECURITY", "INTEROPERABILITY", "UI_UX", "ENTITY", "RISK"]
+              },
+              "intentionally_unlinked": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, this spec section is intentionally not linked to a requirement (e.g., glossary, appendix, overview). Excluded from backward-coverage denominator in SVA-4 (V3-F3 fix)."
+              },
+              "unlinked_reason": {
+                "type": "string",
+                "description": "Human-readable reason this spec is intentionally_unlinked (e.g., 'glossary section', 'architecture overview')."
               }
             }
           }

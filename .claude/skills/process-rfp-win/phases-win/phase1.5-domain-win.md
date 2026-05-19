@@ -14,7 +14,7 @@ Automatically detect the RFP domain from document content to load the appropriat
 ## Inputs
 
 - `{folder}/flattened/*.md` - Flattened document content
-- Domain profiles in `/home/ddubiel/repos/safs/.claude/skills/process-rfp/domain-profiles/`
+- Domain profiles in `${CLAUDE_SKILL_DIR}/../process-rfp/domain-profiles/` (sibling skill — process-rfp generic — confirm presence before relying)
 
 ## Required Outputs
 
@@ -189,15 +189,45 @@ clear_winner = margin >= 20 or confidence >= 0.85
 ### Step 5: Load Domain Profile
 
 ```python
-PROFILES_DIR = "/home/ddubiel/repos/safs/.claude/skills/process-rfp/domain-profiles"
+import os
+try:
+    _file_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+except NameError:
+    # HUNT-B-012 fix 2026-05-18: `__file__` is undefined when Python is executed
+    # inline (e.g., `python -c "..."` or LLM-evaluated without saving to a file).
+    # CLAUDE_SKILL_DIR env var is the reliable source.
+    _file_fallback = None
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or _file_fallback
+if not SKILL_DIR:
+    raise RuntimeError("CLAUDE_SKILL_DIR env var not set and __file__ unavailable — cannot resolve skill directory")
+# Try the sibling skill location first; fall back to per-skill config-win/ where the
+# profiles should live (recommended relocation — Grok consensus 2026-05-18). Either
+# path becomes None if neither exists; downstream code must handle profile = {}.
+_candidates = [
+    os.path.abspath(f"{SKILL_DIR}/../process-rfp/domain-profiles"),
+    os.path.abspath(f"{SKILL_DIR}/config-win/domain-profiles"),
+]
+PROFILES_DIR = next((p for p in _candidates if os.path.isdir(p)), None)
+if PROFILES_DIR is None:
+    log(f"  ⚠️  Domain profiles not found at any candidate location; falling back to empty profile")
 
 if clear_winner and confidence >= 0.5:
     selected_domain = top_domain
 else:
     selected_domain = "default"
 
-profile_path = f"{PROFILES_DIR}/{selected_domain}.yaml"
-profile = read_yaml(profile_path)
+# Guard against missing profile directory (bug-hunt 2026-05-18 HUNT-B-006 fix).
+# Domain detection is optional — every downstream phase falls back to generic
+# behavior when profile == {}. Crashing here would block the entire pipeline.
+if PROFILES_DIR is not None:
+    profile_path = f"{PROFILES_DIR}/{selected_domain}.yaml"
+    try:
+        profile = read_yaml(profile_path)
+    except FileNotFoundError:
+        log(f"  ⚠️  Profile file not found: {profile_path}; using empty profile")
+        profile = {}
+else:
+    profile = {}
 ```
 
 ### Step 6: Write Domain Context

@@ -57,7 +57,7 @@ context_bundle = read_json(f"{folder}/shared/bid-context-bundle.json")
 
 # Optional
 personas = read_json_safe(f"{folder}/shared/PERSONA_COVERAGE.json")
-client_intel = read_json_safe(f"{folder}/shared/CLIENT_INTELLIGENCE.json")
+client_intel = read_json_safe(f"{folder}/shared/bid/CLIENT_INTELLIGENCE.json")
 submission_structure = read_json_safe(f"{folder}/shared/SUBMISSION_STRUCTURE.json")
 
 # Extract entities from RTM
@@ -68,6 +68,16 @@ rtm_mandatory = entities.get("mandatory_items", [])
 rtm_bid_sections = entities.get("bid_sections", [])
 rtm_evidence = entities.get("evidence", [])
 chain_links = rtm.get("chain_links", [])
+
+# ─── RTM CONTRACT ASSERTION (bug-hunt 2026-05-18 HUNT-C P1 fix) ───
+# Same protection as SVA-4 entry. The Gold Team gate vacuously passes if RTM
+# field names drift; assert loudly here so drift fails the SVA immediately.
+if rtm_reqs and "req_id" not in rtm_reqs[0]:
+    error(f"SVA-7 ABORT: rtm.entities.requirements[0] missing 'req_id' field — schema drift suspected. Got fields: {list(rtm_reqs[0].keys())}")
+    halt()
+if rtm_risks and "risk_level" not in rtm_risks[0]:
+    error(f"SVA-7 ABORT: rtm.entities.risks[0] missing 'risk_level' field — schema drift suspected. Got fields: {list(rtm_risks[0].keys())}")
+    halt()
 
 mandatory_items = compliance.get("mandatory_items", compliance.get("rtm_entities", {}).get("mandatory_items", []))
 eval_factors = evaluation.get("evaluation_factors", evaluation.get("factors", []))
@@ -273,9 +283,11 @@ findings.append(check_theme_threading())
 # --- SVA7-RISK-BID-INTEGRATION (CRITICAL) ---
 def check_risk_bid_integration():
     """Every HIGH risk mitigation verified present in bid text."""
+    # HUNT-C-0009 fix: schema uses `risk_level` (not `severity`). Without this
+    # rename, every bid passed SVA7-RISK-BID-INTEGRATION vacuously at score 100.
     high_critical_risks = [
         r for r in rtm_risks
-        if r.get("severity") in ["HIGH", "CRITICAL"]
+        if r.get("risk_level") in ["HIGH", "CRITICAL"]
     ]
 
     if not high_critical_risks:
@@ -328,7 +340,7 @@ def check_risk_bid_integration():
         else:
             unverified.append({
                 "risk_id": risk_id,
-                "severity": risk.get("severity"),
+                "risk_level": risk.get("risk_level"),
                 "description": risk.get("description", "")[:80],
                 "mitigation_count": len(mitigations)
             })
@@ -449,7 +461,8 @@ findings.append(check_compliance_bid_coverage())
 def check_cross_doc_ids():
     """All IDs referenced in bid sections exist in source JSON. No phantom references."""
     # Build valid ID sets from RTM
-    valid_req_ids = set(r.get("requirement_id", "") for r in rtm_reqs)
+    # HUNT-C-0001 fix: phase4 emits "req_id", not "requirement_id".
+    valid_req_ids = set(r.get("req_id", "") for r in rtm_reqs)
     valid_risk_ids = set(r.get("risk_id", "") for r in rtm_risks)
     valid_spec_ids = set(s.get("spec_id", "") for s in entities.get("specifications", []))
     valid_mandatory_ids = set(m.get("mandatory_id", "") for m in rtm_mandatory)
@@ -1260,6 +1273,341 @@ def check_proof_point_density():
 
 findings.append(check_proof_point_density())
 ```
+
+---
+
+### Step 2T: Traceability Audit Gate (6 RULES — added 2026-05-18 per cross-skill learning from /process-rfp-screen)
+
+This gate enforces the six anti-patterns captured in screen's gotchas.md (lines 126-184) and the project MEMORY.md. Each pattern is an honest-but-imprecise framing that would weaken evaluator trust if it shipped. The screen pipeline halts its Phase 6 DOCX render if any of these checks fail; the win pipeline must do the equivalent before phase8e dispatches the bid PDFs.
+
+**Why this gate exists:** The 2026-05-13 audit of screen's NOAA NMFS Alaska bid caught six patterns that did NOT change the overall GO recommendation (84/100) but would have weakened evaluator trust if shipped. Per `process-rfp-screen/memory/gotchas.md`, the same anti-patterns surface in the win pipeline's bid content because the same evidence (past projects, intel snapshots, theme proof metrics) feeds both pipelines.
+
+```python
+# 6-Rule Traceability Audit — operates on the assembled bid JSON and source artifacts
+# already loaded by Step 1. Failures append CRITICAL findings to the gate; the
+# disposition logic at Step 3 then halts phase8e via the BLOCK return.
+
+def check_contracting_client_vs_end_user():
+    """Rule 1: Past projects where end-user agency ≠ contracting client must label both."""
+    positioning = read_json_safe(f"{folder}/shared/bid/POSITIONING_OUTPUT.json") or {}
+    intel       = read_json_safe(f"{folder}/shared/bid/CLIENT_INTELLIGENCE.json") or {}
+    past_perf   = (positioning.get("past_performance") or []) + (intel.get("past_performance") or [])
+
+    violations = []
+    for proj in past_perf:
+        end_user   = (proj.get("end_user") or proj.get("agency") or "").strip()
+        contracted = (proj.get("contracting_client") or proj.get("prime") or "").strip()
+        # If both fields are populated AND differ, every downstream mention must dual-label
+        if end_user and contracted and end_user.lower() != contracted.lower():
+            framing = (proj.get("framing") or "").lower()
+            if "mission-adjacent" not in framing and "via " not in framing and "direct" in framing:
+                violations.append({
+                    "project_id": proj.get("id") or proj.get("project_name"),
+                    "issue": f"Framed as 'direct {end_user}' but contracting client was {contracted}",
+                    "fix": f"Reframe as 'mission-adjacent via {contracted}' or 'delivered for {end_user} through {contracted} partnership'"
+                })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-1-CONTRACTING-CLIENT-VS-END-USER",
+        "severity": "CRITICAL",
+        "passed": passed,
+        "details": (f"All {len(past_perf)} past-performance items either dual-label end-user vs. "
+                    f"contracting client or use mission-adjacent framing." if passed
+                    else f"{len(violations)} past-performance items overstate the contracting relationship."),
+        "violations": violations if not passed else [],
+        "remediation": "Phase 8.0 positioning and Phase 1.95 intel must populate both `end_user` and "
+                       "`contracting_client` fields. Bid sections must use 'mission-adjacent via <prime>' "
+                       "framing where contracting_client ≠ end_user. See process-rfp-screen/memory/gotchas.md Rule 1." if not passed else None
+    }
+
+def check_regional_scope_qualifier_preservation():
+    """Rule 2: Award/credential text must preserve regional/year/sponsor scope verbatim."""
+    intel       = read_json_safe(f"{folder}/shared/bid/CLIENT_INTELLIGENCE.json") or {}
+    positioning = read_json_safe(f"{folder}/shared/bid/POSITIONING_OUTPUT.json") or {}
+
+    REGIONAL_HINTS = ["southwest", "northwest", "northeast", "midwest", "regional", "midsize",
+                      "small business", "minority-owned", "veteran-owned", "wos b", "8(a)"]
+    YEAR_PATTERN   = r"\b(19|20)\d{2}\b"
+
+    violations = []
+    for award in (intel.get("awards") or []) + (positioning.get("awards") or []):
+        original = award.get("source_text", "") or award.get("verbatim", "")
+        used_in_bid = award.get("display_text", "") or award.get("text", "")
+        if not original or not used_in_bid:
+            continue
+        # Check whether regional / year qualifiers in source were preserved
+        orig_lc = original.lower()
+        used_lc = used_in_bid.lower()
+        for hint in REGIONAL_HINTS:
+            if hint in orig_lc and hint not in used_lc:
+                violations.append({
+                    "award_id": award.get("id") or award.get("name"),
+                    "issue": f"Source contains '{hint}' qualifier; bid display drops it",
+                    "original": original[:200],
+                    "displayed": used_in_bid[:200]
+                })
+        import re as _re
+        orig_years = set(_re.findall(YEAR_PATTERN, original))
+        used_years = set(_re.findall(YEAR_PATTERN, used_in_bid))
+        if orig_years and not orig_years.issubset(used_years):
+            violations.append({
+                "award_id": award.get("id") or award.get("name"),
+                "issue": f"Source years {sorted(orig_years - used_years)} dropped from bid display",
+                "original": original[:200],
+                "displayed": used_in_bid[:200]
+            })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-2-AWARD-SCOPE-QUALIFIER",
+        "severity": "HIGH",
+        "passed": passed,
+        "details": "All award scope qualifiers (regional, year, sponsor) preserved verbatim." if passed
+                   else f"{len(violations)} awards dropped scope qualifiers from source to bid display.",
+        "violations": violations if not passed else [],
+        "remediation": "Phase 1.95 / Phase 8.0 must preserve `source_text` field verbatim; bid display "
+                       "text must contain the same regional/year qualifiers. See screen gotchas Rule 2." if not passed else None
+    }
+
+def check_internal_estimate_methodology():
+    """Rule 3: Monetary/quantitative figures NOT in RFP must be labeled with methodology."""
+    estimation  = read_json_safe(f"{folder}/shared/EFFORT_ESTIMATION.json") or {}
+    positioning = read_json_safe(f"{folder}/shared/bid/POSITIONING_OUTPUT.json") or {}
+    financial   = read_file_safe(f"{folder}/outputs/bid-sections/05_FINANCIAL.md")
+
+    rfp_summary = read_json_safe(f"{folder}/shared/RFP_SUMMARY.json") or read_json_safe(f"{folder}/shared/rfp-summary.json") or {}
+    rfp_disclosed_value = rfp_summary.get("estimated_value", "")
+    rfp_value_disclosed = rfp_disclosed_value and "not disclosed" not in str(rfp_disclosed_value).lower()
+
+    import re as _re
+    DOLLAR_PATTERN = r"\$\s*[\d,]+(?:\.\d+)?(?:[MmKkBb])?(?:\s*[-–]\s*\$?\s*[\d,]+(?:\.\d+)?(?:[MmKkBb])?)?"
+    METHOD_TOKENS = ["estimate", "estimated", "methodology", "based on", "rates", "loe", "level of effort",
+                     "internal estimate", "not disclosed"]
+
+    violations = []
+    if not rfp_value_disclosed:
+        # Find any $ figure in financial / estimation summaries
+        for label, text in (("financial_section", financial),
+                            ("positioning_summary", positioning.get("estimated_value_summary", ""))):
+            if not text:
+                continue
+            for m in _re.finditer(DOLLAR_PATTERN, text):
+                snippet_start = max(0, m.start() - 80)
+                snippet_end   = min(len(text), m.end() + 80)
+                snippet       = text[snippet_start:snippet_end].lower()
+                if not any(tok in snippet for tok in METHOD_TOKENS):
+                    violations.append({
+                        "where": label,
+                        "figure": m.group(0),
+                        "snippet": text[snippet_start:snippet_end],
+                        "issue": "Monetary figure not labeled [estimate — methodology: ...] and RFP did not disclose value"
+                    })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-3-ESTIMATE-METHODOLOGY",
+        "severity": "HIGH",
+        "passed": passed,
+        "details": ("All monetary figures either trace to RFP-disclosed value or carry an explicit "
+                    "[estimate — methodology] label.") if passed
+                   else f"{len(violations)} monetary figures lack methodology disclosure and RFP did not disclose value.",
+        "violations": violations if not passed else [],
+        "remediation": "Every $ figure not stated in the RFP must be prefixed with '[estimate — methodology: <source rates × LoE>]'. "
+                       "Compute actual bounds from cited inputs — never round up for narrative effect. See screen gotchas Rule 3." if not passed else None
+    }
+
+def check_single_source_attribution():
+    """Rule 4: Facts tagged single_source: true must include attribution in every downstream appearance."""
+    intel = read_json_safe(f"{folder}/shared/bid/CLIENT_INTELLIGENCE.json") or {}
+    facts = intel.get("strategic_implications", []) + intel.get("market_intelligence", [])
+    single_source_facts = [f for f in facts if isinstance(f, dict) and f.get("single_source") is True]
+
+    violations = []
+    bid_text_blob = ""
+    for section in ["01_SUBMITTAL.md", "02_MANAGEMENT.md", "03_TECHNICAL.md",
+                    "04a_SOLUTION_*.md", "05_FINANCIAL.md", "06_INTEGRATION.md"]:
+        import glob as _g
+        for path in _g.glob(f"{folder}/outputs/bid-sections/{section}"):
+            bid_text_blob += read_file_safe(path) + "\n\n"
+
+    # HUNT-C-0010 fix 2026-05-18 (Grok consensus 2026-05-18 pushed back on
+    # token-broadening alone — added two-tier proximity check):
+    #   - VERBATIM source string match: allowed within 400 chars (wider — catches
+    #     footnote-style "Source: per Alaska Beacon" beyond an inline window).
+    #     Verbatim multi-word string is specific enough to avoid cross-source collision.
+    #   - TOKEN match (3-letter acronyms like FTA/BLS/GSA): restricted to 200 chars
+    #     ONLY (tight — prevents spurious match when another source's identical token
+    #     happens to appear within the wider 400-char neighborhood).
+    #   - Token filter: keep any token >= 2 chars that contains a letter (covers
+    #     acronyms; excludes pure punctuation/numbers).
+    import re as _re
+    for fact in single_source_facts:
+        figure   = (fact.get("figure") or fact.get("claim") or "").strip()
+        attrib   = (fact.get("source") or fact.get("attribution") or "").strip()
+        if not figure or not attrib:
+            continue
+        attrib_norm   = attrib.lower()
+        attrib_tokens = [t.lower() for t in _re.split(r"\W+", attrib)
+                         if len(t) >= 2 and _re.search(r"[A-Za-z]", t)]
+        for m in _re.finditer(_re.escape(figure), bid_text_blob):
+            # Tier 1: verbatim source string within 400-char outer window
+            outer_start = max(0, m.start() - 400)
+            outer_end   = min(len(bid_text_blob), m.end() + 400)
+            outer_window = bid_text_blob[outer_start:outer_end].lower()
+            if attrib_norm and attrib_norm in outer_window:
+                continue
+            # Tier 2: token match within tight 200-char inner window (cross-source-safe)
+            inner_start = max(0, m.start() - 200)
+            inner_end   = min(len(bid_text_blob), m.end() + 200)
+            inner_window = bid_text_blob[inner_start:inner_end].lower()
+            if attrib_tokens and any(tok in inner_window for tok in attrib_tokens):
+                continue
+            violations.append({
+                "figure": figure,
+                "expected_attribution": attrib,
+                "context": bid_text_blob[outer_start:outer_end][:300],
+                "issue": ("Single-source figure appears in bid without nearby attribution "
+                          "(checked verbatim source string within 400 chars and source tokens within 200 chars)")
+            })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-4-SINGLE-SOURCE-ATTRIBUTION",
+        "severity": "HIGH",
+        "passed": passed,
+        "details": (f"All {len(single_source_facts)} single-source facts attributed inline in every bid appearance." if passed
+                    else f"{len(violations)} appearances of single-source facts in bid lack inline attribution."),
+        "violations": violations if not passed else [],
+        "remediation": "Every downstream consumer of a fact tagged single_source:true MUST include attribution inline "
+                       "(e.g., 'per Alaska Beacon, April 2025') — not just the first appearance. See screen gotchas Rule 4." if not passed else None
+    }
+
+def check_score_evidence_vs_inference():
+    """Rule 5: score_breakdown criteria scored at/near MAX for their scale must have documented evidence."""
+    rtm         = read_json_safe(f"{folder}/shared/UNIFIED_RTM.json") or {}
+    positioning = read_json_safe(f"{folder}/shared/bid/POSITIONING_OUTPUT.json") or {}
+
+    # HUNT-C-0012 fix 2026-05-18: per-criterion score ceilings (matched against
+    # phase8.0-positioning-win.md scoring scale + project MEMORY.md Past-Project
+    # Scoring Phase 4). Threshold is "score >= 80% of criterion max" — catches
+    # near-max scores (which require evidence) without flagging every non-zero
+    # score (the prior `>= 2` blanket false-positived on score=2-of-15 tech).
+    CRITERION_MAX = {
+        "industry": 10, "technology": 15, "metrics": 5, "quote": 2, "recency": 5,
+        "scale": 3, "contract_type": 3, "dollar_proximity": 3, "geographic": 5,
+    }
+
+    violations = []
+    # Check past-project scoring in positioning
+    for proj in positioning.get("past_performance", []) or []:
+        breakdown = proj.get("score_breakdown") or {}
+        for criterion, value in breakdown.items():
+            score_val = value.get("score", value) if isinstance(value, dict) else value
+            if not isinstance(score_val, (int, float)):
+                continue
+            crit_max = CRITERION_MAX.get(criterion, 5)
+            evidence_threshold = max(2, int(crit_max * 0.8))  # 80% of max, never below 2
+            if score_val >= evidence_threshold:
+                evidence_note = (value.get("_score_evidence_note") if isinstance(value, dict) else None)
+                evidence      = (value.get("matches") if isinstance(value, dict) else None)
+                if not evidence_note and not evidence:
+                    violations.append({
+                        "project_id": proj.get("id") or proj.get("project_name"),
+                        "criterion": criterion,
+                        "score": score_val,
+                        "criterion_max": crit_max,
+                        "evidence_threshold": evidence_threshold,
+                        "issue": f"Criterion '{criterion}' scored {score_val}/{crit_max} (>= {evidence_threshold}, the 80%-of-max threshold) without `_score_evidence_note` or evidence list"
+                    })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-5-SCORE-EVIDENCE",
+        "severity": "HIGH",
+        "passed": passed,
+        "details": "All past-project scoring criteria with score >= 2 have documented evidence." if passed
+                   else f"{len(violations)} scoring criteria score >= 2 without evidence note or matches list.",
+        "violations": violations if not passed else [],
+        "remediation": "For each scoring criterion, if source doc doesn't contain evidence the criterion measures, score 0 or 1 "
+                       "(general/inferred), not max. Add `_score_evidence_note` field for inference-based scores. See screen gotchas Rule 5." if not passed else None
+    }
+
+def check_facts_vs_inferred_motivations():
+    """Rule 6: Claims about buyer intent not in RFP must be labeled [inference].
+    HUNT-C-0011 fix 2026-05-18: subject disambiguation — the prior implementation
+    flagged technical system-objective language ('the system aims to', 'the
+    integration seeks to maintain latency') as buyer-motivation claims, producing
+    several false-positives per run. New behavior: require a buyer-subject token
+    (agency name, "buyer", "client", "they", "the State", "department",
+    "evaluator") in the same sentence as the motivation verb; otherwise treat
+    as system/technical description and skip."""
+    intel       = read_json_safe(f"{folder}/shared/bid/CLIENT_INTELLIGENCE.json") or {}
+    positioning = read_json_safe(f"{folder}/shared/bid/POSITIONING_OUTPUT.json") or {}
+
+    MOTIVATION_VERBS = ["wants", "seeks", "is looking for", "prefers", "intends to", "aims to",
+                        "is trying to", "is motivated by", "is driven by"]
+    BUYER_SUBJECTS = ["buyer", "client", "agency", "department", "state of", "city of",
+                      "county of", "evaluator", "they ", "their ", "stakeholder", "decision-maker",
+                      "procurement", "the office of", "the bureau of", "the division of"]
+
+    # Pull buyer's actual name from client_intel if available, to add to subject tokens
+    buyer_name = (intel.get("buyer_name") or intel.get("organization") or "").lower().strip()
+
+    import re as _re
+
+    def _has_buyer_subject(sentence_lower, buyer_lower):
+        if buyer_lower and buyer_lower in sentence_lower:
+            return True
+        return any(sub in sentence_lower for sub in BUYER_SUBJECTS)
+
+    violations = []
+    for source_name, source_data in (("client_intel", intel), ("positioning", positioning)):
+        implications = source_data.get("strategic_implications", []) or source_data.get("buyer_motivations", [])
+        for item in implications:
+            if not isinstance(item, dict):
+                continue
+            text = (item.get("text") or item.get("claim") or "").lower()
+            labeled = item.get("type") == "inference" or "[inference]" in text or "inference" in (item.get("label") or "").lower()
+            if labeled or not text:
+                continue
+            # Split into sentences and check each for verb + buyer-subject co-occurrence.
+            sentences = _re.split(r"(?<=[.!?])\s+", text)
+            for sent in sentences:
+                if any(verb in sent for verb in MOTIVATION_VERBS) and _has_buyer_subject(sent, buyer_name):
+                    violations.append({
+                        "source": source_name,
+                        "claim": item.get("text", item.get("claim", ""))[:300],
+                        "matched_sentence": sent[:200],
+                        "issue": "Claim about buyer intent stated as fact (no [inference] label, and sentence has buyer-subject + motivation verb)"
+                    })
+                    break  # one violation per item is enough
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "TRACE-6-FACT-VS-INFERENCE",
+        "severity": "MEDIUM",
+        "passed": passed,
+        "details": "All buyer-intent claims either trace to RFP source or carry [inference] label." if passed
+                   else f"{len(violations)} buyer-motivation claims stated as fact without [inference] labeling.",
+        "violations": violations if not passed else [],
+        "remediation": "Any claim about buyer's intent NOT explicitly stated in RFP must be labeled `[inference]`. "
+                       "Use phrasing: 'The shift from X to Y is verified; the buyer's motivation is inference "
+                       "(possibilities include A, B, C)' — never assert one motivation as fact. See screen gotchas Rule 6." if not passed else None
+    }
+
+# Run all 6 traceability checks and append findings
+findings.append(check_contracting_client_vs_end_user())
+findings.append(check_regional_scope_qualifier_preservation())
+findings.append(check_internal_estimate_methodology())
+findings.append(check_single_source_attribution())
+findings.append(check_score_evidence_vs_inference())
+findings.append(check_facts_vs_inferred_motivations())
+```
+
+**Effect on disposition:** Any CRITICAL traceability rule failure (currently only Rule 1) cascades through `calculate_disposition()` in Step 3 to produce `BLOCK` — halting phase8e dispatch. HIGH failures (Rules 2, 3, 4, 5) produce `ADVISORY`. The MEDIUM rule (6) flags but does not block. This mirrors screen's halt-before-DOCX behavior, adapted for the win pipeline's downstream phase8e PDF render.
+
+---
 
 ### Step 3: Calculate Disposition
 

@@ -24,7 +24,7 @@ Generate a tabular requirements review response. Many RFPs include an "Attachmen
 - `{folder}/shared/UNIFIED_RTM.json` - Traceability (requirement → spec → bid section links)
 - `{folder}/shared/COMPLIANCE_MATRIX.json` - Mandatory items
 - `{folder}/outputs/bid-sections/03_TECHNICAL.md` - Technical approach (for cross-references)
-- `{folder}/outputs/bid-sections/04_SOLUTION.md` - Solution details (for cross-references)
+- `{folder}/outputs/bid-sections/04*.md` - Solution details (glob — matches 04a_SOLUTION_*.md, 04b_SOLUTION_*.md, 04_SOLUTION.md, etc.; V4-F11 fix 2026-05-18)
 
 ## Required Output
 
@@ -35,6 +35,8 @@ Generate a tabular requirements review response. Many RFPs include an "Attachmen
 ### Step 1: Load Data
 
 ```python
+import glob
+
 requirements = read_json(f"{folder}/shared/requirements-normalized.json")
 rtm = read_json_safe(f"{folder}/shared/UNIFIED_RTM.json")
 compliance = read_json(f"{folder}/shared/COMPLIANCE_MATRIX.json")
@@ -42,6 +44,16 @@ compliance = read_json(f"{folder}/shared/COMPLIANCE_MATRIX.json")
 all_reqs = requirements.get("requirements", [])
 rtm_reqs = rtm.get("entities", {}).get("requirements", []) if rtm else []
 rtm_specs = rtm.get("entities", {}).get("specifications", []) if rtm else []
+
+# V4-F11 fix 2026-05-18: load all 04*.md solution files via glob so split-file
+# layouts (04a_SOLUTION_Architecture.md, 04b_SOLUTION_Implementation.md, etc.)
+# are not silently missed. Previous singular 04_SOLUTION.md reference broke
+# under any RFP that required multi-volume solution detail.
+solution_md_files = sorted(glob.glob(f"{folder}/outputs/bid-sections/04*.md"))
+solution_content = ""
+for sf in solution_md_files:
+    solution_content += read_file(sf) + "\n\n"
+log(f"Loaded {len(solution_md_files)} solution file(s) for cross-reference: {[os.path.basename(f) for f in solution_md_files]}")
 ```
 
 ### Step 2: Build Response Matrix
@@ -92,7 +104,10 @@ for req in all_reqs:
         "req_id": req_id,
         "category": category,
         "priority": priority,
-        "requirement": text[:200],
+        # NO TRUNCATION — this is the evaluator-facing requirements review row.
+        # Markdown / PDF table cells wrap natively; slicing produces visible cut-offs
+        # in the bid submission. (Removed [:200] 2026-05-18.)
+        "requirement": text,
         "status": compliance_status,
         "response": response,
         "bid_reference": bid_ref

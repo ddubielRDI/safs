@@ -39,9 +39,16 @@ Aggregate all critical data from Stages 1-6 into a single comprehensive context 
 - `{folder}/shared/COMPLIANCE_MATRIX.json` - Mandatory items tracking
 - `{folder}/shared/REQUIREMENT_RISKS.json` - Risk assessments and mitigations
 - `{folder}/shared/bid/CLIENT_INTELLIGENCE.json` - Competitor and client research
-- `{folder}/shared/bid/POSITIONING_OUTPUT.json` - Win themes and differentiators
 
 **Optional (include if exists):**
+- `{folder}/shared/bid/POSITIONING_OUTPUT.json` - Win themes and differentiators
+  > V5-F7 fix 2026-05-18: POSITIONING_OUTPUT.json is produced by Phase 8.0 (Stage 7).
+  > At Stage 5 execution time this file does not exist and the bundle's
+  > `theme_eval_mapping`, `section_theme_mandates`, and `ghost_strategy` fields
+  > will be empty stubs. Phase 8.0 must re-update the bundle (or Phase 6c must be
+  > re-executed) before Stage 7 authoring begins. See backlog item BACK-{N} for
+  > the cleaner phase-ordering fix. Moved from Required to Optional so Phase 6c
+  > does not hard-fail when run before Phase 8.0.
 - `{folder}/shared/workflow-extracted-reqs.json` - Workflow requirements
 - `{folder}/shared/workflow-coverage.json` - Coverage metrics
 - `{folder}/shared/sample-data-analysis.json` - Data entity analysis
@@ -64,9 +71,11 @@ from pathlib import Path
 from datetime import datetime
 
 def load_json_safe(path):
-    """Load JSON file, return empty dict if not found."""
+    """Load JSON file, return empty dict if not found.
+    ENCODING DISCIPLINE: prefer skill-win.md's read_json_safe (UTF-8 explicit). This local
+    helper is retained for backwards compat with embedded snippets but enforces UTF-8 here too."""
     try:
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
@@ -96,9 +105,14 @@ unified_rtm = load_json_safe(f"{folder}/shared/UNIFIED_RTM.json")
 ### Step 2: Build Requirements Summary
 
 ```python
-def build_requirements_summary(requirements_data):
-    """Summarize requirements for bid context."""
-    reqs = requirements_data.get("requirements", [])
+def build_requirements_summary(requirements_data, rtm_data=None):
+    """Summarize requirements for bid context.
+    HUNT-B-001 + HUNT-B-002 fix 2026-05-18:
+      - `reqs = ... or []` guards explicit `null` upstream (not just missing key).
+      - coverage_claim sourced from RTM `verification.forward_coverage.bid_coverage_pct`
+        (Phase 4's authoritative computation) instead of from a status field that
+        no upstream phase populates. Single source of truth — RTM does the math."""
+    reqs = requirements_data.get("requirements") or []
 
     # Count by priority
     priority_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
@@ -112,69 +126,123 @@ def build_requirements_summary(requirements_data):
         cat = req.get("category", "OTHER")
         category_counts[cat] = category_counts.get(cat, 0) + 1
 
-    # Extract critical requirements for emphasis
+    # Extract critical requirements for emphasis.
+    # NO TRUNCATION on canonical requirement text — Stage 7 bid authors read this as
+    # authoritative; sliced text corrupts downstream bid content. (Removed [:200] 2026-05-18.)
     critical_reqs = [
         {
             "id": req.get("canonical_id"),
-            "text": req.get("text", "")[:200],  # Truncate for summary
+            "text": req.get("text", ""),
             "category": req.get("category")
         }
         for req in reqs if req.get("priority") == "CRITICAL"
-    ][:20]  # Top 20 critical
+    ][:20]  # Top 20 critical by count is fine — that's a list cap, not a string cap
+
+    # Coverage sourced from RTM verification (Phase 4's authoritative computation).
+    # `forward_coverage.bid_coverage_pct` = reqs_with_bid / total_reqs * 100.
+    # If RTM is missing (Stage 4 hasn't run yet, or Phase 6c runs in isolation),
+    # emit a transparent "not yet computed" claim rather than fabricating a number.
+    total_count = len(reqs)
+    if rtm_data and isinstance(rtm_data, dict):
+        rtm_v = rtm_data.get("verification", {})
+        fwd = rtm_v.get("forward_coverage", {})
+        bid_pct = fwd.get("bid_coverage_pct")
+        spec_pct = fwd.get("spec_coverage_pct")
+        reqs_with_bid = fwd.get("requirements_with_bid_sections")
+        reqs_total_rtm = fwd.get("requirements_total")
+        if bid_pct is not None and reqs_total_rtm:
+            if bid_pct >= 99.5:
+                coverage_claim = f"{bid_pct:.1f}% of requirements addressed in bid ({reqs_with_bid}/{reqs_total_rtm})"
+            else:
+                gap = reqs_total_rtm - (reqs_with_bid or 0)
+                coverage_claim = (f"{bid_pct:.1f}% of requirements addressed in bid "
+                                 f"({reqs_with_bid}/{reqs_total_rtm}; {gap} gap(s) — see UNIFIED_RTM.json forward_coverage)")
+            coverage_source = "rtm.verification.forward_coverage.bid_coverage_pct"
+        else:
+            coverage_claim = "Coverage not yet computed (RTM verification block incomplete)"
+            coverage_source = "unavailable"
+            bid_pct = None
+            spec_pct = None
+    else:
+        coverage_claim = ("Coverage not yet computed (UNIFIED_RTM.json unavailable — "
+                          "Phase 4 may not have completed yet)")
+        coverage_source = "unavailable"
+        bid_pct = None
+        spec_pct = None
 
     return {
-        "total": len(reqs),
+        "total": total_count,
         "by_priority": priority_counts,
         "by_category": category_counts,
         "critical_requirements": critical_reqs,
-        "coverage_claim": "100% of requirements addressed"
+        "coverage_claim": coverage_claim,
+        "coverage_source": coverage_source,
+        "bid_coverage_pct": bid_pct,
+        "spec_coverage_pct": spec_pct,
     }
 
-requirements_summary = build_requirements_summary(requirements)
+requirements_summary = build_requirements_summary(requirements, unified_rtm)
 ```
 
 ### Step 3: Build Risk Highlights
 
 ```python
 def build_risk_highlights(risks_data):
-    """Extract top risks with mitigations for bid narrative."""
-    all_risks = risks_data.get("risks", [])
+    """Extract top risks with mitigations for bid narrative.
+    HUNT-A-0002 fix 2026-05-18: read `rtm_risks` (the key Phase 3g/Phase 4 actually
+    emit) — the prior `risks` key was always empty, producing silent zero-risk
+    bid context. Field accesses below also corrected from `severity` → `risk_level`
+    and `mitigation` → `mitigation_strategies[]` per UNIFIED_RTM.json schema."""
+    all_risks = risks_data.get("rtm_risks", [])
 
-    # Sort by severity (HIGH first, then MEDIUM)
-    severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    # Sort by risk_level (CRITICAL/HIGH first). Field name aligned to UNIFIED_RTM.json
+    # schema (unified-rtm.schema.json:158) which uses `risk_level`, not `severity`.
+    # HUNT-A-0002 second-order fix 2026-05-18.
+    level_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
     sorted_risks = sorted(
         all_risks,
-        key=lambda r: severity_order.get(r.get("severity", "LOW"), 3)
+        key=lambda r: level_order.get(r.get("risk_level", "LOW"), 4)
     )
 
-    # Extract top 10 for bid integration
+    # Extract top 10 for bid integration. Mitigation structure matches schema:
+    # `mitigation_strategies[]` array (not a single `mitigation` dict).
     top_risks = []
     for risk in sorted_risks[:10]:
         top_risks.append({
             "id": risk.get("risk_id", risk.get("id")),
             "category": risk.get("category"),
+            "title": risk.get("title", ""),
             "description": risk.get("description", "")[:300],
-            "severity": risk.get("severity"),
-            "mitigation": {
-                "strategy": risk.get("mitigation", {}).get("strategy", ""),
-                "owner": risk.get("mitigation", {}).get("owner_role", ""),
-                "timeline": risk.get("mitigation", {}).get("timeline", ""),
-                "evidence": risk.get("mitigation", {}).get("evidence", [])[:3]
-            },
-            "residual_risk": risk.get("residual_risk", "low")
+            "risk_level": risk.get("risk_level"),
+            "likelihood": risk.get("likelihood"),
+            "impact": risk.get("impact"),
+            "mitigation_strategies": [
+                {
+                    "mitigation_id": m.get("mitigation_id"),
+                    "strategy": m.get("strategy", ""),
+                    "owner_role": m.get("owner_role", ""),
+                    "timeline": m.get("timeline", ""),
+                    "status": m.get("status"),
+                    "evidence_ids": m.get("evidence_ids", [])[:3],
+                    "bid_location": m.get("bid_location"),
+                }
+                for m in risk.get("mitigation_strategies", [])
+            ],
         })
 
-    # Summary counts
-    severity_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    # Summary counts by risk_level (matches schema enum)
+    level_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for risk in all_risks:
-        sev = risk.get("severity", "LOW")
-        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+        lvl = risk.get("risk_level", "LOW")
+        level_counts[lvl] = level_counts.get(lvl, 0) + 1
 
+    risks_with_mitigation = len([r for r in all_risks if r.get("mitigation_strategies")])
     return {
         "total_risks_assessed": len(all_risks),
-        "by_severity": severity_counts,
+        "by_risk_level": level_counts,
         "top_10_risks": top_risks,
-        "mitigation_coverage": f"{len([r for r in all_risks if r.get('mitigation')])} / {len(all_risks)} risks have mitigations"
+        "mitigation_coverage": (f"{risks_with_mitigation} / {len(all_risks)} risks have mitigation_strategies"
+                                if all_risks else "no risks in RTM")
     }
 
 risk_highlights = build_risk_highlights(risks)
@@ -255,6 +323,88 @@ def build_full_eval_mapping(evaluation_data, positioning_data):
     }
 
 full_eval_mapping = build_full_eval_mapping(evaluation, positioning)
+```
+
+### Step 4b.5: Build Content Priority Guide from RTM (relocated from Step 9b — bug-hunt 2026-05-18 HUNT-A-0001 fix)
+
+This block was originally numbered Step 9b but must run BEFORE Step 4c, which references `content_priority_guide` as an input. Keeping the original numbering would produce a guaranteed `NameError` at Step 4c. Moved here to fix forward-reference; the trailing Step 9b section is now a relocation note.
+
+```python
+def build_content_priority_guide(rtm_data):
+    """Extract composite priority scores from UNIFIED_RTM.json to guide bid content ordering."""
+
+    if not rtm_data:
+        return {
+            "available": False,
+            "note": "UNIFIED_RTM.json not available - using default content ordering"
+        }
+
+    rtm_reqs = rtm_data.get("entities", {}).get("requirements", [])
+    if not rtm_reqs:
+        return {"available": False, "note": "No requirements in RTM"}
+
+    # Sort by composite_priority_score descending
+    scored_reqs = sorted(rtm_reqs,
+        key=lambda r: r.get("composite_priority_score", 0), reverse=True)
+
+    # Top 30 requirements that should receive the most emphasis in bid.
+    # Key `text` here holds a 150-char slice for display ordering; downstream consumers
+    # that need the full text should read from UNIFIED_RTM.json entities.requirements[].text.
+    # (Renamed from `text_preview` 2026-05-18 HUNT-A-0004 — `_preview` suffix conflicted
+    # with phase2b's unrelated `ambiguous_requirements[].text_preview` field.)
+    top_requirements = [
+        {
+            "req_id": r["req_id"],
+            "category": r["category"],
+            "priority": r["priority"],
+            "composite_score": r.get("composite_priority_score", 0),
+            "evaluation_factor": r.get("evaluation_factor"),
+            "is_mandatory": bool(r.get("mandatory_item_ids")),
+            "text": r["text"][:150]
+        }
+        for r in scored_reqs[:30]
+    ]
+
+    # Category ordering by aggregate composite score
+    category_scores = {}
+    for r in rtm_reqs:
+        cat = r.get("category", "GENERAL")
+        score = r.get("composite_priority_score", 0)
+        if cat not in category_scores:
+            category_scores[cat] = {"total_score": 0, "count": 0}
+        category_scores[cat]["total_score"] += score
+        category_scores[cat]["count"] += 1
+
+    category_order = sorted(category_scores.items(),
+        key=lambda x: x[1]["total_score"], reverse=True)
+
+    # Chain completeness summary
+    chains = rtm_data.get("chain_links", [])
+    chain_summary = {
+        "total": len(chains),
+        "complete": sum(1 for c in chains if c.get("status") == "COMPLETE"),
+        "partial": sum(1 for c in chains if c.get("status") == "PARTIAL"),
+        "broken": sum(1 for c in chains if c.get("status") == "BROKEN"),
+        "avg_score": round(sum(c.get("completeness_score", 0) for c in chains) / len(chains), 3) if chains else 0
+    }
+
+    return {
+        "available": True,
+        "top_30_requirements": top_requirements,
+        "category_content_order": [
+            {"category": cat, "total_score": info["total_score"], "req_count": info["count"]}
+            for cat, info in category_order
+        ],
+        "chain_completeness": chain_summary,
+        "bid_content_instruction": (
+            "Order bid content by category_content_order. Within each category, "
+            "address top_30_requirements first with the most detail and evidence. "
+            "Requirements with is_mandatory=true MUST be explicitly addressed with "
+            "a clear compliance statement."
+        )
+    }
+
+content_priority_guide = build_content_priority_guide(unified_rtm)
 ```
 
 ### Step 4c: Build Section Content Guide
@@ -532,81 +682,9 @@ def build_win_probability(win_scorecard_data):
 win_probability = build_win_probability(win_scorecard)
 ```
 
-### Step 9b: Build Content Priority Guide from RTM (NEW)
+### Step 9b: Build Content Priority Guide from RTM — RELOCATED
 
-```python
-def build_content_priority_guide(rtm_data):
-    """Extract composite priority scores from UNIFIED_RTM.json to guide bid content ordering."""
-
-    if not rtm_data:
-        return {
-            "available": False,
-            "note": "UNIFIED_RTM.json not available - using default content ordering"
-        }
-
-    rtm_reqs = rtm_data.get("entities", {}).get("requirements", [])
-    if not rtm_reqs:
-        return {"available": False, "note": "No requirements in RTM"}
-
-    # Sort by composite_priority_score descending
-    scored_reqs = sorted(rtm_reqs,
-        key=lambda r: r.get("composite_priority_score", 0), reverse=True)
-
-    # Top 30 requirements that should receive the most emphasis in bid
-    top_requirements = [
-        {
-            "req_id": r["req_id"],
-            "category": r["category"],
-            "priority": r["priority"],
-            "composite_score": r.get("composite_priority_score", 0),
-            "evaluation_factor": r.get("evaluation_factor"),
-            "is_mandatory": bool(r.get("mandatory_item_ids")),
-            "text_preview": r["text"][:150]
-        }
-        for r in scored_reqs[:30]
-    ]
-
-    # Category ordering by aggregate composite score
-    category_scores = {}
-    for r in rtm_reqs:
-        cat = r.get("category", "GENERAL")
-        score = r.get("composite_priority_score", 0)
-        if cat not in category_scores:
-            category_scores[cat] = {"total_score": 0, "count": 0}
-        category_scores[cat]["total_score"] += score
-        category_scores[cat]["count"] += 1
-
-    category_order = sorted(category_scores.items(),
-        key=lambda x: x[1]["total_score"], reverse=True)
-
-    # Chain completeness summary
-    chains = rtm_data.get("chain_links", [])
-    chain_summary = {
-        "total": len(chains),
-        "complete": sum(1 for c in chains if c.get("status") == "COMPLETE"),
-        "partial": sum(1 for c in chains if c.get("status") == "PARTIAL"),
-        "broken": sum(1 for c in chains if c.get("status") == "BROKEN"),
-        "avg_score": round(sum(c.get("completeness_score", 0) for c in chains) / len(chains), 3) if chains else 0
-    }
-
-    return {
-        "available": True,
-        "top_30_requirements": top_requirements,
-        "category_content_order": [
-            {"category": cat, "total_score": info["total_score"], "req_count": info["count"]}
-            for cat, info in category_order
-        ],
-        "chain_completeness": chain_summary,
-        "bid_content_instruction": (
-            "Order bid content by category_content_order. Within each category, "
-            "address top_30_requirements first with the most detail and evidence. "
-            "Requirements with is_mandatory=true MUST be explicitly addressed with "
-            "a clear compliance statement."
-        )
-    }
-
-content_priority_guide = build_content_priority_guide(unified_rtm)
-```
+This step has been MOVED to Step 4b.5 above (bug-hunt 2026-05-18 HUNT-A-0001 fix). Step 4c references `content_priority_guide` as an input, so the assignment must execute before Step 4c. Leaving this section as a deliberate breadcrumb so future maintainers don't re-introduce the forward-reference bug.
 
 ### Step 10: Assemble Final Bundle
 
@@ -700,10 +778,12 @@ context_bundle = assemble_context_bundle()
 # Ensure bid subdirectory exists
 Path(f"{folder}/shared/bid").mkdir(parents=True, exist_ok=True)
 
-# Write the context bundle
+# Write the context bundle.
+# ENCODING DISCIPLINE: UTF-8 + ensure_ascii=False so em dashes survive round-trip.
+# (See skill-win.md "Required Helper Functions" section.)
 output_path = f"{folder}/shared/bid-context-bundle.json"
-with open(output_path, 'w') as f:
-    json.dump(context_bundle, f, indent=2)
+with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
+    json.dump(context_bundle, f, indent=2, ensure_ascii=False)
 
 log(f"Context bundle written to: {output_path}")
 ```
@@ -775,8 +855,8 @@ After creation, verify the bundle:
 # Check file exists and has content
 ls -la {folder}/shared/bid-context-bundle.json
 
-# Verify JSON is valid
-python -c "import json; json.load(open('{folder}/shared/bid-context-bundle.json'))"
+# Verify JSON is valid (UTF-8 explicit per encoding discipline)
+python -c "import json; json.load(open('{folder}/shared/bid-context-bundle.json', encoding='utf-8'))"
 
 # Check source count
 grep '"source_count"' {folder}/shared/bid-context-bundle.json

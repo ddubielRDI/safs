@@ -131,7 +131,10 @@ Extract per result: name, title, source, note (certifications, responsibilities)
 # Load Phase 1 tech intelligence for informed search (backward-compatible)
 rfp_tech_intel = rfp_summary.get("tech_intelligence", {})
 phase1_stacks = rfp_tech_intel.get("technology_stacks", [])
-primary_stack_name = phase1_stacks[0].get("name", "") if phase1_stacks else ""
+# Phase 1 writes the canonical key "stack_name" (phase1-summary.md:1137-1148), not "name".
+# Reading the wrong key produced "" on every run -- the second Category C search
+# (line 140) silently fell back to "IT modernization" instead of the discovered stack.
+primary_stack_name = phase1_stacks[0].get("stack_name", "") if phase1_stacks else ""
 ```
 
 ```

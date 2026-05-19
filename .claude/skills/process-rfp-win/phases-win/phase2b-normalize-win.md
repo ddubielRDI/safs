@@ -118,6 +118,14 @@ def deduplicate_requirements(requirements, threshold=0.85):
                     if "merged_sources" not in existing:
                         existing["merged_sources"] = [existing.get("source")]
                     existing["merged_sources"].append(req.get("source"))
+                # V2-F1 fix 2026-05-18: also merge source_ids so RTM traceability
+                # survives dedup. Without this, requirements that appeared in
+                # multiple flattened docs lost all but one source citation.
+                incoming_ids = req.get("source_ids", [])
+                if incoming_ids:
+                    existing.setdefault("source_ids", []).extend(
+                        sid for sid in incoming_ids if sid not in existing.get("source_ids", [])
+                    )
                 break
 
         if not is_duplicate:
@@ -143,11 +151,23 @@ def validate_requirement(req):
         issues.append("Too short (< 20 chars)")
         score -= 20
 
-    # Check for testable verb
-    testable_verbs = ["shall", "must", "will", "should"]
-    if not any(verb in text.lower() for verb in testable_verbs):
-        issues.append("Missing testable verb (shall/must/will)")
+    # Check for testable verb.
+    # V2-F4 fix 2026-05-18: split into mandatory and advisory. Conflating SHALL
+    # and SHOULD lets advisory-only requirements pass validation, then they
+    # bubble up to CRITICAL/HIGH priority and inflate the compliance matrix.
+    # Now: advisory requirements pass validation but are explicitly flagged
+    # and reduced in score so reviewers see them.
+    text_lower = text.lower()
+    mandatory_verbs = ["shall", "must", "will"]
+    advisory_verbs = ["should"]
+    has_mandatory = any(verb in text_lower for verb in mandatory_verbs)
+    has_advisory = any(verb in text_lower for verb in advisory_verbs)
+    if not has_mandatory and not has_advisory:
+        issues.append("Missing testable verb (shall/must/will/should)")
         score -= 15
+    elif has_advisory and not has_mandatory:
+        issues.append("Advisory requirement — verify priority cap")
+        score -= 10
 
     # Check for ambiguous terms
     ambiguous = ["appropriate", "reasonable", "adequate", "etc", "as needed", "user-friendly"]
@@ -253,7 +273,14 @@ for req in unique_requirements:
     if req["ambiguity_analysis"]["needs_clarification"]:
         ambiguous_requirements.append({
             "id": req.get("canonical_id", "N/A"),
-            "text": req.get("text", "")[:100] + "...",
+            # SCHEMA NOTE (HUNT-A-0003 doc fix 2026-05-18): the field is `text_preview`,
+            # NOT `text`. Display-only preview for human-readable ambiguity list. Full
+            # canonical text is preserved on the source requirement object in the
+            # parent `requirements[]` array (look up by `id` if needed). The
+            # `_preview` suffix is intentional and the value is intentionally truncated
+            # to ~100 chars to keep the review list scannable. Do not rename without
+            # auditing every consumer of `requirements-normalized.json.ambiguous_requirements[]`.
+            "text_preview": req.get("text", "")[:100] + ("..." if len(req.get("text", "")) > 100 else ""),
             "ambiguity_score": req["ambiguity_analysis"]["ambiguity_score"],
             "review_priority": req["ambiguity_analysis"]["review_priority"],
             "issues": [a["category"] for a in req["ambiguity_analysis"]["ambiguities"]]
@@ -291,8 +318,21 @@ unique_requirements = assign_canonical_ids(unique_requirements, domain_context)
 
 ```python
 def assign_priority(req):
-    """Assign priority based on requirement characteristics."""
+    """Assign priority based on requirement characteristics.
+
+    V2-F4 fix 2026-05-18: SHOULD-only requirements (advisory) MUST cap at MEDIUM.
+    Previously, "should" was conflated with SHALL keywords, sending advisory items
+    to CRITICAL/HIGH and inflating the mandatory compliance matrix.
+    """
     text_lower = req["text"].lower()
+
+    # Advisory check FIRST — SHOULD without SHALL/MUST/required/mandatory caps at MEDIUM
+    is_advisory_only = (
+        "should" in text_lower
+        and not any(m in text_lower for m in ["shall", "must", "required", "mandatory"])
+    )
+    if is_advisory_only:
+        return "MEDIUM"  # Ceiling for advisory requirements
 
     # Critical indicators
     critical = ["mandatory", "required", "must", "critical", "essential", "compliance", "security"]

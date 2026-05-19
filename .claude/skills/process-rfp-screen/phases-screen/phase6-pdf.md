@@ -18,6 +18,18 @@ skill: publication-specialist
 
 ---
 
+## ⛔ Renderer Discipline (BLOCKING — read before improvising)
+
+Two recurring bugs caused user-visible quality failures and MUST be prevented on every run:
+
+**1. NO truncation on table cells.** Do NOT slice cell content with `[:N]` in any markdown row or python-docx `add_table` row. Markdown viewers and python-docx both word-wrap automatically. Past truncation produced cut-offs such as `Tyler Technologies Common Check` (should have been `…Common Checkout Page (CCP) for fee payment processing`) and `contract vehicle —` (tail removed). The only allowed transformation on cell text is escaping pipes: `text.replace("|", "\\|")` for markdown rows.
+
+**2. UTF-8 everywhere.** Every `open()` in this phase — for reading JSON, writing markdown, or producing the DOCX — MUST use `encoding='utf-8'` (and `ensure_ascii=False` for JSON dumps). On Windows the default encoding is cp1252 and silently turns UTF-8 em-dash bytes (`E2 80 94`) into `â€"` mojibake. The skill-screen.md "Required Helper Functions" section defines `read_json` / `write_json` / `read_file` / `write_file` with the correct encoding — USE THEM. Do not write a bare `open(path, "w") as f` line.
+
+**3. Do not invent appendix tables.** This phase file is the source of truth for which sections render. If a prior run produced an extra table (e.g., a "Compliance-to-Evaluation Point Impact" cross-reference) that is NOT specified here, you improvised it — and likely truncated cells in the process. Ask before adding sections beyond what is documented below.
+
+---
+
 ## Instructions
 
 ### Step 1: Load Consolidated Data
@@ -379,7 +391,11 @@ risk_count = 0
 
 for idx, item in enumerate(compliance_items, 1):
     status = item.get("status", "UNKNOWN")
-    req = item.get("requirement", "")[:80]
+    # NO TRUNCATION on table cells — markdown viewers wrap; truncation has caused
+    # user-visible cut-offs like "Tyler Technologies Common Check" instead of
+    # "Tyler Technologies Common Checkout Page (CCP) for fee payment processing".
+    # Only escape pipe chars so the markdown table doesn't break.
+    req = item.get("requirement", "").replace("|", "\\|")
     strength = item.get("requirement_strength", "mandatory")  # mandatory | desirable
     confidence = item.get("confidence_tier", "Unknown")       # Verified | Documented | Inferred | Claimed | Unknown
     md += f"| {idx} | {req} | {strength} | {status} | {confidence} |\n"
@@ -854,7 +870,7 @@ def add_so_what(doc, text):
     content.font.color.rgb = NAVY
     return p
 
-def set_cell_text(cell, text, bold=False, color=None, size=Pt(9)):
+def set_cell_text(cell, text, bold=False, color=None, size=Pt(10)):
     """Set cell text with formatting."""
     cell.text = ""
     p = cell.paragraphs[0]
@@ -869,21 +885,21 @@ def add_table_from_data(doc, headers, rows, style="Light Grid Accent 1"):
     """Add a formatted table. headers = list of strings, rows = list of lists."""
     table = doc.add_table(rows=1, cols=len(headers), style=style)
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    # Header row
+    # Header row — Pt(10) matches body text per user directive (2026-05-18).
     for i, h in enumerate(headers):
-        set_cell_text(table.rows[0].cells[i], h, bold=True, color=NAVY, size=Pt(9))
-    # Data rows
+        set_cell_text(table.rows[0].cells[i], h, bold=True, color=NAVY, size=Pt(10))
+    # Data rows — Pt(10) (table content must match body weight, not be diminished).
     for row_data in rows:
         row = table.add_row()
         for i, val in enumerate(row_data):
             if isinstance(val, tuple):
                 # (text, color) tuple for colored cells
-                set_cell_text(row.cells[i], val[0], color=val[1], size=Pt(9))
+                set_cell_text(row.cells[i], val[0], color=val[1], size=Pt(10))
             else:
-                set_cell_text(row.cells[i], str(val), size=Pt(9))
+                set_cell_text(row.cells[i], str(val), size=Pt(10))
     return table
 
-def add_bullet(doc, text, color=None, size=Pt(9)):
+def add_bullet(doc, text, color=None, size=Pt(10)):
     """Add a bullet point with standard formatting."""
     bp = doc.add_paragraph(style="List Bullet")
     run = bp.add_run(text)
@@ -929,11 +945,13 @@ add_styled_heading(doc, "RFP Bid Screening Report", level=1)
 add_body_paragraph(doc, report_subtitle, color=GRAY, size=Pt(11))
 add_body_paragraph(doc, f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')} | Mode: {'Quick' if bid_screen.get('screening_mode') == 'quick' else 'Full'}", color=GRAY, size=Pt(9))
 
-# Historical RFP banner -- FIRST thing when deadline_passed is true
-deadline_passed = rfp.get("deadline_passed", False)
+# Historical RFP banner -- FIRST thing when deadline_passed is true.
+# Phase 2 (gonogo) is the producer (phase2-gonogo.md Step 5 / DEADLINE-NEUTRAL SCORING block).
+# Fall back to rfp_summary for backward compatibility with older runs.
+deadline_passed = gonogo.get("deadline_passed", rfp.get("deadline_passed", False))
 if deadline_passed:
     p = doc.add_paragraph()
-    run = p.add_run(f"HISTORICAL SCREENING -- Deadline passed {rfp.get('submission_deadline', 'N/A')}. Analysis validates capability for similar future opportunities.")
+    run = p.add_run(f"HISTORICAL SCREENING -- Deadline passed {gonogo.get('submission_deadline', rfp.get('submission_deadline', 'N/A'))}. Analysis validates capability for similar future opportunities.")
     run.font.name = "Calibri"
     run.font.size = Pt(11)
     run.bold = True
@@ -1133,8 +1151,10 @@ if non_pass_items:
     comp_rows = []
     for item in non_pass_items:
         s = item.get("status", "UNKNOWN")
+        # NO TRUNCATION — python-docx wraps cell content. Truncation produced
+        # visible cut-offs like "Tyler Technologies Common Check..." in past runs.
         comp_rows.append([
-            item.get("requirement", "")[:80],
+            item.get("requirement", ""),
             item.get("category", "General"),
             (s, status_color(s))
         ])
@@ -1486,7 +1506,9 @@ if buyer_priorities:
         name = bp_item.get("name", "Unknown")
         importance = bp_item.get("importance", "?")
         eval_crit = bp_item.get("evaluation_criterion", "N/A")
-        signal = bp_item.get("signal", "")[:80]
+        # NO TRUNCATION — python-docx wraps. Past [:80] truncation buried the
+        # decision-relevant tail of buyer-priority signals.
+        signal = bp_item.get("signal", "")
 
         if name in addressed_list and name in theme_covered:
             coverage = "STRONG"
@@ -1630,24 +1652,28 @@ else:
 # Check DOCX
 if os.path.exists(docx_path):
     size_kb = os.path.getsize(docx_path) / 1024
-    if size_kb < 30:
-        log(f"WARNING: BID_SCREEN.docx only {size_kb:.1f}KB -- may be incomplete")
-        # Retry once
-        doc.save(f"{folder}/screen/BID_SCREEN.docx")
-        size_kb = os.path.getsize(docx_path) / 1024
-
     log(f"BID_SCREEN.docx: {size_kb:.1f}KB")
     if size_kb < 30:
-        log("ERROR: BID_SCREEN.docx still below 30KB after retry")
+        # The earlier retry pattern (`doc.save(...)` again) was a no-op: same in-memory
+        # Document produces the same file. If size is below threshold, the assembly is
+        # genuinely incomplete -- log diagnostics so the user can see WHY, rather than
+        # pretending a retry helped.
+        paragraph_count = len(doc.paragraphs)
+        table_count = len(doc.tables)
+        log(f"WARNING: BID_SCREEN.docx only {size_kb:.1f}KB -- below 30KB target")
+        log(f"  Diagnostics: {paragraph_count} paragraphs, {table_count} tables in assembled doc")
+        log("  Audit phase outputs: check that every Phase 6 section actually rendered "
+            "(some sections only render when upstream data is present -- e.g. Win Themes "
+            "skipped when preliminary-themes.json is empty).")
 else:
     log("ERROR: BID_SCREEN.docx not generated")
-    log("Attempting retry with python-docx...")
+    log("Attempting save with python-docx...")
     try:
         doc.save(f"{folder}/screen/BID_SCREEN.docx")
         size_kb = os.path.getsize(docx_path) / 1024
-        log(f"Retry succeeded: {size_kb:.1f}KB")
+        log(f"Save succeeded on retry: {size_kb:.1f}KB")
     except Exception as e:
-        log(f"Retry failed: {e}")
+        log(f"Save failed: {e}")
         log("Fallback: BID_SCREEN.json is still available as machine-readable output")
 ```
 

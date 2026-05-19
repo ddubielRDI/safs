@@ -21,7 +21,7 @@ Generate a comprehensive, human-readable metrics report from the persistent `pip
 |-------|------|----------|
 | Pipeline Metrics | `config-win/pipeline-metrics.json` | YES |
 
-**Relative to skill directory:** `/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/`
+**Relative to skill directory:** `${CLAUDE_SKILL_DIR}` (resolved at runtime)
 
 ## Output
 
@@ -36,7 +36,15 @@ If no `{folder}` is provided, output to the skill directory: `config-win/PIPELIN
 ### Step 1: Load Metrics Data
 
 ```python
-metrics_file = "/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/pipeline-metrics.json"
+import os
+try:
+    _file_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+except NameError:
+    _file_fallback = None
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or _file_fallback
+if not SKILL_DIR:
+    raise RuntimeError("CLAUDE_SKILL_DIR env var not set and __file__ unavailable — cannot resolve skill directory")
+metrics_file = f"{SKILL_DIR}/config-win/pipeline-metrics.json"
 metrics = read_json(metrics_file)
 
 if not metrics.get("runs") or len(metrics["runs"]) == 0:

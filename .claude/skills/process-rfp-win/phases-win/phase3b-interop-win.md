@@ -58,10 +58,12 @@ DOMAIN_SYSTEMS = {
         {"name": "ESD Systems", "type": "Regional Service", "protocol": "REST API"}
     ],
     "healthcare": [
-        {"name": "Epic/Cerner", "type": "EHR", "protocol": "HL7 FHIR"},
-        {"name": "Lab Systems", "type": "Laboratory", "protocol": "HL7 v2"},
-        {"name": "Pharmacy", "type": "Prescription", "protocol": "NCPDP"},
-        {"name": "Insurance", "type": "Payer", "protocol": "X12 EDI"}
+        # V1-F5 fix 2026-05-18: protocols now specify sub-versions with source citation.
+        # Defaults are conservative minimums — RFP may mandate newer; scan step below checks.
+        {"name": "Epic/Cerner", "type": "EHR", "protocol": "HL7 FHIR R4", "_source": "HL7 FHIR R4 is the normative published version (R5 published 2023); verify R5 if RFP requires"},
+        {"name": "Lab Systems", "type": "Laboratory", "protocol": "HL7 v2.5.1", "_source": "IHE minimum; verify v2.9 if RFP requires newer"},
+        {"name": "Pharmacy", "type": "Prescription", "protocol": "NCPDP SCRIPT 2017071", "_source": "Federally required for ePrescribing per CMS; verify newer if RFP specifies"},
+        {"name": "Insurance", "type": "Payer", "protocol": "X12 5010", "_source": "Federally required for HIPAA transactions per CMS"}
     ],
     "default": [
         {"name": "ERP System", "type": "Enterprise", "protocol": "REST API"},
@@ -72,6 +74,39 @@ DOMAIN_SYSTEMS = {
 
 domain = domain_context.get("selected_domain", "default")
 external_systems = DOMAIN_SYSTEMS.get(domain, DOMAIN_SYSTEMS["default"])
+
+# V1-F5 fix 2026-05-18: scan normalized requirements for explicit protocol
+# versions BEFORE applying the conservative defaults above. If the RFP cites
+# a specific version (e.g., "HL7 v2.9", "FHIR R5", "NCPDP SCRIPT 2023011",
+# "X12 7030"), override the defaults so we don't propose a stale version.
+import re as _re
+all_req_text = " ".join(
+    req.get("text", "") + " " + req.get("full_context", "")
+    for req in requirements.get("requirements", [])
+).lower()
+
+PROTOCOL_VERSION_PATTERNS = {
+    "HL7 v2": _re.compile(r"hl7\s*v?(\d+\.\d+(?:\.\d+)?)", _re.IGNORECASE),
+    "HL7 FHIR": _re.compile(r"fhir\s*r?(\d+)", _re.IGNORECASE),
+    "NCPDP SCRIPT": _re.compile(r"ncpdp\s*(?:script\s*)?(\d{6,7})", _re.IGNORECASE),
+    "X12": _re.compile(r"x12\s*(\d{4})", _re.IGNORECASE),
+}
+
+detected_versions = {}
+for label, pattern in PROTOCOL_VERSION_PATTERNS.items():
+    matches = pattern.findall(all_req_text)
+    if matches:
+        detected_versions[label] = sorted(set(matches), reverse=True)[0]
+        log(f"  Protocol version detected from RFP: {label} {detected_versions[label]}")
+
+# Apply detected versions to external_systems entries
+for system in external_systems:
+    proto = system.get("protocol", "")
+    for label, detected in detected_versions.items():
+        if label.lower() in proto.lower():
+            system["protocol_detected_from_rfp"] = f"{label} {detected}"
+            system["protocol"] = system["protocol_detected_from_rfp"]  # override default
+            system["_source"] = f"Detected from RFP requirements text — overrides default"
 ```
 
 ### Step 3: Generate Integration Specifications

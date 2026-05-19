@@ -18,6 +18,36 @@ You are a **Visual Design Engineer** with deep expertise in:
 
 Render all Mermaid diagrams (.mmd) to PNG images for PDF inclusion.
 
+## Diagram Quality Criteria (MANDATORY)
+
+Every diagram produced by this phase MUST be evaluator-readable. A diagram that renders successfully but doesn't communicate the architecture is a failure. NEW-V4-F12 added 2026-05-18 per user priority #3.
+
+### Visual Standards
+- **Font size:** Minimum 14pt for text in diagrams meant to be printed on Letter paper at 1:1 scale. Verify by checking that node labels are legible at 50% zoom.
+- **Contrast:** WCAG 2.2 AA minimum (4.5:1 for text, 3:1 for graphical elements against background). Avoid pale-on-white or red-on-red combinations.
+- **Color choices:** Use a palette that is colorblind-safe (Okabe-Ito or Wong palette). Do NOT rely on color alone to convey meaning — include text labels.
+- **Aspect ratio:** Target 4:3 or 16:9 for landscape diagrams; 8.5:11 for portrait. Avoid extreme wide diagrams that get scaled down too small in PDF.
+
+### Communication Standards
+- **Title:** Every diagram has a descriptive title that names the system AND the view (e.g., "MARS Hosted SaaS — Logical Architecture (Component View)" not just "Architecture").
+- **Legend:** If symbols/colors carry meaning, include a legend. No assumed conventions.
+- **Labels:** Every node has a non-trivial label. "Module A / Module B" is unacceptable — name the actual component.
+- **Annotations:** Highlight 1-3 key flows or decisions with callout boxes (e.g., "Tyler/NIC Oregon integration — server-redirect pattern per ADR-007").
+- **Source citation:** Bottom-right corner watermark with "Source: ARCHITECTURE.md / ADR-{N} / {date}".
+
+### Mermaid-Specific
+- Use `classDef` to apply consistent styling per component category (data, service, gateway, external system).
+- For sequence diagrams, label both message lines AND lifelines.
+- For flowcharts, use decision diamonds with explicit yes/no branch labels — no orphan arrows.
+- For Gantt charts, ensure critical path is highlighted in a distinct color and key milestones are labeled.
+
+### Verification Step
+After rendering each diagram:
+1. Save a PNG at the target print resolution (300 DPI for Letter paper = 2550×3300 px).
+2. Verify font legibility at 100% scale.
+3. If any text is illegible, increase font_size and re-render — do not ship illegible diagrams.
+
+
 ## Inputs
 
 - `{folder}/outputs/bid/*.mmd` - Mermaid source files
@@ -94,8 +124,19 @@ gantt_config = {
 **CRITICAL: Run npx from skill directory to avoid polluting RFP folder with package.json**
 
 ```bash
-# SKILL_DIR contains npm cache - keeps RFP folder clean
-SKILL_DIR="/home/ddubiel/repos/safs/.claude/skills/process-rfp-win"
+# V4-F9 fix 2026-05-18: CLAUDE_SKILL_DIR is set by Claude Code at skill load
+# time, but bash subshells and re-invocations sometimes don't inherit it.
+# Fall back to the absolute skill path so this phase never silently fails
+# with "cd: : No such file or directory" when the env var is empty.
+if [ -z "${CLAUDE_SKILL_DIR:-}" ]; then
+    SKILL_DIR="C:/Resource Data/WSL/safs/.claude/skills/process-rfp-win"
+else
+    SKILL_DIR="${CLAUDE_SKILL_DIR}"
+fi
+if [ ! -d "$SKILL_DIR" ]; then
+    echo "ERROR: SKILL_DIR not set or directory missing"
+    exit 1
+fi
 BID_DIR="{folder}/outputs/bid"
 
 # Render architecture diagram (using absolute paths)
@@ -103,8 +144,10 @@ cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/architecture.mmd" \
   -o "$BID_DIR/architecture.png" \
   -b white \
-  -w 1200 \
-  --scale 2
+  -w 1920 \
+  -H 1080 \
+  --scale 2 \
+  --backgroundColor white
 
 # Verify output
 ls -la "$BID_DIR/architecture.png"
@@ -113,13 +156,17 @@ ls -la "$BID_DIR/architecture.png"
 ### Step 4: Render Timeline/Gantt Chart
 
 ```bash
-# Render Gantt chart (using absolute paths from skill directory)
+# Render Gantt chart (using absolute paths from skill directory).
+# NEW-V4-F12 fix 2026-05-18: standardized output to 1920x1080 white background
+# for consistent quality across all diagrams.
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/timeline.mmd" \
   -o "$BID_DIR/timeline.png" \
   -b white \
-  -w 1400 \
-  --scale 2
+  -w 1920 \
+  -H 1080 \
+  --scale 2 \
+  --backgroundColor white
 
 # Verify output
 ls -la "$BID_DIR/timeline.png"
@@ -128,13 +175,16 @@ ls -la "$BID_DIR/timeline.png"
 ### Step 5: Render Org Chart
 
 ```bash
-# Render org chart (using absolute paths from skill directory)
+# Render org chart (using absolute paths from skill directory).
+# NEW-V4-F12 fix 2026-05-18: standardized to 1920x1080 white background.
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/orgchart.mmd" \
   -o "$BID_DIR/orgchart.png" \
   -b white \
-  -w 1000 \
-  --scale 2
+  -w 1920 \
+  -H 1080 \
+  --scale 2 \
+  --backgroundColor white
 
 # Verify output
 ls -la "$BID_DIR/orgchart.png"
@@ -356,18 +406,23 @@ Output directory: {folder}/outputs/bid/
 **IMPORTANT: Always run from skill directory to avoid polluting RFP folder with package.json/package-lock.json**
 
 ```bash
-# All rendering commands for reference:
-SKILL_DIR="/home/ddubiel/repos/safs/.claude/skills/process-rfp-win"
+# All rendering commands for reference. NEW-V4-F12 + V4-F9 fix 2026-05-18:
+# fallback SKILL_DIR and consistent 1920x1080 output for evaluator-quality.
+if [ -z "${CLAUDE_SKILL_DIR:-}" ]; then
+    SKILL_DIR="C:/Resource Data/WSL/safs/.claude/skills/process-rfp-win"
+else
+    SKILL_DIR="${CLAUDE_SKILL_DIR}"
+fi
 BID_DIR="{folder}/outputs/bid"
 
 # Architecture (flowchart)
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.png" -b white -w 1200 --scale 2
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 
 # Timeline (Gantt)
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.png" -b white -w 1400 --scale 2
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 
 # Org Chart (flowchart)
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.png" -b white -w 1000 --scale 2
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 ```
 
 ## Quality Checklist
@@ -381,3 +436,4 @@ cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$B
 - [ ] Each caption is persuasive (action-oriented), not merely descriptive
 - [ ] Figure numbers are sequential (1, 2, 3...)
 - [ ] Section cross-references point to correct bid sections
+- [ ] **Diagram Quality Criteria met** (see top-of-file section): >= 14pt fonts, WCAG 2.2 AA contrast, colorblind-safe palette, descriptive titles with view names, legend present when symbols/colors carry meaning, source citation watermark, classDef-based consistent styling

@@ -37,7 +37,9 @@ if not combined_text or len(combined_text.strip()) < 500:
         error("ABORT: source-manifest.json not found -- Phase 0 must run first")
         halt()
 
-    manifest = json.load(open(manifest_path))
+    # ENCODING DISCIPLINE: explicit utf-8 — see skill-screen.md "Required Helper Functions".
+    with open(manifest_path, "r", encoding="utf-8") as _mf:
+        manifest = json.load(_mf)
     log("  Re-reading source documents from manifest...")
 
     # Re-convert documents to rebuild combined text
@@ -1071,7 +1073,9 @@ company_profile_path = COMPANY_PROFILE
 rdi_services = []
 if os.path.exists(company_profile_path):
     try:
-        cp = _json.load(open(company_profile_path))
+        # ENCODING DISCIPLINE: explicit utf-8.
+        with open(company_profile_path, "r", encoding="utf-8") as _cpf:
+            cp = _json.load(_cpf)
         # services is DICT not list -- flatten all categories
         services_data = cp.get("services", {})
         if isinstance(services_data, dict):
@@ -1233,8 +1237,9 @@ else:
 import json
 
 output_path = f"{folder}/screen/rfp-summary.json"
-with open(output_path, "w") as f:
-    json.dump(rfp_summary, f, indent=2)
+# ENCODING DISCIPLINE: utf-8 + ensure_ascii=False so em dashes are not corrupted on re-read.
+with open(output_path, "w", encoding="utf-8", newline="\n") as f:
+    json.dump(rfp_summary, f, indent=2, ensure_ascii=False)
 
 output_size = os.path.getsize(output_path)
 log(f"  Written: screen/rfp-summary.json ({output_size / 1024:.1f} KB)")

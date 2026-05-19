@@ -175,11 +175,23 @@ if preliminary_themes:
         })
 
 # --- Trigger Source 8: High-point eval criteria without decomposed subfactors (Batch 3) ---
+# IMPORTANT: subfactors do NOT live on point_allocation entries. Phase 1 stores them at
+# rfp_summary.evaluation_subfactors[]: each entry has {criterion, weight, subfactors[]}.
+# Build a name->subfactors map and join by criterion name so the "opaque criterion" trigger
+# only fires when subfactors are TRULY absent (not just absent from the wrong key).
 evaluation_model = rfp_summary.get("evaluation_model", {})
 point_allocation = evaluation_model.get("point_allocation", [])
+
+_evaluation_subfactors = rfp_summary.get("evaluation_subfactors", [])
+_subfactor_map = {
+    (sf.get("criterion") or "").strip().lower(): (sf.get("subfactors") or [])
+    for sf in _evaluation_subfactors if isinstance(sf, dict)
+}
+
 for criterion in point_allocation:
     criterion_points = criterion.get("points", 0)
-    subfactors = criterion.get("subfactors", [])
+    criterion_name_key = (criterion.get("criterion") or "").strip().lower()
+    subfactors = _subfactor_map.get(criterion_name_key, [])
     # Flag high-point criteria (>=200 points) that lack subfactors — these are opaque to bidders
     if criterion_points >= 200 and len(subfactors) == 0:
         triggers.append({
@@ -336,9 +348,17 @@ client_tone = go_nogo.get("client_tone", {})
 primary_style = client_tone.get("primary_style", "formal_bureaucratic")
 mirroring_vocab = client_tone.get("mirroring_vocabulary", [])
 adaptation_rules = client_tone.get("adaptation_rules", {})
-formality_level = adaptation_rules.get("formality_level", "formal")
-preferred_terms = adaptation_rules.get("preferred_terms", [])
+# NOTE: Phase 1 writes adaptation_rules.prefer_terms (NOT "preferred_terms") and
+# formality_level at client_tone top level (NOT inside adaptation_rules).
+# Convert numeric 1-5 to a prose label for the LLM prompt.
+preferred_terms = adaptation_rules.get("prefer_terms", [])
 avoid_terms = adaptation_rules.get("avoid_terms", [])
+formality_int = int(client_tone.get("formality_level", 3) or 3)
+formality_level = ("very informal" if formality_int <= 1
+                   else "informal" if formality_int == 2
+                   else "moderate" if formality_int == 3
+                   else "formal" if formality_int == 4
+                   else "highly formal")
 
 # Build the LLM prompt
 question_prompt = f"""You are a Senior Capture Manager preparing clarifying questions for a client Q&A period.
@@ -368,7 +388,7 @@ question_prompt = f"""You are a Senior Capture Manager preparing clarifying ques
 - Mirror these client vocabulary terms where natural: {', '.join(mirroring_vocab[:10]) if mirroring_vocab else 'N/A'}
 - Preferred terms: {', '.join(preferred_terms[:5]) if preferred_terms else 'N/A'}
 - Terms to avoid: {', '.join(avoid_terms[:5]) if avoid_terms else 'N/A'}
-- Match formality: {"Use formal, structured language with precise references" if formality_level == "formal" else "Use clear, direct language with a collaborative tone"}
+- Match formality: {"Use formal, structured language with precise references" if formality_level in ("formal", "highly formal") else "Use clear, direct language with a collaborative tone"}
 - If the client's style is prescriptive/directive, frame questions as seeking clarification on specifics.
   If the client's style is collaborative, frame questions as seeking to understand partnership expectations.
 

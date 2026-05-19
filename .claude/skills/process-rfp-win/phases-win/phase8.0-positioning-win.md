@@ -366,6 +366,7 @@ def select_matching_projects(past_projects_md, domain_context, requirements, com
 
     # Zero-match fallback handling
     fallback_warning = None
+    scored_count = len(scored_projects)
 
     # Edge case: no projects parsed from Past_Projects.md
     if not final_projects:
@@ -374,7 +375,9 @@ def select_matching_projects(past_projects_md, domain_context, requirements, com
             "Verify the file exists and follows the expected ## Project N: format. "
             "Downstream phases will use generic company capability statements instead."
         )
-        return [], fallback_warning
+        # V4-F6 fix 2026-05-18: return the scored count so Step 6 can report
+        # "total_projects_evaluated" without reaching into a local that's out of scope.
+        return [], fallback_warning, scored_count
 
     # Warn if fewer than 3 projects scored >10
     strong_matches = [p for p in final_projects if p["relevance_score"] > 10]
@@ -385,9 +388,12 @@ def select_matching_projects(past_projects_md, domain_context, requirements, com
             f"override_projects in company-profile.json for this bid."
         )
 
-    return final_projects, fallback_warning
+    return final_projects, fallback_warning, scored_count
 
-matched_projects, match_warning = select_matching_projects(
+# V4-F6 fix 2026-05-18: unpack 3-tuple. scored_count replaces the prior
+# `len(scored_projects) if 'scored_projects' in dir() else 0` hack that
+# unreliably reached into the function's local scope.
+matched_projects, match_warning, scored_count = select_matching_projects(
     past_projects_md, domain_context, requirements, company
 )
 ```
@@ -968,7 +974,10 @@ positioning_output = {
         for mp in matched_projects
     ],
     "match_metadata": {
-        "total_projects_evaluated": len(scored_projects) if 'scored_projects' in dir() else 0,
+        # V4-F6 fix 2026-05-18: use returned scored_count from select_matching_projects.
+        # Prior `len(scored_projects) if 'scored_projects' in dir() else 0` always
+        # evaluated to 0 because scored_projects is a function-local variable.
+        "total_projects_evaluated": scored_count,
         "projects_selected": len(matched_projects),
         "match_warning": match_warning,
         "_internal_source": "Past_Projects.md",  # internal only -- NEVER include in bid output

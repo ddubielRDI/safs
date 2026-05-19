@@ -40,7 +40,7 @@ None (technical validation gate, not a color team review).
 
 ## Rule Definitions
 
-Rules are loaded from `/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/sva-rules-registry.json` under `svas.SVA-1.rules`. Six rules total:
+Rules are loaded from `${CLAUDE_SKILL_DIR}/config-win/sva-rules-registry.json` under `svas.SVA-1.rules`. Six rules total:
 
 | Rule ID | Severity | Description |
 |---------|----------|-------------|
@@ -66,22 +66,30 @@ from datetime import datetime
 from pathlib import Path
 
 def load_json(path):
-    """Load JSON file. Raise if missing (required input)."""
-    with open(path, 'r') as f:
+    """Load JSON file. Raise if missing (required input).
+    ENCODING DISCIPLINE: UTF-8 explicit — prefer skill-win.md's read_json."""
+    with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 def load_json_safe(path):
-    """Load JSON file. Return empty dict if missing (optional)."""
+    """Load JSON file. Return empty dict if missing (optional).
+    ENCODING DISCIPLINE: UTF-8 explicit — prefer skill-win.md's read_json_safe."""
     try:
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 # Load SVA rules registry
-registry = load_json(
-    "/home/ddubiel/repos/safs/.claude/skills/process-rfp-win/config-win/sva-rules-registry.json"
-)
+import os
+try:
+    _file_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+except NameError:
+    _file_fallback = None
+SKILL_DIR = os.environ.get("CLAUDE_SKILL_DIR") or _file_fallback
+if not SKILL_DIR:
+    raise RuntimeError("CLAUDE_SKILL_DIR env var not set and __file__ unavailable — cannot resolve skill directory")
+registry = load_json(f"{SKILL_DIR}/config-win/sva-rules-registry.json")
 sva1_rules = {r["id"]: r for r in registry["svas"]["SVA-1"]["rules"] if r.get("enabled", True)}
 
 # Load Stage 1 artifacts
@@ -630,10 +638,10 @@ report = {
 # Ensure validation directory exists
 Path(f"{folder}/shared/validation").mkdir(parents=True, exist_ok=True)
 
-# Write report
+# Write report (UTF-8 + ensure_ascii=False — see skill-win.md helpers).
 output_path = f"{folder}/shared/validation/sva1-intake.json"
-with open(output_path, 'w') as f:
-    json.dump(report, f, indent=2)
+with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
+    json.dump(report, f, indent=2, ensure_ascii=False)
 ```
 
 ### Step 12: Report Results

@@ -76,6 +76,10 @@ evaluator_messages = context.get("evaluator_messages", positioning.get("evaluato
 section_content_guide = context.get("section_content_guide", {})
 content_priority_guide = context.get("content_priority_guide", {})
 
+# V4-F7 fix 2026-05-18: load ghost_strategy so management proposal weaves
+# competitive contrast (especially in Sections 2 governance and 5 past performance).
+ghost_strategy = context.get("ghost_strategy", positioning.get("ghost_strategy", {}))
+
 # Identify management-relevant eval factors
 # Look for factors containing keywords: management, experience, qualifications, staffing, team, past performance
 mgmt_keywords = ["management", "experience", "qualification", "staff", "team", "past performance", "personnel", "organizational"]
@@ -149,6 +153,8 @@ Before writing, review `section_content_guide` for any management-related sectio
 4. Integrate `evaluator_messages` messaging tailored to the primary evaluator persona for that section
 
 **Evaluator Message Integration:** For each section, identify the most relevant evaluator persona (EXECUTIVE for Company Overview, OPERATIONAL for OCM, RISK for Governance) and weave in that persona's `key_message` and `proof_points` from `evaluator_messages`.
+
+**Ghost Strategy Integration:** Use `ghost_strategy.counter_narratives[]` to insert competitive contrast language. Use `ghost_strategy.ghost_phrases[]` to subtly position against incumbent without naming them. Ghost phrases must appear at least once per major win theme.
 
 Write comprehensive management proposal with these sections (order sections by evaluation weight where the RFP structure permits):
 
@@ -406,3 +412,4 @@ Output: outputs/bid-sections/02_MANAGEMENT.md
 - [ ] `evaluator_messages` integrated: EXECUTIVE (S1), RISK (S2), TECHNICAL (S3), OPERATIONAL (S4)
 - [ ] `content_priority_guide` used to prioritize highest-impact requirements first
 - [ ] Theme coverage verified: every theme appears >= 2 times across document
+- [ ] At least one ghost phrase per major win theme woven into differentiator sections

@@ -4,6 +4,45 @@ Known pitfalls discovered through use or audit. Read before running the pipeline
 
 ---
 
+## File encoding MUST be UTF-8 — Windows cp1252 corrupts em dashes to `â€"` mojibake
+
+**Status:** ACTIVE — REGRESSED 2026-05-18 in `rfp-mars-screen` BID_SCREEN.docx
+**Symptom:** BID_SCREEN.md and BID_SCREEN.docx contain `â€"` (3 chars: â + € + ") wherever the source had an em dash `—`. Example seen: `"structural competitor â€" Tyler"`.
+**Cause:** A `read_json` / `read_file` / generated `.py` script called `open(path)` WITHOUT `encoding='utf-8'`. On Windows, Python defaults to `cp1252`. UTF-8 em-dash bytes (`E2 80 94`) get decoded as three cp1252 chars (`â€"`), then re-serialized that way.
+**Confirmation procedure:**
+```python
+with open('clarifying-questions.json', 'rb') as f: raw = f.read()
+# Look for UTF-8 em dash bytes (correct):
+b'\xe2\x80\x94' in raw   # True if file is clean
+with open('BID_SCREEN.json', 'rb') as f: raw2 = f.read()
+# Look for JSON-escaped mojibake (bug):
+b'\\u00e2\\u20ac\\u201d' in raw2  # True if corrupted
+```
+**Resolution:** Use ONLY the helpers defined in `skill-screen.md` "Required Helper Functions" section — `read_json` / `write_json` / `read_file` / `write_file`. Never write bare `open(path, "w") as f`. For inline Python in Bash, prepend `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` so prints don't crash on em-dashes either.
+**Repair existing output:** If BID_SCREEN.json is already mojibaked, run a one-shot repair (replace `â€”` → `—` in the raw JSON text), then re-run Phase 6 to regenerate MD + DOCX from the cleaned data.
+
+---
+
+## Table cell font is Pt(10), not Pt(9)
+
+**Status:** ACTIVE — user directive 2026-05-18
+**Symptom:** User flags "why the hell is font size 9?" when tables render at Pt(9).
+**Cause:** Earlier defaults in `set_cell_text(... size=Pt(9))` and `add_bullet(... size=Pt(9))` made table content visually subordinate to body. User wants tables to read as primary content.
+**Resolution:** Defaults are Pt(10) for table headers, data cells, and bullets in tier-1/2 sections. Reserve Pt(8)–Pt(9) for tier-3 appendix reference content and small footnotes only (scoring legend, generated-date stamp).
+**Where enforced:** `phase6-pdf.md` `add_table_from_data` (header + data) and `add_bullet` defaults.
+
+---
+
+## Tables must NOT truncate cell content with `[:N]` slicing
+
+**Status:** ACTIVE — REGRESSED 2026-05-18 in `rfp-mars-screen` Compliance-to-Evaluation table
+**Symptom:** Markdown / DOCX table cells end mid-word. Example seen: `Solution must integrate with Tyler Technologies Common Check` (should have been `…Common Checkout Page (CCP) for fee payment processing`).
+**Cause:** `phase6-pdf.md` historically truncated requirement / signal cells with `[:80]`. Live `.phase6-render.py` even used `[:60]` for an improvised "Compliance-to-Evaluation Point Impact" table not in the spec.
+**Resolution:** NEVER slice cell content for tables. Both markdown viewers and python-docx wrap long cell text natively. Only allowed transformation is escaping pipes in markdown: `text.replace("|", "\\|")`.
+**Improvisation guard:** Do not add appendix tables that are not specified in `phase6-pdf.md`. Ask the user before adding new sections. Every prior incident of cell truncation traced to an improvised table.
+
+---
+
 ## `services` in company-profile.json is a DICT, not a list
 
 **Status:** ACTIVE

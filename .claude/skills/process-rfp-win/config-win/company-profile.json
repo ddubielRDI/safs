@@ -209,7 +209,9 @@
     "overhead_rate_percent": 15,
     "profit_margin_percent": 10,
     "last_updated": "2026-01-01",
-    "rate_source": "GSA IT Schedule 70 / Industry benchmarks"
+    "rate_source": "GSA Multiple Award Schedule (MAS) IT Category / Industry benchmarks (formerly IT Schedule 70, consolidated 2020)",
+    "source_url": "https://www.gsa.gov/buy-through-us/products-and-services/technology-products-services",
+    "rate_expiry_notice": "Refresh annually; current rates valid through 2027-01-01. V4-F5 fix 2026-05-18: 'IT Schedule 70' was retired in 2020 as part of GSA consolidation into MAS IT Category — citation updated to current schedule name."
   },
 
   "key_personnel": {

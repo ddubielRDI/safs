@@ -93,13 +93,14 @@ def flatten_addendum(addendum_path, folder):
         )
         content = result.stdout
     elif addendum_path.endswith('.md'):
-        with open(addendum_path, 'r') as f:
+        # ENCODING DISCIPLINE (skill-win.md): UTF-8 explicit; cp1252 corrupts em dashes.
+        with open(addendum_path, 'r', encoding='utf-8') as f:
             content = f.read()
     else:
         raise ValueError(f"Unsupported addendum format: {addendum_path}")
 
-    # Write flattened content
-    with open(output_path, 'w') as f:
+    # Write flattened content (UTF-8 + LF — see skill-win.md "Required Helper Functions")
+    with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(content)
 
     return output_path, content
@@ -161,7 +162,8 @@ def load_requirements_baseline(folder):
 
     baseline_path = f"{folder}/shared/requirements-normalized.json"
 
-    with open(baseline_path, 'r') as f:
+    # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).
+    with open(baseline_path, 'r', encoding='utf-8') as f:
         baseline_data = json.load(f)
 
     return baseline_data
@@ -279,7 +281,9 @@ def analyze_spec_impact(modifications, additions, folder):
             if spec not in impacted_specs:
                 impacted_specs[spec] = []
             impacted_specs[spec].append({
-                "requirement_text": req.get("text", "")[:100],
+                # NO TRUNCATION on canonical requirement text in impact analysis JSON —
+                # downstream consumers read this as authoritative. (Removed [:100] 2026-05-18.)
+                "requirement_text": req.get("text", ""),
                 "change_type": "modification" if "modified" in change else "addition",
                 "category": category
             })
@@ -307,7 +311,8 @@ def analyze_traceability_impact(modifications, folder):
     if not Path(traceability_path).exists():
         return {"exists": False, "impacted_entries": 0}
 
-    with open(traceability_path, 'r') as f:
+    # ENCODING DISCIPLINE: UTF-8 explicit (see skill-win.md helpers).
+    with open(traceability_path, 'r', encoding='utf-8') as f:
         traceability_content = f.read()
 
     impacted_entries = []
@@ -390,10 +395,10 @@ def update_requirements_baseline(baseline, modifications, additions, folder):
     baseline["summary"]["total_input"] = len(updated_reqs)
     baseline["summary"]["valid_requirements"] = len(updated_reqs)
 
-    # Write updated baseline
+    # Write updated baseline (UTF-8 + ensure_ascii=False so em dashes survive round-trip).
     output_path = f"{folder}/shared/requirements-normalized.json"
-    with open(output_path, 'w') as f:
-        json.dump(baseline, f, indent=2)
+    with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
+        json.dump(baseline, f, indent=2, ensure_ascii=False)
 
     return baseline, output_path
 
@@ -519,9 +524,9 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 """
 
-    # Write report
+    # Write report (UTF-8 + LF — see skill-win.md helpers).
     report_path = f"{folder}/shared/addendum-impact-report.md"
-    with open(report_path, 'w') as f:
+    with open(report_path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(report)
 
     return report_path
@@ -551,15 +556,18 @@ def save_analysis_results(folder, modifications, additions, clarifications, impa
         "modifications": [
             {
                 "original_id": m["original"].get("canonical_id"),
-                "original_text": m["original"].get("text", "")[:200],
-                "modified_text": m["modified"].get("text", "")[:200],
+                # NO TRUNCATION — addendum-analysis.json is machine-readable; downstream
+                # phases that re-apply modifications need canonical text. (HUNT-B-005 fix
+                # 2026-05-18 — Tranche D missed these three sites.)
+                "original_text": m["original"].get("text", ""),
+                "modified_text": m["modified"].get("text", ""),
                 "similarity": m["similarity"]
             }
             for m in modifications
         ],
         "additions": [
             {
-                "text": a["requirement"].get("text", "")[:200],
+                "text": a["requirement"].get("text", ""),
                 "category": a["requirement"].get("category", "TEC"),
                 "closest_existing_similarity": a.get("closest_similarity", 0)
             }
@@ -580,8 +588,9 @@ def save_analysis_results(folder, modifications, additions, clarifications, impa
     }
 
     output_path = f"{folder}/shared/addendum-analysis.json"
-    with open(output_path, 'w') as f:
-        json.dump(analysis, f, indent=2)
+    # ENCODING DISCIPLINE: UTF-8 + ensure_ascii=False (see skill-win.md helpers).
+    with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
+        json.dump(analysis, f, indent=2, ensure_ascii=False)
 
     return output_path
 

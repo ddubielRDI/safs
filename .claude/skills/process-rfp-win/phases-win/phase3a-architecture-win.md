@@ -109,7 +109,9 @@ def classify_by_layer(requirements):
             if any(kw in text_lower for kw in layer["keywords"]):
                 layer["components"].append({
                     "req_id": req.get("canonical_id"),
-                    "description": req.get("text", "")[:200]
+                    # HUNT-B-010 fix 2026-05-18: removed [:200] truncation. Storage-side
+                    # truncation was redundant and corrupted text for any other consumer.
+                    "description": req.get("text", "")
                 })
                 assigned = True
                 break
@@ -117,7 +119,7 @@ def classify_by_layer(requirements):
         if not assigned:
             ARCHITECTURE_LAYERS["business"]["components"].append({
                 "req_id": req.get("canonical_id"),
-                "description": req.get("text", "")[:200]
+                "description": req.get("text", "")
             })
 
     return ARCHITECTURE_LAYERS
@@ -125,92 +127,148 @@ def classify_by_layer(requirements):
 layers = classify_by_layer(arch_requirements)
 ```
 
-### Step 4: Generate Technology Stack
+### Step 4: Generate Technology Stack — EVIDENCE-BACKED LTS LOOKUP (BLOCKING)
+
+**⛔ CRITICAL — NO HARDCODED VERSIONS. NO TRAINING-DATA GUESSES.** This step has a documented history of regression: agents have proposed `.NET 8` (EOL Nov 2026) and `.NET 9` (STS, EOL May 2026) because of training-data knowledge cutoffs and stale example code that used to live in this file. The fix is structural: build the stack via lookup-then-record, and refuse to proceed without the recorded evidence file.
+
+**The contract lifecycle rule (non-negotiable):**
+
+> Every proposed component's vendor-supported end-of-life MUST be ≥ `(go_live_date + contract_years + 2)`. For a 5-year contract starting 2026, that is 2033 at minimum. Components that fall short are REJECTED — propose the next supported version.
+
+**The procedure:**
 
 ```python
-def recommend_tech_stack(domain, requirements):
-    """Recommend technology stack based on domain and requirements.
+def query_lts_for_component(category, component_name, contract_years=5):
+    """Resolve the latest vendor-supported version + EOL date for one component.
 
-    ⚠️ CRITICAL: ALL proposed technologies MUST have active vendor support
-    (LTS or equivalent) extending AT MINIMUM through the full contract period
-    PLUS 2 years of post-deployment maintenance.
-
-    NEVER propose a technology version that reaches End-of-Life within 3 years.
-    For .NET: Always propose the latest LTS version with 3+ years of remaining support.
-    For Node.js/React: Always propose the current LTS version.
-    For databases: Always propose the current GA version with active support.
-
-    USE WEB SEARCH to verify current LTS versions and their EOL dates before recommending.
+    MANDATORY: This function MUST issue a real WebFetch / WebSearch call.
+    A return value that lacks `source_url` and `fetched_at` is INVALID and the
+    phase must HALT, not proceed.
     """
-    stack = {
-        "frontend": [],
-        "backend": [],
-        "database": [],
-        "infrastructure": [],
-        "integration": []
+    # Authoritative sources by component family (extend as needed)
+    AUTHORITATIVE_SOURCES = {
+        ".net":        "https://learn.microsoft.com/en-us/dotnet/core/releases-and-support/",
+        "asp.net":     "https://learn.microsoft.com/en-us/dotnet/core/releases-and-support/",
+        "node":        "https://nodejs.org/en/about/previous-releases",
+        "node.js":     "https://nodejs.org/en/about/previous-releases",
+        "react":       "https://react.dev/blog",  # combine with npm registry for LTS tag
+        "next.js":     "https://nextjs.org/blog",
+        "postgresql":  "https://www.postgresql.org/support/versioning/",
+        "sql server":  "https://learn.microsoft.com/en-us/lifecycle/products/?products=sql-server",
+        "azure sql":   "https://learn.microsoft.com/en-us/azure/azure-sql/",
+        "java":        "https://www.oracle.com/java/technologies/java-se-support-roadmap.html",
+        "kubernetes":  "https://kubernetes.io/releases/",
+        "python":      "https://devguide.python.org/versions/",
     }
 
-    # ⚠️ MANDATORY: Web search for current LTS versions before proposing anything.
-    # Example: Search ".NET LTS versions end of life schedule {current_year}"
-    # Example: Search "React LTS release schedule {current_year}"
-    # NEVER hardcode a specific version number without verifying its EOL date.
-
-    # Domain-specific recommendations (versions are EXAMPLES — verify via web search)
-    if domain == "education":
-        stack["frontend"] = ["React/Next.js (latest LTS)", "Tailwind CSS (latest stable)", "TypeScript (latest stable)"]
-        stack["backend"] = ["ASP.NET Core (latest LTS with 3+ years support)", "C# (latest stable)", "Entity Framework Core (latest stable)"]
-        stack["database"] = ["SQL Server / Azure SQL (current GA)", "Redis Cache (latest stable)"]
-        stack["infrastructure"] = ["Azure App Service", "Azure SQL", "Azure AD B2C"]
-        stack["integration"] = ["Azure Service Bus", "REST APIs", "SFTP"]
-    elif domain == "healthcare":
-        stack["frontend"] = ["React (latest LTS)", "Material-UI (latest stable)", "TypeScript (latest stable)"]
-        stack["backend"] = ["ASP.NET Core (latest LTS with 3+ years support)", "C# (latest stable)", "EF Core (latest stable)"]
-        stack["database"] = ["SQL Server / Azure SQL (current GA)", "Azure Cosmos DB"]
-        stack["infrastructure"] = ["Azure (HIPAA compliant)", "Azure Key Vault"]
-        stack["integration"] = ["HL7 FHIR", "Azure API Management"]
+    family_url = AUTHORITATIVE_SOURCES.get(component_name.lower())
+    if not family_url:
+        # Fall back to general WebSearch for unrecognized component
+        evidence = web_search(
+            f"{component_name} LTS schedule end of life {datetime.now().year}"
+        )
     else:
-        # Generic stack
-        stack["frontend"] = ["React (latest LTS)", "TypeScript (latest stable)", "Tailwind CSS (latest stable)"]
-        stack["backend"] = ["ASP.NET Core (latest LTS with 3+ years support)", "C# (latest stable)"]
-        stack["database"] = ["PostgreSQL (latest GA)", "Redis (latest stable)"]
-        stack["infrastructure"] = ["Azure/AWS", "Docker", "Kubernetes"]
-        stack["integration"] = ["REST APIs", "Message Queue"]
+        evidence = web_fetch(family_url, prompt=(
+            f"List ALL currently supported {component_name} versions with their "
+            f"support classification (LTS / STS / preview) and end-of-life dates. "
+            f"Identify the most recent LTS release. Return version, classification, "
+            f"GA date, EOL date, support_url."
+        ))
 
-    return stack
+    if not evidence or "eol_date" not in evidence:
+        raise PhaseHalt(
+            f"PHASE 3A HALT — could not verify lifecycle for {component_name}. "
+            f"DO NOT proceed with a guessed version. Resolve the lookup first."
+        )
 
-tech_stack = recommend_tech_stack(domain, all_reqs)
+    return {
+        "component": component_name,
+        "category": category,
+        "recommended_version": evidence["latest_lts_version"],
+        "classification": evidence["classification"],  # MUST be "LTS" for primary runtimes
+        "ga_date": evidence["ga_date"],
+        "eol_date": evidence["eol_date"],
+        "min_required_eol": (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
+        "passes_contract_lifecycle": evidence["eol_date"] >= (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
+        "source_url": evidence["source_url"],
+        "fetched_at": datetime.now().isoformat(),
+    }
 
-# ⚠️ MANDATORY: Validate technology lifecycle BEFORE writing architecture document
-def validate_tech_lifecycle(tech_stack, contract_years=5):
+
+def build_tech_stack(domain, requirements, contract_years=5):
+    """Construct the tech stack via per-component lookup. NO hardcoded versions.
+
+    The component LIST per layer may be domain-flavored (e.g. healthcare adds
+    HL7 FHIR, government adds StateRAMP-aligned services), but VERSIONS come
+    from query_lts_for_component() at runtime — never from this file.
     """
-    MANDATORY VALIDATION: Every proposed technology must have active
-    LTS/vendor support extending through contract_period + 2 years.
+    layers_needed = {
+        "frontend":      ["react", "typescript"],            # add Next.js, Tailwind per domain
+        "backend":       [".net", "asp.net"],                # OR java, OR node — pick based on RDI capability + RFP
+        "database":      ["sql server"],                     # OR postgresql — pick based on RFP / domain
+        "infrastructure": ["azure"],                          # OR AWS — pick based on company-profile.json
+        "integration":   [],                                  # populated by Phase 3b
+    }
 
-    USE WEB SEARCH to verify:
-    1. Current LTS version for each technology
-    2. End-of-life date for each proposed version
-    3. That EOL date is AFTER (today + contract_years + 2 years)
+    # Domain overlays (component LIST only, never versions)
+    if domain == "healthcare":
+        layers_needed["integration"].append("HL7 FHIR")
+    if domain in ("government", "gov", "state-government", "local-government"):
+        # CIS Controls IG2 + StateRAMP context, no version constraint
+        pass
 
-    If a technology fails validation:
-    - Propose the next LTS version instead
-    - If no suitable LTS exists, flag as RISK in the architecture document
+    stack_evidence = []
+    for layer, components in layers_needed.items():
+        for component in components:
+            stack_evidence.append(query_lts_for_component(layer, component, contract_years))
 
-    NEVER propose a technology that expires mid-contract. This is a
-    disqualifying error in government proposals.
-    """
-    min_support_date = datetime.now().year + contract_years + 2
+    # HARD GATE — any component that fails the lifecycle check halts the phase
+    failed = [c for c in stack_evidence if not c["passes_contract_lifecycle"]]
+    if failed:
+        for c in failed:
+            log(f"  ⛔ FAIL — {c['component']} {c['recommended_version']} EOL {c['eol_date']} < required {c['min_required_eol']}")
+        raise PhaseHalt(
+            f"PHASE 3A HALT — {len(failed)} component(s) cannot meet contract+2yr lifecycle. "
+            f"Pick the next supported version (often the upcoming LTS) and re-run."
+        )
 
-    for category, technologies in tech_stack.items():
-        for tech in technologies:
-            # Web search: "{tech} end of life schedule"
-            # Verify: EOL date > min_support_date
-            # If not: Replace with next LTS version
-            pass  # AI must perform actual web search verification
+    return stack_evidence
 
-    return tech_stack
 
-tech_stack = validate_tech_lifecycle(tech_stack)
+# Build the stack with full evidence.
+# V1-F2 fix 2026-05-18: contract_years now reads from domain_context if present,
+# so multi-year vs annual contracts produce different lifecycle gates.
+contract_years = domain_context.get("contract_years", 5)
+tech_stack_evidence = build_tech_stack(domain, all_reqs, contract_years=contract_years)
+
+# ⛔ MANDATORY — write evidence to disk. SVA-3 rule SVA3-TECH-STACK-LTS-VERIFIED
+# will fail BLOCK if this file is missing, stale (>7 days), or contains any
+# component with passes_contract_lifecycle=false.
+#
+# V1-F2 fix 2026-05-18: min_required_eol is now (contract_years + 2), not the
+# previously hardcoded 7. A 3-year contract no longer demands a 7-year EOL.
+write_json(f"{folder}/shared/tech-lifecycle-evidence.json", {
+    "generated_at": datetime.now().isoformat(),
+    "contract_years": contract_years,
+    "min_required_eol": (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
+    "components": tech_stack_evidence,
+})
+
+# Build the legacy `tech_stack` dict that downstream code uses, but every
+# entry is `"{component} {recommended_version} (LTS, EOL {eol_date})"` — the
+# version is BAKED FROM EVIDENCE, never from training data.
+tech_stack = {"frontend": [], "backend": [], "database": [], "infrastructure": [], "integration": []}
+for c in tech_stack_evidence:
+    label = f"{c['component']} {c['recommended_version']} ({c['classification']}, EOL {c['eol_date']})"
+    tech_stack[c["category"]].append(label)
 ```
+
+**Why this is structural, not advisory:**
+
+- The `query_lts_for_component()` function CANNOT return without `source_url` + `fetched_at` — there is no quiet fall-through to a guessed version.
+- `build_tech_stack()` HALTS the phase if any component fails the contract+2yr lifecycle check. Downstream agents never see a stale stack.
+- `tech-lifecycle-evidence.json` is the on-disk audit trail. SVA-3 cross-checks it; without the file, SVA-3 BLOCKS the phase regardless of how good the ARCHITECTURE.md prose looks.
+- The per-domain examples that used to be here (`stack["backend"] = ["ASP.NET Core (latest LTS with 3+ years support)"]`) have been removed because they read as version-agnostic to a human but were rendered as `.NET 8` by agents whose training data was older than the file claimed. Stale example code is anchoring bias — it has no place in a procedure that must reflect current reality.
 
 ### Step 5: Generate Architecture Document
 
@@ -335,9 +393,14 @@ def generate_security_section(domain):
 ## Security Architecture
 
 ### Authentication
-- Azure AD B2C / Identity Server for user authentication
+- Azure AD B2C / Microsoft Entra External ID / Okta — identity provider selected per RFP requirements and verified-current vendor LTS
 - JWT tokens with 15-minute expiry
 - Refresh token rotation
+
+<!-- V1-F7 fix 2026-05-18: removed "Identity Server" — IS4 reached EOL July 2022;
+     IS5/6/7 (Duende) requires commercial license. Replaced with managed IdPs
+     that have active vendor support and clear licensing. -->
+
 
 ### Authorization
 - Role-Based Access Control (RBAC)
@@ -425,23 +488,35 @@ def generate_adr_section():
 
 ## Architecture Decision Records
 
-### ADR-001: Use ASP.NET Core 8
-**Status:** Accepted
-**Context:** Need modern, performant backend framework
-**Decision:** ASP.NET Core 8 with C#
-**Consequences:** Strong typing, excellent performance, enterprise support
+⛔ **Do NOT hardcode version numbers in this template.** Render each ADR by reading the verified evidence from `shared/tech-lifecycle-evidence.json` (written earlier in this phase). The pattern for every framework / runtime / database ADR is:
 
-### ADR-002: SQL Server for Primary Database
+```
+### ADR-{N}: Use {component} {recommended_version}
 **Status:** Accepted
-**Context:** Need reliable RDBMS with strong ACID compliance
-**Decision:** Azure SQL / SQL Server
-**Consequences:** Familiar tooling, good Entity Framework support
+**Context:** {one-sentence problem framing — RFP requirement / constraint that drives this choice}
+**Decision:** {component} {recommended_version} ({classification}, EOL {eol_date})
+**Alternatives considered:**
+  - {prior_version} — rejected because EOL {prior_eol_date} < contract+2yr ({min_required_eol})
+  - {alternative_component} — rejected because {reason from domain or RFP}
+**Evidence:** Sourced from {source_url}, fetched {fetched_at}
+**Consequences:** {forward-looking impact — migration plan if classification != "LTS" for a long contract}
+```
 
-### ADR-003: React for Frontend
+The agent rendering this section MUST loop over the entries in `tech-lifecycle-evidence.json` and emit one ADR per primary component (runtime, primary database, frontend framework, identity provider, message bus). Do not invent ADRs for components that are not in the evidence file — and do not skip components that are.
+
+**Worked example (the kind of ADR this template produces — values illustrative only, real values come from the live evidence lookup):**
+
+```
+### ADR-005: Use .NET {LTS_VERSION_FROM_EVIDENCE}
 **Status:** Accepted
-**Context:** Need modern, component-based UI framework
-**Decision:** React with TypeScript
-**Consequences:** Large ecosystem, strong community, type safety
+**Context:** Multi-year hosted SaaS contract requires a runtime whose vendor support outlasts contract + 2 years of post-deployment maintenance.
+**Decision:** .NET {LTS_VERSION_FROM_EVIDENCE} ({classification}, EOL {eol_date})
+**Alternatives considered:**
+  - .NET 8 LTS — rejected: EOL Nov 2026 falls inside contract term
+  - .NET 9 — rejected: STS (Standard Term Support), ~18-month support window, EOL May 2026
+**Evidence:** Sourced from https://learn.microsoft.com/en-us/dotnet/core/releases-and-support/, fetched {timestamp}
+**Consequences:** First in-contract upgrade to the next LTS planned for year 3 of the contract to preserve LTS coverage through end of term.
+```
 
 ---
 
