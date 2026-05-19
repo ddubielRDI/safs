@@ -245,10 +245,104 @@ findings.append(check_spec_req_coverage(all_reqs, spec_files))
 
 Technology choices must align across specification documents. Flag contradictions such as one spec recommending PostgreSQL while another references SQL Server, or conflicting authentication mechanisms.
 
+**ADR scope refinement (2026-05-18):** When scanning `ARCHITECTURE.md`, only consider text within ADR `**Decision:**` blocks (and surrounding non-ADR prose). ADR `**Context:**` and `**Alternatives considered:**` sections are intentionally allowed to cite REJECTED technologies (Java 21, AWS, Node.js, etc.) to document trade-offs — those citations are not conflicts and must be stripped before cross-spec comparison. Other spec files have no ADR structure and are scanned in full.
+
 ```python
+def extract_adr_decisions(arch_text):
+    """Return arch_text with ADR Context + Alternatives Considered sections stripped.
+    ADR pattern:
+        ### ADR-NNN: Title
+        **Status:** ...
+        **Context:** ...        <-- STRIPPED (may cite rejected tech)
+        **Decision:** ...        <-- KEPT (the actual chosen tech)
+        **Alternatives considered:** ...  <-- STRIPPED (cites rejected tech intentionally)
+        **Evidence:** ...
+        **Consequences:** ...
+
+    Keeps Decision/Status/Evidence/Consequences and everything outside ADR blocks.
+    Strips Context and Alternatives Considered.
+
+    Refinement 2, 2026-05-18: prevents false-positive INTERNAL-CONSISTENCY conflicts
+    caused by deliberately-documented rejected alternatives in ADR prose.
+    """
+    import re
+    lines = arch_text.split("\n")
+    result = []
+    in_adr = False
+    skip_until_next_section = False
+    # Also skip "Why X Over Y" tradeoff discussion sections — these live outside
+    # ADR structure but serve the same purpose (documenting REJECTED alternatives).
+    # Heuristic: H3 whose title contains "Why ... Over ..." or "Why ... vs ..." or
+    # ends with "Considered Alternatives" / "Rejected Alternatives".
+    skip_tradeoff_section = False
+    TRADEOFF_HEADER = re.compile(
+        r"^###\s+.*\b(?:why\b.+\b(?:over|vs\.?)\b|considered alternatives?|rejected alternatives?)",
+        re.IGNORECASE
+    )
+
+    for line in lines:
+        # Detect ADR header
+        if re.match(r"^###\s+ADR-\d+", line):
+            in_adr = True
+            skip_until_next_section = False
+            skip_tradeoff_section = False
+            result.append(line)
+            continue
+
+        # Detect tradeoff-discussion H3 (outside ADR structure)
+        if re.match(r"^###\s+", line) and TRADEOFF_HEADER.match(line):
+            in_adr = False
+            skip_until_next_section = False
+            skip_tradeoff_section = True
+            continue  # drop the header itself too
+
+        # Any new H1/H2/H3 ends a tradeoff section
+        if skip_tradeoff_section and re.match(r"^#{1,3}\s+", line):
+            skip_tradeoff_section = False
+            # fall through and process this line normally
+
+        if skip_tradeoff_section:
+            continue
+
+        if in_adr:
+            # Section detection within ADR. Accepts both:
+            #   **Context:** ...                  (bare)
+            #   - **Context:** ...                (bulleted, dash-prefixed)
+            # because ARCHITECTURE.md may use either format (the phase file's
+            # ADR template is bare, but human-edited ADRs frequently bullet them).
+            m = re.match(r"^\s*-?\s*\*\*(Context|Decision|Alternatives considered|Consequences|Status|Evidence):\*\*", line, re.IGNORECASE)
+            if m:
+                section_name = m.group(1).lower()
+                if section_name in ("context", "alternatives considered"):
+                    skip_until_next_section = True
+                    continue  # don't include this line
+                else:
+                    skip_until_next_section = False
+                    result.append(line)
+                    continue
+            # End of ADR block — next H3 header that's not ADR, or H2/H1
+            if re.match(r"^###?\s+", line) and not re.match(r"^###\s+ADR-\d+", line):
+                in_adr = False
+                skip_until_next_section = False
+                result.append(line)
+                continue
+            if not skip_until_next_section:
+                result.append(line)
+        else:
+            result.append(line)
+
+    return "\n".join(result)
+
+
 def check_internal_consistency(spec_files):
     """
     Extract technology mentions from each spec and cross-compare for conflicts.
+
+    Refinement 2, 2026-05-18: ARCHITECTURE.md is preprocessed via
+    extract_adr_decisions() to drop ADR Context + Alternatives Considered prose,
+    which intentionally cites rejected technologies and would otherwise produce
+    false-positive conflicts (e.g., Java 21 / AWS / Node.js in rejected-alternative
+    lists getting flagged as cross-spec divergence).
     """
     # Technology categories to check for conflicts
     tech_categories = {
@@ -263,11 +357,24 @@ def check_internal_consistency(spec_files):
     conflicts = []
     tech_by_spec = {}
 
+    # Refinement 2 follow-up, 2026-05-18: use word-boundary matching to avoid
+    # substring false-positives (e.g., "JAWS" screen reader matching "aws",
+    # "expressed" matching "express"). Previous naive `in` checks produced
+    # spurious cross-spec conflicts every time these substrings appeared.
+    import re as _re_consistency
+    def _tech_matches(tech, text):
+        # Escape special regex chars in tech name; require word boundaries
+        return _re_consistency.search(r"\b" + _re_consistency.escape(tech) + r"\b", text) is not None
+
     for spec_name, spec_content in spec_files.items():
+        # Refinement 2, 2026-05-18: strip ADR Context + Alternatives Considered
+        # from ARCHITECTURE.md so rejected-alternative citations don't fire as conflicts.
+        if spec_name == "ARCHITECTURE":
+            spec_content = extract_adr_decisions(spec_content)
         spec_lower = spec_content.lower()
         tech_by_spec[spec_name] = {}
         for category, technologies in tech_categories.items():
-            found = [t for t in technologies if t in spec_lower]
+            found = [t for t in technologies if _tech_matches(t, spec_lower)]
             if found:
                 tech_by_spec[spec_name][category] = found
 
@@ -337,6 +444,11 @@ def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
         "evidence_age_days": None,
         "components_checked": 0,
         "components_failed_lifecycle": [],
+        # Refinement 1, 2026-05-18: components that fall short of contract+2yr EOL
+        # BUT have an explicit, ADR-documented migration plan are recorded here
+        # for audit trail (visible exception), not silently failed.
+        "exception_with_migration_count": 0,
+        "exception_with_migration": [],
         "components_missing_source_url": [],
         "components_missing_fetched_at": [],
         "specs_mentioning_unverified_versions": [],
@@ -389,39 +501,93 @@ def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
         }
 
     # Gate 3: per-component validity
+    # Refinement 1, 2026-05-18: split short-EOL components into two buckets —
+    # those with an ADR-documented migration plan (exception, audit-only) vs
+    # those without (true failure). Exceptions remain visible but do not BLOCK.
     for c in evidence.get("components", []):
         if not c.get("source_url"):
             findings_detail["components_missing_source_url"].append(c.get("component"))
         if not c.get("fetched_at"):
             findings_detail["components_missing_fetched_at"].append(c.get("component"))
         if not c.get("passes_contract_lifecycle", False):
-            findings_detail["components_failed_lifecycle"].append({
-                "component": c.get("component"),
-                "version": c.get("recommended_version"),
-                "classification": c.get("classification"),
-                "eol_date": c.get("eol_date"),
-                "min_required_eol": c.get("min_required_eol"),
-            })
+            if c.get("migration_plan_present") and c.get("migration_plan_adr"):
+                # Exception path — record but do not fail
+                findings_detail["exception_with_migration"].append({
+                    "component": c.get("component"),
+                    "version": c.get("recommended_version"),
+                    "eol_date": c.get("eol_date"),
+                    "migration_plan_adr": c.get("migration_plan_adr"),
+                    "migration_plan_summary": c.get("migration_plan_summary"),
+                })
+            else:
+                findings_detail["components_failed_lifecycle"].append({
+                    "component": c.get("component"),
+                    "version": c.get("recommended_version"),
+                    "classification": c.get("classification"),
+                    "eol_date": c.get("eol_date"),
+                    "min_required_eol": c.get("min_required_eol"),
+                })
+    findings_detail["exception_with_migration_count"] = len(findings_detail["exception_with_migration"])
 
     # Gate 4: cross-check — every version string the ARCHITECTURE.md prose
     # actually cites must appear in the evidence file. Catches the case
     # where the agent ran the lookup but then ignored the result and wrote
     # a different version into the prose.
+    #
+    # Refinement 2, 2026-05-18: scan ONLY ADR Decision blocks (plus non-ADR prose),
+    # NOT ADR Context / Alternatives Considered. The latter intentionally cite
+    # rejected versions (e.g., ".NET 8 rejected because EOL Nov 2026") and would
+    # otherwise produce false-positive unverified-version flags.
     import re
     version_pattern = re.compile(r"\.NET\s+(\d+)|Node(?:\.js)?\s+(\d+)|React\s+(\d+)|PostgreSQL\s+(\d+)|SQL Server\s+(\d{4})|Java\s+(\d+)|Python\s+(\d+\.\d+)", re.IGNORECASE)
     arch_text = spec_files.get("ARCHITECTURE", "")
+    arch_text_for_versions = extract_adr_decisions(arch_text)  # Strip Alternatives + Context prose
+
+    # Refinement 2 follow-up, 2026-05-18: even after ADR/tradeoff filtering,
+    # ADR titles and lifecycle-rationale callouts may contain NEGATIVE citations
+    # like "ADR-005 — .NET 10 LTS (not .NET 8, not .NET 9 STS)" or
+    # "Lifecycle gate: .NET 8 LTS reaches EOL Nov 2026". These are
+    # JUSTIFICATIONS for the chosen version, not version recommendations, and
+    # must not fire unverified-version flags. Skip any line containing a
+    # negative-citation marker BEFORE scanning for versions.
+    NEGATIVE_CITATION = re.compile(
+        r"\b(not\s+\.NET|neither\s+\.NET|rejected|reaches\s+EOL|reaches\s+end\s+of\s+life|"
+        r"\bis\s+STS\b|is\s+not\s+LTS|forbids|forbidden|disqualifying|preview|post-GA|"
+        r"end\s+of\s+life\s+within|unsupported|force\s+(?:an?\s+)?unsupported|"
+        r"selecting\s+\.NET\s+\d+\s+would|proposing\s+\.NET\s+\d+\s+would|"
+        r"EOL\s+(?:May|November|October|June|July|August|"
+        r"September|January|February|March|April|December)\s+\d{4})",
+        re.IGNORECASE
+    )
     cited_versions = set()
-    for match in version_pattern.finditer(arch_text):
-        for group in match.groups():
-            if group:
-                cited_versions.add(group)
+    for line in arch_text_for_versions.split("\n"):
+        # Skip ADR title lines — they often contain "(not .NET 8, not .NET 9)" rationale
+        if re.match(r"^###\s+ADR-\d+", line):
+            continue
+        if NEGATIVE_CITATION.search(line):
+            continue
+        for match in version_pattern.finditer(line):
+            for group in match.groups():
+                if group:
+                    cited_versions.add(group)
     evidence_versions = set()
     for c in evidence.get("components", []):
         v = str(c.get("recommended_version", ""))
-        # capture just the numeric prefix (e.g., "10" from ".NET 10" / "10.0.0")
+        # capture the numeric prefix (e.g., "10" from ".NET 10" / "19.2" from "19.2.0")
         m = re.match(r"(\d+(?:\.\d+)?)", v)
         if m:
             evidence_versions.add(m.group(1))
+            # Also record the major-only form ("19" from "19.2") so prose that
+            # cites the major version (e.g., "React 19+") matches.
+            major = m.group(1).split(".")[0]
+            evidence_versions.add(major)
+        # Refinement 1 follow-up, 2026-05-18: when a component has a documented
+        # migration plan, any versions cited in migration_plan_summary are also
+        # "known good" — the bid intentionally references future LTS versions.
+        # Without this, Gate 4 would falsely flag the migration plan's own prose.
+        summary = c.get("migration_plan_summary") or ""
+        for vm in re.finditer(r"\b(\d+(?:\.\d+)?)\b", summary):
+            evidence_versions.add(vm.group(1))
     unverified = cited_versions - evidence_versions
     if unverified:
         findings_detail["specs_mentioning_unverified_versions"] = sorted(unverified)

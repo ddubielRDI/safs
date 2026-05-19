@@ -28,6 +28,7 @@ Extract ALL requirements from RFP documents with aggressive sub-item extraction.
 ## Required Outputs
 
 - `{folder}/shared/requirements-raw.json` - Extracted requirements
+- `{folder}/shared/sample-data-analysis.json` - Sample-data profile (Step 7c; merged in 2026-05-18 from former Phase 2.5)
 
 ## Target: 247+ Requirements
 
@@ -593,6 +594,197 @@ requirements_output = {
 }
 
 write_json(f"{folder}/shared/requirements-raw.json", requirements_output)
+```
+
+### Step 7c — Sample Data Analysis (merged 2026-05-18 from former Phase 2.5)
+
+Profile sample-data spreadsheets, CSVs, and embedded tables to extract field
+definitions, validation rules, and candidate data entities. Output emitted at
+the SAME path consumers expect: `shared/sample-data-analysis.json`. Consumers
+that read this file include `phase2b-normalize-win.md`, `phase3f-entities-win.md`,
+`phase6c-context-bundle-win.md`, and `sva2-pink-team-win.md`.
+
+```python
+import glob
+import openpyxl
+import re
+
+# Use UTF-8 helpers from skill-win.md "Required Helper Functions" — never
+# bare open(). This block was lifted from phase2.5-sample-win.md (now
+# .deprecated) so the file path and JSON shape are unchanged.
+
+xlsx_files = glob.glob(f"{folder}/original/*.xlsx")
+csv_files = glob.glob(f"{folder}/original/*.csv")
+flattened_files = glob.glob(f"{folder}/flattened/*.md")
+data_sources = {"spreadsheets": xlsx_files + csv_files, "embedded_tables": []}
+
+
+def extract_data_tables(content):
+    """Extract markdown data tables (header + rows) from flattened RFPs."""
+    tables = []
+    table_pattern = r'\|[^\n]+\|\n\|[\-\s\|]+\|\n(?:\|[^\n]+\|\n)+'
+    for table_text in re.findall(table_pattern, content):
+        rows = table_text.strip().split('\n')
+        if len(rows) >= 3:
+            header = [c.strip() for c in rows[0].split('|')[1:-1]]
+            data_rows = []
+            for r in rows[2:]:
+                cells = [c.strip() for c in r.split('|')[1:-1]]
+                if len(cells) == len(header):
+                    data_rows.append(dict(zip(header, cells)))
+            if data_rows:
+                tables.append({"header": header, "row_count": len(data_rows),
+                               "sample_rows": data_rows[:5]})
+    return tables
+
+
+for fp in flattened_files:
+    content = read_file(fp)
+    for table in extract_data_tables(content):
+        table["source"] = os.path.basename(fp)
+        data_sources["embedded_tables"].append(table)
+
+
+def _infer_type(values):
+    if not values:
+        return "UNKNOWN"
+    numeric = sum(1 for v in values if isinstance(v, (int, float))
+                  or (isinstance(v, str) and v.replace('.', '').replace('-', '').isdigit()))
+    if numeric / len(values) > 0.9:
+        return "NUMERIC"
+    date_patterns = [r'\d{1,2}/\d{1,2}/\d{2,4}', r'\d{4}-\d{2}-\d{2}']
+    dates = sum(1 for v in values if any(re.match(p, str(v)) for p in date_patterns))
+    if dates / len(values) > 0.8:
+        return "DATE"
+    bool_vals = {'yes', 'no', 'true', 'false', 'y', 'n', '1', '0'}
+    if sum(1 for v in values if str(v).lower() in bool_vals) / len(values) > 0.9:
+        return "BOOLEAN"
+    if len(set(str(v) for v in values)) <= min(10, len(values) * 0.3):
+        return "CODE"
+    return "TEXT"
+
+
+def _detect_patterns(values):
+    patterns = []
+    str_values = [str(v) for v in values if v]
+    if not str_values:
+        return patterns
+    lengths = [len(v) for v in str_values]
+    if len(set(lengths)) == 1:
+        patterns.append(f"FIXED_LENGTH_{lengths[0]}")
+    if all('@' in v for v in str_values):
+        patterns.append("EMAIL")
+    if all(re.match(r'\d{3}[-.\s]?\d{3}[-.\s]?\d{4}', v) for v in str_values):
+        patterns.append("PHONE")
+    return patterns
+
+
+def analyze_spreadsheet(file_path):
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    sheets = []
+    for sheet_name in wb.sheetnames:
+        sheet = wb[sheet_name]
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            continue
+        header = [str(c) if c else f"Column_{i}" for i, c in enumerate(rows[0])]
+        data_rows = rows[1:100]
+        columns = []
+        for ci, col_name in enumerate(header):
+            values = [row[ci] for row in data_rows if row[ci] is not None]
+            columns.append({
+                "name": col_name,
+                "sample_values": values[:5],
+                "non_null_count": len(values),
+                "total_rows": len(data_rows),
+                "inferred_type": _infer_type(values),
+                "unique_values": len(set(str(v) for v in values)),
+                "patterns": _detect_patterns(values),
+            })
+        sheets.append({"name": sheet_name, "row_count": len(rows) - 1, "columns": columns})
+    return sheets
+
+
+spreadsheet_analysis = []
+for xf in xlsx_files:
+    try:
+        spreadsheet_analysis.append({"file": os.path.basename(xf),
+                                     "sheets": analyze_spreadsheet(xf)})
+    except Exception as e:
+        spreadsheet_analysis.append({"file": os.path.basename(xf), "error": str(e)})
+
+
+def _gen_validation_rules(col):
+    rules = []
+    if col["inferred_type"] == "NUMERIC":
+        nums = [v for v in col["sample_values"] if isinstance(v, (int, float))]
+        if nums:
+            rules.append(f"RANGE: {min(nums)} - {max(nums)}")
+    if col["inferred_type"] == "CODE":
+        rules.append(f"ALLOWED_VALUES: {list(set(str(v) for v in col['sample_values']))[:10]}")
+    if any(p.startswith("FIXED_LENGTH_") for p in col["patterns"]):
+        length = int([p for p in col['patterns'] if p.startswith('FIXED_LENGTH_')][0].split('_')[-1])
+        rules.append(f"LENGTH: {length}")
+    if col["inferred_type"] == "DATE":
+        rules.append("FORMAT: date")
+    return rules
+
+
+field_definitions = []
+for sp in spreadsheet_analysis:
+    for sheet in sp.get("sheets", []):
+        for col in sheet.get("columns", []):
+            field_definitions.append({
+                "field_name": col["name"],
+                "data_type": col["inferred_type"],
+                "nullable": col["non_null_count"] < col["total_rows"],
+                "unique_constraint": col["unique_values"] == col["non_null_count"],
+                "patterns": col["patterns"],
+                "sample_values": col["sample_values"],
+                "validation_rules": _gen_validation_rules(col),
+                "source_file": sp["file"],
+                "source_sheet": sheet["name"],
+            })
+
+
+entities = []
+for sp in spreadsheet_analysis:
+    for sheet in sp.get("sheets", []):
+        entity_name = sheet["name"].replace("_", " ").title()
+        id_cols = [c for c in sheet["columns"] if "id" in c["name"].lower() or c["name"].lower().endswith("key")]
+        fks = [c for c in sheet["columns"]
+               if c["name"].lower().endswith("id") and c["name"].lower() != f"{entity_name.lower()}id"]
+        entities.append({
+            "name": entity_name,
+            "source": f"{sp['file']}/{sheet['name']}",
+            "primary_key": id_cols[0]["name"] if id_cols else None,
+            "foreign_keys": [fk["name"] for fk in fks],
+            "field_count": len(sheet["columns"]),
+            "row_count": sheet["row_count"],
+        })
+
+
+sample_data_output = {
+    "analyzed_at": datetime.now().isoformat(),
+    "summary": {
+        "spreadsheets_analyzed": len(spreadsheet_analysis),
+        "embedded_tables_found": len(data_sources["embedded_tables"]),
+        "total_fields_defined": len(field_definitions),
+        "entities_identified": len(entities),
+    },
+    "spreadsheet_analysis": spreadsheet_analysis,
+    "embedded_tables": data_sources["embedded_tables"],
+    "field_definitions": field_definitions,
+    "entities": entities,
+    "validation_rules_summary": {
+        "total_rules": sum(len(f["validation_rules"]) for f in field_definitions),
+        "by_type": {t: sum(1 for f in field_definitions if f["data_type"] == t)
+                    for t in set(f["data_type"] for f in field_definitions)},
+    },
+}
+
+write_json(f"{folder}/shared/sample-data-analysis.json", sample_data_output)
+log(f"Sample data analyzed: {sample_data_output['summary']}")
 ```
 
 ### Step 9: Report Results

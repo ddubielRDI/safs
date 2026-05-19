@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — orphan post-run metrics report never wired into PHASES list. Metrics aggregation is performed inline by skill-win.md `aggregate_metrics()` (which writes config-win/pipeline-metrics.json). Kept on disk for archival. Not invoked by orchestrator. -->
+
 # Phase: Post-Run Metrics Report
 
 ---

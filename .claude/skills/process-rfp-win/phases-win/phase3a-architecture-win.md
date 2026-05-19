@@ -127,147 +127,75 @@ def classify_by_layer(requirements):
 layers = classify_by_layer(arch_requirements)
 ```
 
-### Step 4: Generate Technology Stack — EVIDENCE-BACKED LTS LOOKUP (BLOCKING)
+### Step 4: Load Tech-Stack Evidence (CONSUMER ONLY — split out 2026-05-18)
 
-**⛔ CRITICAL — NO HARDCODED VERSIONS. NO TRAINING-DATA GUESSES.** This step has a documented history of regression: agents have proposed `.NET 8` (EOL Nov 2026) and `.NET 9` (STS, EOL May 2026) because of training-data knowledge cutoffs and stale example code that used to live in this file. The fix is structural: build the stack via lookup-then-record, and refuse to proceed without the recorded evidence file.
+<!--
+  REFACTOR 2026-05-18: The evidence-backed LTS lookup that previously lived
+  here has moved to `phase3a-tech-stack-win.md` (a separate Stage 3 phase
+  that runs BEFORE phase3a-architecture-win). Rationale:
 
-**The contract lifecycle rule (non-negotiable):**
+  - Single-responsibility: one phase produces tech-lifecycle-evidence.json,
+    one phase consumes it. No risk of partial ARCHITECTURE.md output
+    coexisting with a half-written evidence file.
+  - SVA-3 already gates on the evidence file via SVA3-TECH-STACK-LTS-VERIFIED;
+    a dedicated producer phase makes SVA retry targeting unambiguous.
+  - Phase 3a no longer issues WebFetch/WebSearch calls — it reads the
+    pre-verified evidence and renders ADRs deterministically.
 
-> Every proposed component's vendor-supported end-of-life MUST be ≥ `(go_live_date + contract_years + 2)`. For a 5-year contract starting 2026, that is 2033 at minimum. Components that fall short are REJECTED — propose the next supported version.
+  This phase HALTS if `shared/tech-lifecycle-evidence.json` is missing.
+  Producer: phases-win/phase3a-tech-stack-win.md
+  Validator: phases-win/sva3-spec-validator-win.md rule SVA3-TECH-STACK-LTS-VERIFIED
+-->
 
-**The procedure:**
+**⛔ CRITICAL — NO HARDCODED VERSIONS. NO TRAINING-DATA GUESSES.** This file must NOT issue WebFetch/WebSearch lookups for versions. All version evidence is loaded from `shared/tech-lifecycle-evidence.json` written by `phase3a-tech-stack-win.md`. If the file is missing, HALT — do not guess.
+
+**The contract lifecycle rule (still non-negotiable, enforced by the producer phase):**
+
+> Every proposed component's vendor-supported end-of-life MUST be ≥ `(go_live_date + contract_years + 2)`. For a 5-year contract starting 2026, that is 2033 at minimum. Components that fall short are REJECTED upstream — they never appear in the evidence file.
+
+**The procedure (consumer-only):**
 
 ```python
-def query_lts_for_component(category, component_name, contract_years=5):
-    """Resolve the latest vendor-supported version + EOL date for one component.
+import os as _os
+from datetime import datetime
 
-    MANDATORY: This function MUST issue a real WebFetch / WebSearch call.
-    A return value that lacks `source_url` and `fetched_at` is INVALID and the
-    phase must HALT, not proceed.
-    """
-    # Authoritative sources by component family (extend as needed)
-    AUTHORITATIVE_SOURCES = {
-        ".net":        "https://learn.microsoft.com/en-us/dotnet/core/releases-and-support/",
-        "asp.net":     "https://learn.microsoft.com/en-us/dotnet/core/releases-and-support/",
-        "node":        "https://nodejs.org/en/about/previous-releases",
-        "node.js":     "https://nodejs.org/en/about/previous-releases",
-        "react":       "https://react.dev/blog",  # combine with npm registry for LTS tag
-        "next.js":     "https://nextjs.org/blog",
-        "postgresql":  "https://www.postgresql.org/support/versioning/",
-        "sql server":  "https://learn.microsoft.com/en-us/lifecycle/products/?products=sql-server",
-        "azure sql":   "https://learn.microsoft.com/en-us/azure/azure-sql/",
-        "java":        "https://www.oracle.com/java/technologies/java-se-support-roadmap.html",
-        "kubernetes":  "https://kubernetes.io/releases/",
-        "python":      "https://devguide.python.org/versions/",
-    }
+evidence_path = f"{folder}/shared/tech-lifecycle-evidence.json"
+if not _os.path.exists(evidence_path):
+    raise PhaseHalt(
+        "PHASE 3A HALT — shared/tech-lifecycle-evidence.json is missing. "
+        "Run phase3a-tech-stack-win.md FIRST to produce the evidence file. "
+        "This phase no longer issues version lookups itself."
+    )
 
-    family_url = AUTHORITATIVE_SOURCES.get(component_name.lower())
-    if not family_url:
-        # Fall back to general WebSearch for unrecognized component
-        evidence = web_search(
-            f"{component_name} LTS schedule end of life {datetime.now().year}"
-        )
-    else:
-        evidence = web_fetch(family_url, prompt=(
-            f"List ALL currently supported {component_name} versions with their "
-            f"support classification (LTS / STS / preview) and end-of-life dates. "
-            f"Identify the most recent LTS release. Return version, classification, "
-            f"GA date, EOL date, support_url."
-        ))
+tech_lifecycle = read_json(evidence_path)
+tech_stack_evidence = tech_lifecycle.get("components", [])
+contract_years = tech_lifecycle.get("contract_years", domain_context.get("contract_years", 5))
 
-    if not evidence or "eol_date" not in evidence:
-        raise PhaseHalt(
-            f"PHASE 3A HALT — could not verify lifecycle for {component_name}. "
-            f"DO NOT proceed with a guessed version. Resolve the lookup first."
-        )
+# Defensive: any component flagged as failing the contract+2yr lifecycle should
+# already have been blocked upstream by phase3a-tech-stack. If we find one here,
+# HALT loudly — the producer phase was bypassed or its gate was disabled.
+failed = [c for c in tech_stack_evidence if not c.get("passes_contract_lifecycle")]
+if failed:
+    for c in failed:
+        log(f"  ⛔ FAIL — {c['component']} {c.get('recommended_version')} EOL {c.get('eol_date')} < required")
+    raise PhaseHalt(
+        f"PHASE 3A HALT — evidence file contains {len(failed)} component(s) failing the "
+        f"contract+2yr lifecycle gate. Rerun phase3a-tech-stack-win.md to refresh."
+    )
 
-    return {
-        "component": component_name,
-        "category": category,
-        "recommended_version": evidence["latest_lts_version"],
-        "classification": evidence["classification"],  # MUST be "LTS" for primary runtimes
-        "ga_date": evidence["ga_date"],
-        "eol_date": evidence["eol_date"],
-        "min_required_eol": (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
-        "passes_contract_lifecycle": evidence["eol_date"] >= (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
-        "source_url": evidence["source_url"],
-        "fetched_at": datetime.now().isoformat(),
-    }
-
-
-def build_tech_stack(domain, requirements, contract_years=5):
-    """Construct the tech stack via per-component lookup. NO hardcoded versions.
-
-    The component LIST per layer may be domain-flavored (e.g. healthcare adds
-    HL7 FHIR, government adds StateRAMP-aligned services), but VERSIONS come
-    from query_lts_for_component() at runtime — never from this file.
-    """
-    layers_needed = {
-        "frontend":      ["react", "typescript"],            # add Next.js, Tailwind per domain
-        "backend":       [".net", "asp.net"],                # OR java, OR node — pick based on RDI capability + RFP
-        "database":      ["sql server"],                     # OR postgresql — pick based on RFP / domain
-        "infrastructure": ["azure"],                          # OR AWS — pick based on company-profile.json
-        "integration":   [],                                  # populated by Phase 3b
-    }
-
-    # Domain overlays (component LIST only, never versions)
-    if domain == "healthcare":
-        layers_needed["integration"].append("HL7 FHIR")
-    if domain in ("government", "gov", "state-government", "local-government"):
-        # CIS Controls IG2 + StateRAMP context, no version constraint
-        pass
-
-    stack_evidence = []
-    for layer, components in layers_needed.items():
-        for component in components:
-            stack_evidence.append(query_lts_for_component(layer, component, contract_years))
-
-    # HARD GATE — any component that fails the lifecycle check halts the phase
-    failed = [c for c in stack_evidence if not c["passes_contract_lifecycle"]]
-    if failed:
-        for c in failed:
-            log(f"  ⛔ FAIL — {c['component']} {c['recommended_version']} EOL {c['eol_date']} < required {c['min_required_eol']}")
-        raise PhaseHalt(
-            f"PHASE 3A HALT — {len(failed)} component(s) cannot meet contract+2yr lifecycle. "
-            f"Pick the next supported version (often the upcoming LTS) and re-run."
-        )
-
-    return stack_evidence
-
-
-# Build the stack with full evidence.
-# V1-F2 fix 2026-05-18: contract_years now reads from domain_context if present,
-# so multi-year vs annual contracts produce different lifecycle gates.
-contract_years = domain_context.get("contract_years", 5)
-tech_stack_evidence = build_tech_stack(domain, all_reqs, contract_years=contract_years)
-
-# ⛔ MANDATORY — write evidence to disk. SVA-3 rule SVA3-TECH-STACK-LTS-VERIFIED
-# will fail BLOCK if this file is missing, stale (>7 days), or contains any
-# component with passes_contract_lifecycle=false.
-#
-# V1-F2 fix 2026-05-18: min_required_eol is now (contract_years + 2), not the
-# previously hardcoded 7. A 3-year contract no longer demands a 7-year EOL.
-write_json(f"{folder}/shared/tech-lifecycle-evidence.json", {
-    "generated_at": datetime.now().isoformat(),
-    "contract_years": contract_years,
-    "min_required_eol": (datetime.now() + timedelta(days=365 * (contract_years + 2))).date().isoformat(),
-    "components": tech_stack_evidence,
-})
-
-# Build the legacy `tech_stack` dict that downstream code uses, but every
-# entry is `"{component} {recommended_version} (LTS, EOL {eol_date})"` — the
+# Build the legacy `tech_stack` dict that downstream rendering uses. Every
+# label is `"{component} {recommended_version} (LTS, EOL {eol_date})"` — the
 # version is BAKED FROM EVIDENCE, never from training data.
 tech_stack = {"frontend": [], "backend": [], "database": [], "infrastructure": [], "integration": []}
 for c in tech_stack_evidence:
     label = f"{c['component']} {c['recommended_version']} ({c['classification']}, EOL {c['eol_date']})"
-    tech_stack[c["category"]].append(label)
+    tech_stack.setdefault(c["category"], []).append(label)
 ```
 
-**Why this is structural, not advisory:**
+**Why this split is structural, not cosmetic:**
 
-- The `query_lts_for_component()` function CANNOT return without `source_url` + `fetched_at` — there is no quiet fall-through to a guessed version.
-- `build_tech_stack()` HALTS the phase if any component fails the contract+2yr lifecycle check. Downstream agents never see a stale stack.
-- `tech-lifecycle-evidence.json` is the on-disk audit trail. SVA-3 cross-checks it; without the file, SVA-3 BLOCKS the phase regardless of how good the ARCHITECTURE.md prose looks.
+- `phase3a-tech-stack-win.md` is the SINGLE producer of `tech-lifecycle-evidence.json`. SVA-3 retry targeting is unambiguous — `instruction: "Re-run phase3a-tech-stack-win.md"`.
+- Phase 3a (this file) is now deterministic: same evidence → same ARCHITECTURE.md, no network variability.
 - The per-domain examples that used to be here (`stack["backend"] = ["ASP.NET Core (latest LTS with 3+ years support)"]`) have been removed because they read as version-agnostic to a human but were rendered as `.NET 8` by agents whose training data was older than the file claimed. Stale example code is anchoring bias — it has no place in a procedure that must reflect current reality.
 
 ### Step 5: Generate Architecture Document

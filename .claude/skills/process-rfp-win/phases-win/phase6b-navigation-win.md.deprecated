@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — merged into phase6-manifest-win.md as the Navigation Guide step. NAVIGATION_GUIDE.md is now produced inline by Phase 6 at the same path. SVA-5 rule SVA5-NAV-GUIDE-LINKS continues to validate the file. Kept on disk for archival. Not invoked by orchestrator. -->
+
 ---
 name: phase6b-navigation-win
 expert-role: Technical Writer

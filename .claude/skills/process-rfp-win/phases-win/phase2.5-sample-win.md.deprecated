@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — merged into phase2-extract-win.md as Step 7c (Sample Data Analysis). The same `shared/sample-data-analysis.json` output is now produced inline in Phase 2, eliminating the separate phase. Kept on disk for archival. Not invoked by orchestrator. -->
+
 ---
 name: phase2.5-sample-win
 expert-role: Data Analyst

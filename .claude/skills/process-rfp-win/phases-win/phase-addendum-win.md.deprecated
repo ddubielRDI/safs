@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — orphan addendum / change-impact phase never wired into the PHASES list or STAGE_BOUNDARIES in skill-win.md. Functionality for RFP-during-pipeline updates is not currently in scope; if revived, integrate as Stage 1 conditional. Kept on disk for archival. Not invoked by orchestrator. -->
+
 ---
 name: phase-addendum-win
 expert-role: Requirements Change Manager

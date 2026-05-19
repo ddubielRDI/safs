@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — superseded by phase8.3-technical-win.md + phase8.4-solution-win.md (Technical Approach + Business Solution in multi-volume bid chain). Kept on disk for archival. Not invoked by orchestrator. -->
+
 ---
 name: phase8b-solution-win
 expert-role: Solutions Architect

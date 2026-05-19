@@ -1,3 +1,5 @@
+<!-- DEPRECATED 2026-05-18 — legacy monolithic bid author. Superseded by the multi-volume chain: phase8.1-submittal-win.md, phase8.2-management-win.md, phase8.3-technical-win.md, phase8.4-solution-win.md, phase8.4r-reqreview-win.md, phase8.4k-riskreg-win.md, phase8.5-financial-win.md, phase8.6-integration-win.md, phase8f-rtm-verify-win.md. Kept on disk for archival. Not invoked by orchestrator. -->
+
 ---
 name: phase8-bid-author-win
 expert-role: Senior Proposal Writer

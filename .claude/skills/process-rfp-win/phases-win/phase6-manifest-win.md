@@ -16,7 +16,9 @@ You are a **Technical Writer** with deep expertise in:
 
 ## Purpose
 
-Generate MANIFEST.md (audit log) and EXECUTIVE_SUMMARY.md.
+Generate MANIFEST.md (audit log), EXECUTIVE_SUMMARY.md, and NAVIGATION_GUIDE.md.
+
+NAVIGATION_GUIDE.md generation merged into this phase 2026-05-18 (formerly Phase 6b).
 
 ## Inputs
 
@@ -28,6 +30,7 @@ Generate MANIFEST.md (audit log) and EXECUTIVE_SUMMARY.md.
 
 - `{folder}/outputs/MANIFEST.md`
 - `{folder}/outputs/EXECUTIVE_SUMMARY.md`
+- `{folder}/outputs/NAVIGATION_GUIDE.md` (merged 2026-05-18 from former Phase 6b)
 
 ## Instructions
 
@@ -315,10 +318,164 @@ exec_summary = generate_executive_summary(domain, req_count, requirements, domai
 write_file(f"{folder}/outputs/EXECUTIVE_SUMMARY.md", exec_summary)
 ```
 
+### Step N — Navigation Guide Generation (merged 2026-05-18 from former Phase 6b)
+
+Generate `NAVIGATION_GUIDE.md` so users (and SVA-5 rule `SVA5-NAV-GUIDE-LINKS`)
+can locate any artifact quickly. Output path is unchanged from the prior
+Phase 6b so all downstream consumers (sva5-doc-validator-win.md, manifest
+references) continue to work without edits.
+
+```python
+import glob
+import re as _re
+from datetime import datetime as _dt
+
+output_files = glob.glob(f"{folder}/outputs/*.md")
+
+
+def _extract_sections(content):
+    """Pull the first 10 H2 section headings."""
+    return _re.findall(r'^## (.+)$', content, _re.MULTILINE)[:10]
+
+
+documents = []
+for fp in output_files:
+    content = read_file(fp)
+    documents.append({
+        "name": os.path.basename(fp),
+        "path": fp,
+        "word_count": len(content.split()),
+        "sections": _extract_sections(content),
+    })
+
+
+USE_CASES = [
+    {
+        "title": "Understanding the Requirements",
+        "description": "Get a comprehensive view of all RFP requirements",
+        "documents": ["REQUIREMENTS_CATALOG.md", "TRACEABILITY.md"],
+        "key_sections": ["Requirements by Category", "Full Traceability Matrix"],
+    },
+    {
+        "title": "Technical Architecture Review",
+        "description": "Review the proposed technical solution",
+        "documents": ["ARCHITECTURE.md", "SECURITY_REQUIREMENTS.md", "INTEROPERABILITY.md"],
+        "key_sections": ["Architecture Overview", "Technology Stack", "Security Architecture"],
+    },
+    {
+        "title": "Estimating Project Effort",
+        "description": "Understand effort estimates and resource needs",
+        "documents": ["EFFORT_ESTIMATION.md", "REQUIREMENT_RISKS.md"],
+        "key_sections": ["Executive Summary", "Resource Plan", "Risk Summary"],
+    },
+    {
+        "title": "Preparing the Bid Response",
+        "description": "Gather information for bid document sections",
+        "documents": ["EXECUTIVE_SUMMARY.md", "TRACEABILITY.md", "DIAGRAM_BLUEPRINTS.md"],
+        "key_sections": ["Key Findings", "Bid Section Coverage", "Diagram Blueprints"],
+    },
+    {
+        "title": "Validating Compliance",
+        "description": "Ensure all mandatory requirements are addressed",
+        "documents": ["REQUIREMENTS_CATALOG.md", "SECURITY_REQUIREMENTS.md", "COMPETITIVE_POSITION.md"],
+        "key_sections": ["Critical Requirements", "Compliance Requirements", "Competitive Position"],
+    },
+]
+
+
+def generate_navigation_md(documents, use_cases):
+    doc = f"""# Navigation Guide
+
+**Generated:** {_dt.now().strftime('%Y-%m-%d %H:%M')}
+
+This guide helps you quickly find information across all generated documents.
+
+---
+
+## Quick Start
+
+| I want to... | Go to... |
+|--------------|----------|
+| See all requirements | REQUIREMENTS_CATALOG.md |
+| Review architecture | ARCHITECTURE.md |
+| Check security specs | SECURITY_REQUIREMENTS.md |
+| View estimates | EFFORT_ESTIMATION.md |
+| Find risks | REQUIREMENT_RISKS.md |
+| See clarifying questions | CLARIFYING_QUESTIONS.md |
+| See competitive position | COMPETITIVE_POSITION.md |
+| See diagram blueprints | DIAGRAM_BLUEPRINTS.md |
+| Prepare bid content | bid-sections/*.md and bid/*.pdf |
+
+---
+
+## Document Overview
+
+| Document | Sections |
+|----------|----------|
+"""
+    for d in documents:
+        doc += f"| {d['name']} | {len(d['sections'])} sections |\n"
+
+    doc += "\n---\n\n## Use Case Guides\n\n"
+    for uc in use_cases:
+        doc += f"### {uc['title']}\n\n**Goal:** {uc['description']}\n\n**Primary Documents:**\n"
+        for dn in uc["documents"]:
+            doc += f"- {dn}\n"
+        doc += "\n**Key Sections:**\n"
+        for s in uc["key_sections"]:
+            doc += f"- {s}\n"
+        doc += "\n---\n\n"
+
+    doc += "## Document Details\n\n"
+    for d in sorted(documents, key=lambda x: x["name"]):
+        doc += f"### {d['name']}\n\n**Word Count:** ~{d['word_count']:,}\n\n**Sections:**\n"
+        for s in d["sections"]:
+            doc += f"- {s}\n"
+        doc += "\n"
+
+    doc += """
+---
+
+## Cross-Reference Guide
+
+### Finding Requirements by Topic
+
+| Topic | Documents | Search Terms |
+|-------|-----------|--------------|
+| Security | SECURITY_REQUIREMENTS.md, REQUIREMENTS_CATALOG.md | SEC, security, auth |
+| Integration | INTEROPERABILITY.md, ARCHITECTURE.md | INT, api, interface |
+| UI/UX | UI_SPECS.md | UI, screen, display |
+| Data | ENTITY_DEFINITIONS.md, REQUIREMENTS_CATALOG.md | data, entity, field |
+
+### Tracing Requirements
+
+1. **Start:** REQUIREMENTS_CATALOG.md — Find the requirement ID
+2. **Specs:** TRACEABILITY.md — See which specs address it
+3. **Risks:** REQUIREMENT_RISKS.md — Check risk level
+4. **Estimate:** EFFORT_ESTIMATION.md — Find effort estimate
+5. **Bid:** Check bid section mapping in TRACEABILITY.md
+
+---
+
+## Need Help?
+
+1. Check MANIFEST.md for the complete file list
+2. Search keywords across all files
+3. Review TRACEABILITY.md for requirement mappings
+"""
+    return doc
+
+
+navigation_md = generate_navigation_md(documents, USE_CASES)
+write_file(f"{folder}/outputs/NAVIGATION_GUIDE.md", navigation_md)
+log(f"NAVIGATION_GUIDE.md generated ({len(documents)} documents cataloged)")
+```
+
 ## Quality Checklist
 
 - [ ] `MANIFEST.md` created in `outputs/`
 - [ ] `EXECUTIVE_SUMMARY.md` created in `outputs/`
+- [ ] `NAVIGATION_GUIDE.md` created in `outputs/` (merged 2026-05-18 from former Phase 6b)
 - [ ] All output files inventoried
 - [ ] Phase execution logged
 - [ ] Audit trail complete
