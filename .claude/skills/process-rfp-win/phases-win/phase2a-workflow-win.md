@@ -45,6 +45,65 @@ domain_context = read_json(f"{folder}/shared/domain-context.json")
 
 ### Step 2: Identify Workflow Sections
 
+## ⛔ PDF PAGE-NUMBER FOOTER REJECTION (codified 2026-05-20 — MARS Phase 2a incident)
+
+PDF→markdown extractors emit page footers as standalone numeric lines (`7`, `8`, `9` etc., often followed by `Attachment H Detailed Requirements / Page | N`). If the workflow section-boundary detector treats any standalone line containing a digit as a potential section heading, these page footers PREMATURELY TERMINATE workflow extraction.
+
+**MARS 2026-05-20 incident:** Phase 2a's first pass captured only 1 of 20 steps for section 3.1.1.1 because a `7` page-number footer line was treated as a section break. The fix: when checking whether a line is a section boundary, exclude lines that are (a) pure single/double-digit number, (b) followed within 3 lines by the literal "Page |" or "Attachment H" footer text, OR (c) lone digit on a line with no other content.
+
+```python
+PAGE_FOOTER_PATTERN = re.compile(r"^\s*\d{1,3}\s*$")
+ORPHAN_LIST_MARKER = re.compile(r"^\s*\d{1,3}\.\s*$")  # naked "5." with no body
+
+def fold_orphan_list_markers(steps):
+    """Fold naked '8.' / '16.' steps into the NEXT step's description.
+
+    Codified 2026-05-20 (MARS Phase 2a incident): PDF→markdown extractors
+    frequently emit a numbered-list marker on its own line when the item
+    body wraps to the following paragraph. Without folding, 77 of 850
+    steps in the MARS run were captured as standalone marker-only steps,
+    inflating step_count by ~9% and producing meaningless candidates.
+
+    The fold preserves the marker as a prefix on the next step so the
+    item number stays visible in the deliverable but doesn't generate
+    a separate workflow-step record.
+    """
+    folded = []
+    pending_marker = None
+    for s in steps:
+        text = (s.get("description") or s.get("text") or "").strip()
+        if ORPHAN_LIST_MARKER.match(text):
+            pending_marker = text
+            continue
+        if pending_marker:
+            s["description"] = f"{pending_marker} {s.get('description', '')}".strip()
+            pending_marker = None
+        folded.append(s)
+    return folded
+```
+
+Apply `fold_orphan_list_markers()` to the per-workflow `steps[]` list AFTER step extraction and BEFORE writing the final JSON. Verifier expects `requirement_candidates` count to fall by ~9% (the orphan-fragment portion).
+
+```python
+PAGE_FOOTER_CONTEXT = re.compile(r"Page\s*\|\s*\d+|Attachment\s+[A-Z]\s+(Detailed\s+Requirements|Cost\s+Proposal)", re.IGNORECASE)
+
+def is_page_footer(line, surrounding_lines):
+    """A standalone digit line is a PDF page footer (not a section break) when:
+    - It matches PAGE_FOOTER_PATTERN AND
+    - Within the next 3 lines there's either footer context text OR another digit-only line
+    """
+    if not PAGE_FOOTER_PATTERN.match(line):
+        return False
+    for next_line in surrounding_lines[:3]:
+        if PAGE_FOOTER_CONTEXT.search(next_line):
+            return True
+        if PAGE_FOOTER_PATTERN.match(next_line):
+            return True
+    return False
+```
+
+Apply this check BEFORE evaluating any line as a section boundary candidate. After applying the filter, section 3.1.1.1 went from 1 step → 20 steps captured.
+
 ```python
 WORKFLOW_PATTERNS = [
     r"(?:current|existing|as-is)\s+(?:process|workflow|procedure)",

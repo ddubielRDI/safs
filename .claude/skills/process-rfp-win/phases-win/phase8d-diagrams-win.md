@@ -82,19 +82,47 @@ Each embed has THREE required elements:
    what the viewer learns from it).
 3. A blank line after for proper markdown rendering.
 
-**Phase8e (PDF assembly) caveats** — the rendering engine (fitz.Story via
-markdown_pdf) cannot resolve `..` in image src paths. Phase8e's
-`clean_markdown` MUST rewrite `../bid/foo.png` to `bid/foo.png` and set
-`Section(root=outputs/)` so the PNG resolves. Without this, the PDF ships
-with broken image links and zero embedded images.
+**Phase8e (PDF assembly) caveats — TWO failure modes:**
 
-**Failure mode being prevented:** previous MARS runs shipped PDFs with all
-the PNGs sitting on disk but no markdown embeds. The bid PDF had zero
-diagrams — a visible-to-evaluator quality defect.
+1. **Path resolution.** The rendering engine (fitz.Story via markdown_pdf)
+   cannot resolve `..` in image src paths. Phase8e MUST rewrite `../bid/foo.png`
+   to `./foo.png` AND set `Section(root=outputs/bid)` so the PNG resolves.
+   Without this, the PDF ships with broken image links and zero embedded images.
 
-**Verification:** before phase8e runs, assert that every PNG referenced in
-`figure-registry.json` appears as an embed in at least one bid section .md
-file. If not, fail loudly and surface which figures are unreferenced.
+2. **Page-DPI downsample (BLOCKING — added 2026-05-20).** fitz.Story embeds
+   raster images at the layout-box pixel DPI (~96 DPI = page size 816x1056
+   for Letter). When the source PNG is much larger (e.g., 3052x1766 from
+   `mmdc --scale 2 -w 1920`), fitz.Story DOWNSAMPLES it to ~816x1056 before
+   embedding. The downsample destroys text antialiasing: small label glyphs
+   merge with each other and with box outlines, producing massive BLACK BLOBS
+   instead of legible labels. This is invisible in the .png file on disk
+   (which looks perfect) but destroys the PDF deliverable.
+
+   **Fix:** render PNGs at ≤1400px wide. This is the maximum that fitz.Story
+   embeds without downsampling, and preserves all text labels legibly.
+   Use `-w 1400` and DROP `--scale 2` from mmdc invocations. See Step 3 below.
+
+   **Failure signature (catch with PyMuPDF QA in phase8e):** if any embedded
+   image has width <900px when the source on disk is >2000px, downsampling
+   has occurred and the diagram is destroyed. Phase8e MUST assert source-vs-
+   embedded width parity per figure.
+
+**Failure mode 1 (path) being prevented:** previous MARS runs shipped PDFs
+with all the PNGs sitting on disk but no markdown embeds. The bid PDF had
+zero diagrams — a visible-to-evaluator quality defect.
+
+**Failure mode 2 (downsample) being prevented:** rfp-mars 2026-05-19 run
+shipped a Technical PDF where Figure 3 (MARS Logical Architecture) rendered
+as an unreadable black silhouette — root cause was 3052x1766 PNG downsampled
+by fitz.Story to 816x1056. User flagged with a "WTF?" screenshot. Reproducible
+fix: pre-resize PNGs to ≤1400px wide before phase8e runs.
+
+**Verification (BOTH gates MANDATORY):**
+- Before phase8e runs, assert every PNG referenced in `figure-registry.json`
+  appears as an embed in at least one bid section .md file.
+- After phase8e renders, open each volume PDF via PyMuPDF; for every
+  embedded image, assert `image.width >= 1200` (within 15% of 1400px source).
+  If downsampling detected, fail the phase.
 
 
 ## Inputs
@@ -204,10 +232,13 @@ cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/architecture.mmd" \
   -o "$BID_DIR/architecture.png" \
   -b white \
-  -w 1920 \
-  -H 1080 \
-  --scale 2 \
+  -w 1400 \
+  -H 800 \
   --backgroundColor white
+  # NOTE: --scale 2 REMOVED 2026-05-20. fitz.Story downsamples raster
+  # images larger than ~1500px wide to page-DPI (816x1056) which destroys
+  # text labels into black blobs. 1400px wide is the maximum safe size
+  # that embeds without downsampling. See phase8e § "PDF Size Discipline".
 
 # Verify output
 ls -la "$BID_DIR/architecture.png"
@@ -217,16 +248,19 @@ ls -la "$BID_DIR/architecture.png"
 
 ```bash
 # Render Gantt chart (using absolute paths from skill directory).
-# NEW-V4-F12 fix 2026-05-18: standardized output to 1920x1080 white background
-# for consistent quality across all diagrams.
+# NEW-V4-F12 fix 2026-05-18: standardized white background for consistency.
+# NEW 2026-05-20: width 1400px max (no --scale 2) -- fitz.Story downsample fix.
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/timeline.mmd" \
   -o "$BID_DIR/timeline.png" \
   -b white \
-  -w 1920 \
-  -H 1080 \
-  --scale 2 \
+  -w 1400 \
+  -H 800 \
   --backgroundColor white
+  # NOTE: --scale 2 REMOVED 2026-05-20. fitz.Story downsamples raster
+  # images larger than ~1500px wide to page-DPI (816x1056) which destroys
+  # text labels into black blobs. 1400px wide is the maximum safe size
+  # that embeds without downsampling. See phase8e § "PDF Size Discipline".
 
 # Verify output
 ls -la "$BID_DIR/timeline.png"
@@ -236,15 +270,19 @@ ls -la "$BID_DIR/timeline.png"
 
 ```bash
 # Render org chart (using absolute paths from skill directory).
-# NEW-V4-F12 fix 2026-05-18: standardized to 1920x1080 white background.
+# NEW-V4-F12 fix 2026-05-18: standardized white background.
+# NEW 2026-05-20: width 1400px max (no --scale 2) -- fitz.Story downsample fix.
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/orgchart.mmd" \
   -o "$BID_DIR/orgchart.png" \
   -b white \
-  -w 1920 \
-  -H 1080 \
-  --scale 2 \
+  -w 1400 \
+  -H 800 \
   --backgroundColor white
+  # NOTE: --scale 2 REMOVED 2026-05-20. fitz.Story downsamples raster
+  # images larger than ~1500px wide to page-DPI (816x1056) which destroys
+  # text labels into black blobs. 1400px wide is the maximum safe size
+  # that embeds without downsampling. See phase8e § "PDF Size Discipline".
 
 # Verify output
 ls -la "$BID_DIR/orgchart.png"
@@ -352,10 +390,53 @@ write_json(f"{bid_dir}/figure-registry.json", figure_registry)
 log(f"Figure registry: {len(figure_registry['figures'])} figures with action captions")
 ```
 
-### Step 7: Verify All Diagrams
+### Step 7: Enforce PDF-Safe Width (MANDATORY — added 2026-05-20)
+
+**⚠️ BLOCKING.** After mmdc renders, ANY PNG wider than 1500px MUST be
+resized to 1400px wide (preserving aspect ratio) with LANCZOS resampling.
+This is the maximum width fitz.Story embeds without downsampling — see
+the failure-mode docs at the top of this phase file. Older mmdc settings
+or alternate renderers may still produce wider PNGs even after Step 3-5
+were updated; this step is the universal safety net.
+
+```python
+from PIL import Image
+import os, shutil
+
+MAX_PDF_SAFE_WIDTH = 1400
+bid_dir = f"{folder}/outputs/bid"
+
+diagrams_to_check = [
+    "architecture.png", "data_model.png", "orgchart.png",
+    "timeline.png", "risk_heatmap.png", "integration_sequence.png",
+]
+
+for diagram in diagrams_to_check:
+    path = os.path.join(bid_dir, diagram)
+    if not os.path.exists(path):
+        continue
+    with Image.open(path) as src:
+        w, h = src.size
+    if w <= MAX_PDF_SAFE_WIDTH:
+        log(f"  {diagram}: {w}x{h} (already PDF-safe)")
+        continue
+    # Preserve the high-res original as .hires.png (for non-PDF uses like web)
+    hires = path.replace(".png", ".hires.png")
+    if not os.path.exists(hires):
+        shutil.copy(path, hires)
+    ratio = MAX_PDF_SAFE_WIDTH / w
+    new_h = int(h * ratio)
+    with Image.open(hires) as img:
+        resized = img.resize((MAX_PDF_SAFE_WIDTH, new_h), Image.LANCZOS)
+        resized.save(path, "PNG", optimize=True)
+    log(f"  {diagram}: {w}x{h} -> {MAX_PDF_SAFE_WIDTH}x{new_h} (PDF-safe)")
+```
+
+### Step 8: Verify All Diagrams
 
 ```python
 import os
+from PIL import Image
 
 required_diagrams = [
     "architecture.png",
@@ -370,10 +451,21 @@ for diagram in required_diagrams:
     path = f"{bid_dir}/{diagram}"
     if os.path.exists(path):
         size_kb = os.path.getsize(path) / 1024
+        with Image.open(path) as img:
+            w, h = img.size
+        # PDF-safe width gate (BLOCKING)
+        if w > 1500:
+            results.append({
+                "file": diagram,
+                "status": "❌",
+                "error": f"Width {w}px exceeds 1500px PDF-safe limit -- fitz.Story will downsample and destroy text labels. Re-run Step 7."
+            })
+            continue
         results.append({
             "file": diagram,
             "status": "✅",
-            "size_kb": size_kb
+            "size_kb": size_kb,
+            "dimensions": f"{w}x{h}"
         })
     else:
         results.append({
@@ -385,12 +477,23 @@ for diagram in required_diagrams:
 # Report results
 for r in results:
     if r["status"] == "✅":
-        log(f"  {r['status']} {r['file']}: {r['size_kb']:.1f} KB")
+        log(f"  {r['status']} {r['file']}: {r['size_kb']:.1f} KB, {r['dimensions']}")
     else:
         log(f"  {r['status']} {r['file']}: {r.get('error', 'Unknown error')}")
+
+# Hard fail on any diagram with width violation
+failures = [r for r in results if r["status"] == "❌"]
+if failures:
+    raise RuntimeError(f"Phase 8d FAILED: {len(failures)} diagram(s) failed PDF-safe checks. See log above.")
 ```
 
-### Step 8: Fallback Rendering (if CLI fails)
+### Step 9: Fallback Rendering (if CLI fails)
+
+**Note:** this step runs ONLY if Step 1 (CLI availability check) failed. Step 8
+(Verify All Diagrams) hard-fails if any required diagram is missing; the
+fallback below is the safety net BEFORE Step 8 runs, used only when mmdc is
+genuinely unavailable. In normal operation Steps 3-5 produce the diagrams and
+Step 8 verifies them.
 
 If Mermaid CLI fails, provide alternative:
 
@@ -411,7 +514,7 @@ def create_fallback_placeholder(diagram_name, folder):
     return placeholder_content
 ```
 
-### Step 9: Quality Checks
+### Step 10: Quality Checks
 
 ```python
 def verify_diagram_quality(folder):
@@ -442,7 +545,7 @@ if quality_issues:
         log(f"  - {issue}")
 ```
 
-### Step 10: Report Results
+### Step 11: Report Results
 
 ```python
 log(f"""
@@ -461,48 +564,64 @@ Output directory: {folder}/outputs/bid/
 """)
 ```
 
-## ⛔ SVG-Preferred Rendering Discipline (BLOCKING — added 2026-05-19)
+## ⛔ Rendering Discipline (BLOCKING — REVISED 2026-05-20)
 
-**Problem:** mmdc `--scale 2 -w 1920` renders PNG at ~3000px wide, which
-fitz.Story embeds UNCOMPRESSED (no Filter in PDF stream). A single architecture
-diagram expands to 15-27 MB uncompressed in the PDF. 6 diagrams = 85 MB of raw
-raster data in Draft_Bid.pdf — exceeding all procurement portal upload limits.
+**REVISION NOTE (2026-05-20):** the prior version of this section claimed
+SVG embeds avoid the size/quality problem. Empirical testing on PyMuPDF
+1.26.7 + markdown_pdf 1.3.5 PROVED THIS WRONG. fitz.Story rasterises SVG
+to PNG at the page-DPI layout box — identical to PNG handling — producing
+the SAME black-blob artifact when the rasterised result is too small for
+text antialiasing. SVG embed is NOT a quality fix. Keeping PNG as the
+primary format AT THE CORRECT WIDTH is the actual fix.
 
-**Rule:** ALWAYS render SVG as the PRIMARY format. mmdc supports SVG natively
-(`-o foo.svg`). fitz.Story accepts SVG via `<img src="...svg">` and rasterises
-it at page DPI (~96 DPI for Letter), producing a ~30 KB compressed image per
-diagram. Keep PNG as FALLBACK only.
+**Problem 1 (quality):** mmdc `--scale 2 -w 1920` produces ~3800px wide
+PNGs. When fitz.Story embeds these, it downsamples to page-DPI (~816x1056)
+and text labels merge into black blobs. The PNG on disk is fine; the PDF
+embed is destroyed. Reproduced on rfp-mars 2026-05-19 run.
 
-**Rendering order (MANDATORY for all 6 diagrams):**
+**Problem 2 (size):** uncompressed raster streams in the PDF can exceed
+procurement portal upload limits (typically 25 MB). Mitigated by
+`MarkdownPdf(optimize=True)` which enables deflate compression. With
+`optimize=True` plus 1400px-wide PNGs, each embedded image is ~30-60 KB.
+
+**Rule (combines both fixes):**
+
+1. **Render PNG at `-w 1400` (no `--scale 2`).** This is the maximum width
+   fitz.Story embeds without downsampling. Resulting PNG is ~1400x... on
+   disk, ~60-150 KB per file.
+2. **Pass `optimize=True` to every `MarkdownPdf()` constructor in phase8e.**
+   This enables stream compression (deflate). 6 diagrams at 1400px wide
+   compress to <1 MB total in the final PDF.
+3. **Reference PNG (not SVG) in bid-section .md files.** SVG embed is
+   NOT a fix — it suffers the same downsample artifact. Phase 8e
+   `clean_markdown()` rewrites `../bid/foo.png` to `./foo.png` so that
+   `Section(root=BID_OUT_ABS)` resolves them.
+
+**Rendering command (single PNG per diagram, no SVG primary):**
 
 ```bash
-# SVG first (primary for PDF embed — tiny, crisp, compresses well)
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
-  -i "$BID_DIR/foo.mmd" -o "$BID_DIR/foo.svg" \
-  -b white --backgroundColor white
-
-# PNG second (kept as fallback if SVG embed fails)
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
   -i "$BID_DIR/foo.mmd" -o "$BID_DIR/foo.png" \
-  -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
+  -b white -w 1400 --backgroundColor white
 ```
 
-**Markdown embed syntax:** reference SVG, not PNG:
+SVGs MAY still be rendered as an optional secondary artifact (useful for
+the interactive ARCHITECTURE_DEMO.html, vector printing, web embedding).
+They are NOT used by phase8e PDF assembly.
+
+**Markdown embed syntax (use PNG):**
 
 ```markdown
-![Alt text](../bid/architecture.svg)
+![Alt text describing components](../bid/architecture.png)
 ```
 
-phase8e `clean_markdown()` MUST resolve SVG paths (rewrite `../bid/foo.svg`
-to `bid/foo.svg`) identically to PNG paths, and check for SVG presence before
-falling back to PNG.
+**figure-registry.json:** track `file` as the PNG path. Optional `file_svg`
+field for the secondary SVG (when rendered).
 
-**figure-registry.json:** track both `file_svg` and `file_png` per figure;
-set `file` to the SVG path when available.
-
-**Size verification:** each SVG should be <300 KB on disk. After PDF render
+**Size verification:** each PNG should be <250 KB on disk. After PDF render
 with `optimize=True`, each embedded image in the final PDF should be <200 KB
-(PyMuPDF `doc.extract_image(xref)["image"]` length check).
+(PyMuPDF `doc.extract_image(xref)["image"]` length check). Total final
+PDF size <15 MB per volume, <25 MB for Draft_Bid.pdf.
 
 **Cross-reference:** phase8e-pdf-win.md contains the `optimize=True` and
 size-limit discipline. Together these two rules eliminate the 90 MB → <1 MB
@@ -515,7 +634,10 @@ PDF size regression.
 ```bash
 # All rendering commands for reference. Render SVG FIRST (primary), PNG second (fallback).
 # NEW-V4-F14 2026-05-19: SVG-preferred to prevent 90 MB PDF size regression.
-# NEW-V4-F12 + V4-F9 fix 2026-05-18: fallback SKILL_DIR and consistent 1920x1080 output.
+# NEW-V4-F12 + V4-F9 fix 2026-05-18: fallback SKILL_DIR + consistent output.
+# NEW 2026-05-20: PNG width capped at 1400px (no --scale 2) — fitz.Story
+# downsamples larger images to ~816x1056 and destroys text labels. See
+# failure-mode docs at top of this file.
 if [ -z "${CLAUDE_SKILL_DIR:-}" ]; then
     SKILL_DIR="C:/Resource Data/WSL/safs/.claude/skills/process-rfp-win"
 else
@@ -525,15 +647,15 @@ BID_DIR="{folder}/outputs/bid"
 
 # Architecture (flowchart) — SVG primary, PNG fallback
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.svg" -b white --backgroundColor white
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.png" -b white -w 1400 --backgroundColor white
 
 # Timeline (Gantt) — SVG primary, PNG fallback
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.svg" -b white --backgroundColor white
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.png" -b white -w 1400 --backgroundColor white
 
 # Org Chart (flowchart) — SVG primary, PNG fallback
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.svg" -b white --backgroundColor white
-cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.png" -b white -w 1400 --backgroundColor white
 ```
 
 ## Quality Checklist (MANDATORY — report each by name with evidence)

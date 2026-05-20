@@ -47,40 +47,108 @@ disable-model-invocation: true
 
 ## ⛔ Phase Verifier Dispatch Pattern (READ FIRST — BLOCKING)
 
-Five high-risk phases have dedicated content-aware verifiers that run AFTER the phase agent reports done and BEFORE the stage's SVA gate. These verifiers catch bug classes (truncation, row caps, stale versions, orphaned embeds, wrong orientation) that SVA structural checks miss.
+**Every output-producing phase has a dedicated content-aware verifier** that runs AFTER the phase agent reports done and BEFORE any dependent downstream phase starts. Verifiers catch bug classes (truncation, row caps, stale versions, orphaned embeds, wrong orientation, hallucinated jurisdiction, fabricated entities) that SVA structural checks miss.
 
-### Verifier Registry
+### Dispatch Contract — the "Done" definition (codified 2026-05-20)
 
-| Phase | Verifier File | SVA Gate After |
-|-------|---------------|----------------|
-| 3a-tech-stack | `phases-win/verifier-phase3a-tech-stack-win.md` | SVA-3 |
-| 4 (Traceability) | `phases-win/verifier-phase4-win.md` | SVA-4 |
-| 8.4k (Risk Register) | `phases-win/verifier-phase8.4k-riskreg-win.md` | SVA-7 |
-| 8d (Diagrams) | `phases-win/verifier-phase8d-diagrams-win.md` | phase8e |
-| 8e (PDF Assembly) | `phases-win/verifier-phase8e-pdf-win.md` | SVA-7 |
-
-### Dispatch Protocol (MANDATORY)
+**The phase agent's self-report of "done" is NEVER the Done signal that releases dependent phases.** Only `verifier(phase).disposition == PASS` (or escalated `CONCERN` the user explicitly approves) opens the gate to downstream consumers.
 
 ```
-phase agent reports done
-  → Read verifier-{phase-id}-win.md in FULL
-  → Run all verifier checks
-  → If PASS: continue to next phase / SVA gate
-  → If CONCERN: log advisory, continue (do not block)
-  → If FAIL:
-      1. Format corrective instructions from verifier's "Corrective Instructions on FAIL" section
-      2. Re-dispatch original phase agent with those instructions (max 1 retry)
-      3. Re-run verifier after retry
-      4. If FAIL again: HALT and escalate to human via AskUserQuestion with full verifier report
-         Do NOT attempt a second retry or silent workaround
+┌──────────────────────────┐
+│ Phase A agent dispatched │
+└────────────┬─────────────┘
+             │ agent reports "I finished"
+             ▼
+┌──────────────────────────────────────┐
+│  Verifier(A) dispatched IMMEDIATELY  │
+│  Reads verifier-{phase-id}-win.md    │
+│  Runs all checks against A's outputs │
+└────────────┬─────────────────────────┘
+             │
+        ┌────┴────┬─────────────────┐
+        ▼         ▼                 ▼
+      PASS    CONCERN              FAIL
+        │         │                 │
+        │         │ log advisory,   ▼
+        │         │ surface to user │  Format corrective instructions
+        │         │ before          │  Re-dispatch Phase A agent w/ corrections
+        │         │ proceeding      │  (max 1 retry)
+        │         │                 │  Re-run Verifier(A)
+        │         │                 ├──→ PASS — release downstream
+        │         │                 └──→ FAIL again — HALT pipeline
+        │         │                                    Escalate via AskUserQuestion
+        ▼         ▼                                    NO second retry
+   ┌──────────────────────────────┐                    NO silent workaround
+   │  A's outputs are RELEASED.   │                    NO bypass
+   │  Phase B (and any other      │
+   │  dependent phase) may start. │
+   └──────────────────────────────┘
 ```
 
-### Why these 5 phases (rationale — do not skip)
+**Strict rules:**
+1. **No downstream phase reads A's output until verifier(A) = PASS.** If Phase B depends on Phase A's JSON, B does not even get its prompt assembled until A's verifier passes.
+2. **Parallel phases with no cross-dependency may run alongside.** Phases 1.5/1.6/1.7/1.8 all read flattened/* independently, so they can run in parallel. But Phase 1.9 reads all four of their outputs — Phase 1.9 cannot launch until verifier(1.5) AND verifier(1.6) AND verifier(1.7) AND verifier(1.8) all return PASS.
+3. **Retry budget = up to 2 retries, BUT every retry MUST produce at least one codification entry.** (Updated 2026-05-20 — codification-gated retry.) Phase agent runs → verifier FAIL → analyze the FAIL → before re-dispatching, capture the new understanding by editing the phase file, the verifier rulebook, the SVA registry, or the memory. The retry's corrective instructions inherit that codification. After the retry, re-verify. If FAIL again: analyze AGAIN, codify AGAIN, retry AGAIN. **The hard limit is 2 retries (3 total attempts) AND the codification gate. A retry that does not produce a new codification entry is FORBIDDEN — that's just re-rolling dice on the same logic.** When the codification gate cannot be satisfied (the failure is genuinely beyond the phase's scope, or the cause is upstream of an already-passed verifier), HALT and escalate.
+4. **Why codification-gated retry, not bounded retry:** every retry that produces codified learning compounds — the same failure mode disappears on future runs. Stage 1 of the MARS 2026-05-20 run had four retry events (1.5, 1.7×2, 1.85, plus SVA-1); each yielded phase-file/verifier/registry/memory edits that a fresh MARS run today would inherit and PASS first-try on. The discipline is "convergence toward a stable workflow," not "retry until lucky." Retries that codify are progress; retries that don't are noise.
+5. **HALT means escalate, not skip.** When (a) the retry budget is exhausted, (b) the codification gate cannot be satisfied, or (c) the user invokes a stop, the coordinator MUST call AskUserQuestion with the full verifier report + the codifications attempted so far + explicit choices (authorize a budget-override retry / fix manually then resume / lower the threshold via codification / abort pipeline). NEVER advance to the next phase silently. **User-authorized retry-budget overrides are legitimate** — they are the codified escape valve, not a contract violation.
+6. **CONCERN is non-blocking but visible.** The coordinator MUST surface CONCERN advisories to the user as inline status (so the user can call a halt if a borderline pass is unacceptable for their bid).
+7. **The verifier's Corrective Instructions are SPECIFIC.** They must name the exact check that failed and the numeric / structural discrepancy. Generic "re-run the phase" is not acceptable — verifiers that emit vague instructions are themselves bugs to be fixed.
+8. **Codification ledger:** every retry MUST record what it codified in `shared/progress.json` under `phases.{phase_id}.retry_history[]` with fields `retry_number`, `failure_cited`, `codification_file`, `codification_summary`. Future audits use this ledger to measure pipeline convergence over time — if retry counts trend down across runs, codification is working. If they stay flat, the codifications aren't catching the right things.
 
-| Phase | Today's bug it would have caught |
+### Verifier Registry — full coverage as of 2026-05-20
+
+Every PHASES entry that declares a `required_outputs` list has a verifier. Coverage:
+
+| Stage | Phases (with their verifiers) |
+|-------|-------------------------------|
+| 1 | 1.5, 1.6, 1.7, 1.8, 1.85, 1.9, 1.95, 1.97 — see `verifier-phase1.X-{name}-win.md` |
+| 2 | 2a, 2, 2b, 2c, 2d — see `verifier-phase2X-{name}-win.md` |
+| 3 | 3a-tech-stack, 3a, 3b, 3c, 3e, 3f, 3g, 3h — see `verifier-phase3X-{name}-win.md` |
+| 4 | 4 (Traceability), 5 (Estimation) — see `verifier-phase{N}-win.md` |
+| 5 | 6 (Manifest/ExecSum/Nav), 6c (Context Bundle) |
+| 6 | 7, 7c, 7d |
+| 7 | 8.0, 8.1, 8.2, 8.3, 8.4, 8.4r, 8.4k, 8.5, 8.6, 8f, 8d, 8e |
+
+A phase WITHOUT a verifier file is itself a defect — the coordinator should HALT and request the verifier be authored before dispatching that phase.
+
+### Foundation-Tier Phases (codified 2026-05-20 — "requirements extraction is the foundation")
+
+A subset of phases are FOUNDATION-tier — everything else in the pipeline reads their output and a defect at this layer propagates to every downstream artifact. Foundation-tier phases get **elevated verifier rigor + aggressive retry-with-codification + foundation-first quality bar** at the cost of speed:
+
+| Phase | Why foundation | Downstream impact of under-capture |
+|-------|----------------|------------------------------------|
+| 1.7 Compliance Gatekeeper | Mandatory items list is the compliance bedrock | Every missed SHALL is a non-responsive line item; SVA-7 traceability audit fails |
+| 2a Workflow Extraction | Workflows define the user-facing scope | Specs design for the wrong scope; SVA-2 coverage gate fails |
+| 2 Requirements Extraction | The raw requirements pool | If a req is missed here, Stage 4 RTM has no chain to build; bid never addresses it |
+| 2b Normalize Requirements | Dedup + canonicalize | Over-merge collapses distinct mandates; under-merge inflates bid response count past page-limit budget |
+| 2c Requirements Catalog | The human-readable foundation document | Row caps or truncations here mean evaluators see less than the bid claims to address |
+| 2d Coverage Validation | The blocking gate | If 100% coverage isn't reached, the foundation is admitted-incomplete |
+
+**Foundation-tier rules:**
+1. **Verifier thresholds are stricter.** Generic verifier checks of "≥ N items" become "≥ N items AND capture ratio against raw RFP SHALL/MUST count ≥ 0.7" for foundation phases. Under-extraction is a CRITICAL FAIL, not a quality concern.
+2. **Retry-with-codification is encouraged, not minimized.** A 2nd or 3rd retry that adds a phase-file rule about contract-clause filtering, atomic-vs-grouped extraction policy, or domain-axis dedup is strict-net-positive — the same RFP class won't repeat the failure.
+3. **Cross-stage parity checks.** After Phase 2 completes, the verifier MUST cross-check that every COMPLIANCE_MATRIX.mandatory_item has at least one corresponding requirements-normalized entry (Stage 4 RTM will catch this too, but foundation discipline catches it earlier).
+4. **Page-limit awareness is downstream concern, not foundation concern.** Phase 1.7 / Phase 2 capture EVERY obligation atomically. Phase 8.x bid authoring decides how to group obligations into response narratives. Compressing at the foundation tier loses traceability permanently.
+
+This principle was codified after the MARS 2026-05-20 Phase 1.7 under-extraction (503 of ~1,090 RFPAttH SHALLs) was caught by SVA-1 only after the entire downstream pipeline had been authored against it. With foundation-tier discipline in place, the under-extraction would have been caught at verifier-phase1.7 time, not stages later.
+
+### Why this matters (rationale — do not skip)
+
+| Phase | Bug class the verifier catches |
 |-------|----------------------------------|
+| 1.5 | Hallucinated jurisdiction (MARS 2026-05-20: "Alaska" written for an Oregon RFP); `*_domain_hints` blocks; statute prefix not matching state |
+| 1.6 | Eval weights not summing to 100; selection method invented; missing rfp_section citations |
+| 1.7 | Compliance over-extraction (760 items); missed non-negotiables; mandatory items without source_id |
+| 1.8 | Wrong file naming pattern; missed page limits; wrong deadline parse |
+| 1.85 | Competitive-position leakage into clarifying questions; questions w/o source citation |
+| 1.9 | Field name confusion (`decision` vs `recommendation`); weighted areas missing; thresholds applied wrong |
+| 2 | Sample-contract / bidder-form clauses leaking as requirements; ToC chrome captured; soft-wrap fragmentation |
+| 2b | Over-merge (>40%) collapsing distinct reqs; under-merge (<10%) leaving duplicates |
+| 2c | Row-cap notices in catalog; mid-cell truncations |
 | 3a-tech-stack | .NET 8/9 contamination from stale training-data versions |
-| 4 (RTM) | Requirements silently dropped; risks not cross-linked |
+| 3a (Architecture) | Stale framework versions; missing ADR rationale; non-functional sections empty |
+| 4 (RTM) | Requirements silently dropped; risks not cross-linked; empty unlinked_reason on WAIVED items |
+| 5 (Estimation) | Missing role categories; impossible AI-assist ratios; coverage mismatch w/ RTM |
 | 8.4k (Risk Register) | Row cap at 15/281, empty mitigations, mid-word `entit`, portrait overflow |
 | 8d (Diagrams) | Rendered PNGs with zero embed references → zero-diagram PDFs |
 | 8e (PDF Assembly) | Portrait Risk Register, missing column headers, zero embedded images |
@@ -498,7 +566,222 @@ def write_file(path, text):
     """Write plain text with explicit UTF-8 + LF line endings."""
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+
+# ────────────────────────────────────────────────────────────────────────────
+# MOJIBAKE SCRUB (codified 2026-05-20 — defense-in-depth)
+# ────────────────────────────────────────────────────────────────────────────
+# Some PDF extractors emit U+FFFD (REPLACEMENT CHARACTER, "�") or a literal
+# "?" wherever they fail to decode a glyph (typically curly apostrophes
+# U+2019, curly quotes U+201C/D, em-dashes U+2014, en-dashes U+2013).
+# The MARS run on 2026-05-20 produced 1,789 U+FFFD characters across 776
+# mandatory_items[*].text locations in COMPLIANCE_MATRIX.json after Phase 0
+# flattened Attachment A with a lossy decoder. The corruption was visible
+# in flattened/Attachment-A-Sample-XaaS-Contract-MARS.md as `Proposer�s`,
+# `�Go-Live�`, `Authorized Representative�s`. Phase 1.5 hit the same issue
+# in jurisdiction_anchor.issuing_agency_line.value (`?rm` for `firm`).
+#
+# EVERY phase that consumes flattened/* MUST call scrub_mojibake() on any
+# text it serialises into a deliverable. The scrub repairs the most common
+# patterns via context-aware substitution and flags unrepairable cases so
+# the verifier can decide whether to FAIL or accept.
+
+import re as _re_scrub
+
+_MOJIBAKE_CHARS = ("�", "?")  # U+FFFD and naked "?" between letters
+_APOSTROPHE_PATTERN = _re_scrub.compile(r"(\w)[�\?](\w)")  # word?word → word'word
+_PAIRED_QUOTE_OPEN = _re_scrub.compile(r"([\s\(\[])[�\?](\w)")  # before a word
+_PAIRED_QUOTE_CLOSE = _re_scrub.compile(r"(\w)[�\?]([\s\.,;:!\?\)\]])")  # after a word
+_EM_DASH_PATTERN = _re_scrub.compile(r"(\w\s)[�\?](\s\w)")  # word — word
+
+def scrub_mojibake(text, source_hint=None):
+    """Repair common mojibake patterns and flag unrepairable cases.
+
+    Returns (repaired_text, report_dict). The report records:
+      - chars_replaced: total U+FFFD / ? mid-word substitutions made
+      - unrepairable_indices: byte offsets of residual mojibake the heuristics
+        could not safely repair (e.g., U+FFFD adjacent to whitespace on both
+        sides — too ambiguous to guess)
+      - source_hint: caller-provided context (file path, field name) for logging
+
+    The caller is responsible for deciding what to do with unrepairable cases:
+      - PHASE 1.5 (jurisdiction grounding): reject the field; set to None with
+        dropped_reason="mojibake_unrepairable"
+      - PHASE 1.7 (compliance matrix): leave the U+FFFD intact AND record the
+        item in `pipeline_metadata.encoding_audit[]` so the verifier can decide
+      - PHASE 8.x (bid sections): never write a deliverable with residual
+        mojibake; raise an error and halt
+
+    Mid-word `?` is treated as mojibake ONLY when the surrounding context shows
+    no question-mark semantics (i.e., not at end of sentence). The patterns
+    above are conservative — `word?word` is overwhelmingly a decode failure,
+    never legitimate English orthography."""
+    if not isinstance(text, str):
+        return (text, {"chars_replaced": 0, "unrepairable_indices": [], "source_hint": source_hint})
+
+    original = text
+    replacements = 0
+
+    # Pass 0 (codified 2026-05-20 — MARS Phase 2b incident): fi/fl LIGATURE REPAIR.
+    # PDF extractors (markitdown, pdfminer, others) frequently fail to map the
+    # Unicode `fi` (U+FB01) and `fl` (U+FB02) ligatures, emitting them as a
+    # literal `?` mid-word. The MARS Phase 2b run shipped 9 trailing-`"ligature`
+    # patterns (e.g., "auditor "le", "user's "rm", "any "ling") plus 125 internal
+    # occurrences, all traceable to fi/fl ligature loss in Attachment H.
+    #
+    # This pass MUST run FIRST — before Pass 3's quote-pair substitution converts
+    # `?` into `"`, which produces the visible `"le`, `"rm` patterns that look
+    # like quote-internal truncation. After Pass 0, no `?ligature` remains for
+    # Pass 3 to misinterpret.
+    #
+    # The pattern matches `?{ligature-continuation}` where the continuation is
+    # one of the deterministic English-orthography options that result from
+    # a lost `fi` or `fl` prefix. We rebuild the full word with the correct
+    # ligature pair restored.
+    _FI_FL_LIGATURE_MAP = [
+        # fi-prefix: file/files/filing/filings/filed; firm/firms; find/found;
+        # final/finally/finished; fifth; first; field/fields; fix/fixed
+        (_re_scrub.compile(r"\?(le|les|led|ling|lings|lings\b)"), r"fi\1"),
+        (_re_scrub.compile(r"\?(rm|rms|rmed|rming)\b"), r"fi\1"),
+        (_re_scrub.compile(r"\?(nd|nds|nding|nished|nally|nal)\b"), r"fi\1"),
+        (_re_scrub.compile(r"\?(fth|rst|eld|elds|x|xed|xing)\b"), r"fi\1"),
+        # fl-prefix: flag/flagged; flow/flows; flat; flex; floor/floors;
+        # flight/flights; float; fleet
+        (_re_scrub.compile(r"\?(ag|ags|agged|agging)\b"), r"fl\1"),
+        (_re_scrub.compile(r"\?(ow|ows|owed|owing)\b"), r"fl\1"),
+        (_re_scrub.compile(r"\?(at|ats|atten)\b"), r"fl\1"),
+        (_re_scrub.compile(r"\?(ex|exes|exible|exibility)\b"), r"fl\1"),
+        (_re_scrub.compile(r"\?(oor|oors|ight|ights|oat|oats|eet)\b"), r"fl\1"),
+        # Truncated-tail safety net (codified 2026-05-20 — MARS retry 1/2):
+        # Raw extraction sometimes ends mid-word with ?l, ?lin, ?li, etc.
+        # When such a fragment appears at end-of-string, the most-likely original
+        # was fi+continuation (filing/firm/file). Pattern: `?` followed by 1-3
+        # lowercase letters starting with `l` or `r`, AT end of text. Defensive
+        # — only fires when the word is already truncated, so we're not destroying
+        # valid English.
+        (_re_scrub.compile(r"\?(l[a-z]{0,2})$"), r"fi\1"),
+        (_re_scrub.compile(r"\?(r[a-z]{0,2})$"), r"fi\1"),
+    ]
+    for pattern, replacement in _FI_FL_LIGATURE_MAP:
+        new_text, n = pattern.subn(replacement, text)
+        replacements += n
+        text = new_text
+
+    # Pass 1: word?word and word�word → word'word (curly apostrophe loss)
+    def _apostrophe(m):
+        nonlocal replacements
+        replacements += 1
+        return m.group(1) + "'" + m.group(2)
+    text = _APOSTROPHE_PATTERN.sub(_apostrophe, text)
+
+    # Pass 2: word — word reconstruction (em-dash between words with spaces)
+    def _emdash(m):
+        nonlocal replacements
+        replacements += 1
+        return m.group(1) + "—" + m.group(2)
+    text = _EM_DASH_PATTERN.sub(_emdash, text)
+
+    # Pass 3: paired quote heuristics — substitute ASCII-safe quote
+    def _open_q(m):
+        nonlocal replacements
+        replacements += 1
+        return m.group(1) + '"' + m.group(2)
+    def _close_q(m):
+        nonlocal replacements
+        replacements += 1
+        return m.group(1) + '"' + m.group(2)
+    text = _PAIRED_QUOTE_OPEN.sub(_open_q, text)
+    text = _PAIRED_QUOTE_CLOSE.sub(_close_q, text)
+
+    # Pass 4 (codified 2026-05-20 — MARS Phase 2 incident): standalone U+FFFD
+    # acting as a bullet marker — strip them. Attachment H PDFs use a glyph
+    # for "•" that markitdown rejects, leaving runs of U+FFFD as the bullet
+    # column. Without this pass, Phase 2 emitted 271 requirements with
+    # residual U+FFFD; with it, only 1 (a single trailing curly-quote loss).
+    # Conservative — only collapses runs surrounded by whitespace or punctuation.
+    _BULLET_MARKER = _re_scrub.compile(
+        r"(?:(?<=\s)|(?<=^)|(?<=[.,;:!?]))\s*(?:�\s+)+", _re_scrub.M
+    )
+    new_text, n = _BULLET_MARKER.subn(" ", text)
+    replacements += n
+    text = new_text
+    # Trailing-bullet at end of string
+    new_text, n = _re_scrub.subn(r"\s+�\s*$", "", text)
+    replacements += n
+    text = new_text
+    # Collapse repeated whitespace from the strip
+    text = _re_scrub.sub(r"  +", " ", text)
+
+    # Pass 5 (codified 2026-05-20 — MARS Phase 2b retry-2 incident): trailing
+    # closing-quote restoration. When U+FFFD follows a sentence-final punctuation
+    # mark (`)`, `.`, `!`, `?`, `;`, `:`) OR appears at end of text after a
+    # closing parenthesis / letter, the lost glyph was overwhelmingly the closing
+    # right-double-quote (U+201D `"`). The MARS RFP had the phrase
+    # `Municipal Accounting and Reporting Solution (MARS)�` — the closing
+    # smart-quote U+201D was the lost char. Restoring it as a safe ASCII `"`
+    # preserves the meaning without introducing new mojibake.
+    _CLOSING_QUOTE_LOSS = _re_scrub.compile(r"([\)\.\!\?\;\:])\s*�")
+    new_text, n = _CLOSING_QUOTE_LOSS.subn(r'\1"', text)
+    replacements += n
+    text = new_text
+    # End-of-text trailing U+FFFD after a closing parenthesis or letter
+    new_text, n = _re_scrub.subn(r"(\w|\))\s*�\s*$", r'\1"', text)
+    replacements += n
+    text = new_text
+
+    # Find any residual U+FFFD or mid-word `?` the heuristics didn't catch.
+    unrepairable = []
+    for i, ch in enumerate(text):
+        if ch == "�":
+            unrepairable.append(i)
+
+    return (text, {
+        "chars_replaced": replacements,
+        "unrepairable_indices": unrepairable,
+        "source_hint": source_hint,
+        "original_length": len(original),
+        "repaired_length": len(text),
+    })
+
+
+def scrub_mojibake_strict(text, source_hint=None):
+    """Like scrub_mojibake but raises ValueError if any unrepairable mojibake remains.
+    Use this at deliverable-write boundaries (Phase 8.x bid sections, final PDFs)
+    where leakage to the customer is unacceptable."""
+    repaired, report = scrub_mojibake(text, source_hint=source_hint)
+    if report["unrepairable_indices"]:
+        raise ValueError(
+            f"Unrepairable mojibake at {len(report['unrepairable_indices'])} indices "
+            f"in {source_hint or 'unspecified'} (first 3: {report['unrepairable_indices'][:3]}). "
+            f"Fix the upstream source (Phase 0 flatten) before writing this deliverable."
+        )
+    return repaired
 ```
+
+**⛔ EXTRACT BOUNDARY vs SERIALIZATION BOUNDARY (codified 2026-05-20 — MARS Phase 2 incident):**
+
+`scrub_mojibake()` and any other defensive normalization (scope filtering, length capping, schema validation) MUST be applied at BOTH boundaries:
+
+| Boundary | What it protects | Failure mode if skipped |
+|----------|------------------|--------------------------|
+| **Extract** (when reading from flattened/*) | In-memory data structures used by the phase | Phase logic operates on corrupted text → wrong matches, wrong classification |
+| **Serialization** (when writing to JSON / MD output) | The deliverable file other phases will read | Mojibake / scope leakage / truncation propagates downstream regardless of how clean the in-memory state was |
+
+The MARS Phase 2 incident demonstrated this: the producer applied `scrub_mojibake()` correctly to `requirements[].text` when building the in-memory list (extract boundary), but the `rtm_rfp_sources[].text_excerpt` field was COPIED from a pre-scrub source variable at serialization time, leaking 191 U+FFFD characters into the deliverable. Same pattern with scope filtering — `requirements[]` filtered blacklisted docs correctly but `rtm_rfp_sources[]` was built from a different code path that bypassed the scope gate (196 entries from Att A / _combined / bidder forms slipped through).
+
+**Universal rule:** ANY string field written to a deliverable JSON / MD file MUST pass through the appropriate defensive helper(s) AT THE WRITE STATEMENT, regardless of whether it was scrubbed earlier. The cost of double-scrubbing is negligible; the cost of single-scrubbing in the wrong place is shipping corruption to the customer.
+
+**Verifier discipline:** every phase verifier MUST scan the entire deliverable JSON tree for U+FFFD / scope-blacklisted documents / `[:N]` truncation, not just the headline `requirements[]` or `mandatory_items[]` arrays.
+
+**Phase usage rules (codified 2026-05-20 — MARS Phase 1.7 incident):**
+
+| Phase | When to call | What to do with unrepairable residuals |
+|-------|---------------|----------------------------------------|
+| Phase 0 (flatten) | After each PDF/DOCX extraction, before writing the .md file | Re-extract with a different decoder if any residuals remain; never write a flattened/*.md with U+FFFD inside |
+| Phase 1.5 (domain) | On every captured `jurisdiction_anchor.*.value` | Reject the field; set to None with `dropped_reason="mojibake_unrepairable"`; retry grep with different file priority (primary RFP > _combined) |
+| Phase 1.6 / 1.7 / 1.8 | On every extracted text field (evaluation_factors[].name, mandatory_items[].text, volume.title, etc.) | Apply scrub; log unrepairable to `pipeline_metadata.encoding_audit[]` with item ID + character index; let the verifier decide PASS/FAIL based on residual count |
+| Phase 2/3 (specs/reqs) | On every cited requirement text | Apply scrub; if residual count > 0.5% of total items → BLOCK the phase and escalate |
+| Phase 8.x (bid sections) | At every deliverable-write boundary | Use `scrub_mojibake_strict()` — raise on any residual. Final bid is customer-facing; zero tolerance |
+
 
 **Why `ensure_ascii=False`:** the older default (`True`) escapes em dashes as `—` but does the same to mojibake `â€"`, hiding the corruption. With `ensure_ascii=False` and `encoding='utf-8'`, mojibake becomes immediately visible as `â€"` on inspection, catching bugs at the file boundary.
 

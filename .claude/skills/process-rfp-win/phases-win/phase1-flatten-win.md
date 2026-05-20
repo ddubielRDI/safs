@@ -23,6 +23,49 @@ Claude's Read tool has an undocumented ~1MB limit for binary PDF files. This cau
 
 **MANDATORY:** All PDFs must be converted using `markitdown` first.
 
+## ⛔ ENCODING DISCIPLINE (codified 2026-05-20 — MARS U+FFFD propagation incident)
+
+The MARS run on 2026-05-20 produced a flattened `Attachment-A-Sample-XaaS-Contract-MARS.md` containing 1,789 U+FFFD (`�`) replacement characters where the source PDF used curly apostrophes (U+2019 `'`), curly quotes (U+201C/D `"` `"`), and em-dashes (U+2014 `—`). The corruption propagated downstream into COMPLIANCE_MATRIX.json (Phase 1.7), domain-context.json (Phase 1.5 `?rm` for `firm`), and CLARIFYING_QUESTIONS.md (Phase 1.85 Q-I11 evidence snippet). Defense-in-depth scrubbing at every consumer phase is now codified in `skill-win.md` MOJIBAKE SCRUB, but **the proper fix lives here at the source.**
+
+**Three mandatory rules:**
+
+1. **Every read of an original document MUST use `encoding='utf-8', errors='strict'`.** Never use `errors='replace'` (which silently substitutes U+FFFD on any decode failure, producing the exact corruption pattern observed in MARS). Never use `errors='ignore'` (which silently drops bytes). `errors='strict'` raises on any decode failure — the right behavior because it forces the agent to diagnose and pick the correct codec rather than ship corrupted bytes downstream.
+
+2. **Every write of a flattened .md MUST use `encoding='utf-8', newline='\n'`.** No platform-default encoding (Windows defaults to cp1252, which corrupts em dashes). No CRLF (breaks byte-level diffs across machines).
+
+3. **Post-extraction U+FFFD check.** After `markitdown` produces the markdown text, count U+FFFD in the result. If `text.count('�') > 0`:
+   - Log the count and the first 5 indices to `pipeline_metadata.flatten_audit[]`.
+   - Attempt a re-extraction with an alternative tool (`pdftotext -layout`, PyMuPDF/`fitz` text mode, or OCR fallback) and keep whichever extraction has fewer U+FFFD.
+   - If ALL extractors produce U+FFFD in the same positions, log the document as "upstream PDF data loss — unrecoverable" and continue. Downstream phases will see the audit entry and know to apply defense-in-depth scrubbing rather than blame their own logic.
+
+```python
+def safe_read(path):
+    """Read text with UTF-8 + strict error handling. Raise on decode failure."""
+    with open(path, "r", encoding="utf-8", errors="strict") as f:
+        return f.read()
+
+def safe_write_flatten(path, text):
+    """Write flattened markdown with explicit UTF-8 + LF + a post-write audit."""
+    ufffd_count = text.count("�")
+    if ufffd_count > 0:
+        # Surface the first 5 occurrence indices so re-extraction or downstream
+        # consumers can act on the audit.
+        indices = []
+        idx = 0
+        for _ in range(5):
+            idx = text.find("�", idx + 1)
+            if idx < 0:
+                break
+            indices.append(idx)
+        log(f"⚠️  FLATTEN AUDIT: {path} contains {ufffd_count} U+FFFD chars at "
+            f"indices {indices} — consider re-extracting with alt tool")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    return ufffd_count
+```
+
+**Why `errors='strict'` is non-negotiable:** Once U+FFFD is in the flattened markdown, the original character is **gone**. Every downstream phase that consumes that text must either guess (often wrong) or accept the corruption. A decode failure at flatten time, by contrast, lets the agent pick a better codec or fall back to OCR while the original bytes are still intact. The cost of a noisy strict-decode failure is a single retry; the cost of silent U+FFFD propagation is corruption spread across 5+ phases (as MARS demonstrated).
+
 ### Why markitdown?
 
 - **Already installed** (v0.1.3) - no additional dependencies

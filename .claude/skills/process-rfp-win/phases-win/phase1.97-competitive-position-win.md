@@ -72,6 +72,28 @@ has_incumbent = bool(incumbent["name"])
 A **ghost** is a competitor whose weaknesses we describe in our bid WITHOUT naming them. The ghost paragraph reads "Some legacy systems require batch-only data transfer..." not "ACME Inc. requires batch-only data transfer". The evaluator recognizes whom we are describing without us creating libel risk.
 
 ```python
+# ⛔ STUBS BELOW ARE REFERENCE-ONLY (codified 2026-05-20 — MARS Phase 1.97 incident)
+#
+# The naive _ghost_phrase / _company_counter helpers below produce keyword-overlap
+# placeholder text that is INSUFFICIENT for a real bid. They exist as a structural
+# fallback so a phase-file-literal execution doesn't crash, but every real run
+# MUST upgrade them to analyst-grade prose. The MARS 2026-05-20 run replaced the
+# stubs with substantive analyst output and surfaced this discipline upgrade.
+#
+# REQUIRED ANALYST DISCIPLINE FOR THE GHOST-STRATEGY ARRAY:
+#  - Each ghost statement MUST be 2-4 sentences of substantive prose that names
+#    a competitor ARCHETYPE (e.g., "Big-COTS-prime", "Public-sector-SI",
+#    "Niche-muni-software", "Low-code-specialist") rather than a generic
+#    "Some legacy systems ..." template.
+#  - Each ghost must articulate (a) the archetype's structural weakness for
+#    THIS RFP's evaluation criteria, (b) our specific counter capability with
+#    evidence (Past_Projects citation, certification, MPSA), and (c) the
+#    EVAL-NN factor the ghost helps win.
+#  - Brand names (Tyler, CGI, Salesforce, etc.) MUST stay in the .json
+#    `named_competitors[]` mapping — never in the .md ghost_statement prose.
+#  - "(populate with a verified company strength)" placeholders are a HARD FAIL
+#    at verifier time — the analyst must replace them with cited content.
+
 ghosts = []
 for issue in incumbent["known_issues"]:
     issue_text = issue.get("text") if isinstance(issue, dict) else str(issue)
@@ -85,7 +107,8 @@ for issue in incumbent["known_issues"]:
 
 
 def _ghost_phrase(weakness: str) -> str:
-    """Turn 'ACME's slow batch transfer' into 'Some legacy systems require batch-only data transfer'."""
+    """STUB — replace with analyst-authored archetype-anchored prose.
+    Turn 'ACME's slow batch transfer' into 'Some legacy systems require batch-only data transfer'."""
     weakness = weakness.strip()
     if weakness.lower().startswith("acme") or weakness.lower().startswith(incumbent["name"].lower() if incumbent["name"] else ""):
         # Strip the proper noun
@@ -94,10 +117,11 @@ def _ghost_phrase(weakness: str) -> str:
 
 
 def _company_counter(weakness: str, profile: dict) -> str:
-    """Pull a discriminating strength from company-profile that addresses the weakness."""
+    """STUB — replace with cited capability from Past_Projects.md or company-profile.json.
+    Pull a discriminating strength from company-profile that addresses the weakness."""
     strengths = (profile.get("discriminating_strengths") or
                  profile.get("differentiators") or [])
-    # Naive keyword overlap; agents may refine
+    # Naive keyword overlap; agents MUST refine
     weakness_words = set(weakness.lower().split())
     best = None
     best_score = 0
@@ -121,6 +145,29 @@ def _link_to_factor(weakness: str, evaluation: dict) -> str | None:
     return None
 ```
 
+### Step 3.5: In-House Incumbent Handling (codified 2026-05-20 — MARS Phase 1.97)
+
+When CLIENT_INTELLIGENCE.json reports NO third-party vendor incumbent (the buyer's current system was built/operated in-house — the MARS case where Oregon SoS IT built MUNI in 2005), the `incumbent` block in COMPETITIVE_POSITION.json MUST use this extended schema instead of forcing a fake third-party name:
+
+```json
+{
+  "incumbent": {
+    "name": null,
+    "in_house_system": "MUNI (Municipal Filings application)",
+    "in_house_build_year": 2005,
+    "in_house_owner": "Operated/maintained internally by Oregon Secretary of State IT",
+    "partial_incumbent_on_integration": {
+      "vendor": "Tyler Technologies (NIC USA division)",
+      "scope": "Common Checkout Page payment portal — mandatory (NN-011)",
+      "displaceable": false
+    },
+    "known_issues": [ ... still populated from CLIENT_INTELLIGENCE pain_points ... ]
+  }
+}
+```
+
+`incumbent.name = null` is explicitly allowed when the in-house fields are populated. Switching costs MUST still be authored — they reflect greenfield-modernization costs (data migration, ADA WCAG remediation, OCM, training) which exist regardless of who built the legacy system. The Phase 1.97 verifier's Check 7 ("switching costs present when incumbent exists") accommodates this — the in-house legacy system functions as the displaced predecessor.
+
 ### Step 4: Pain-Point Map
 
 For every documented buyer pain point in `CLIENT_INTELLIGENCE.json`, map it to:
@@ -129,10 +176,10 @@ For every documented buyer pain point in `CLIENT_INTELLIGENCE.json`, map it to:
 3. The bid section where we'll demonstrate that resolution
 
 ```python
-pain_map = []
+pain_point_map = []
 for pp in client_intel.get("pain_points", []):
     pp_text = pp.get("text") if isinstance(pp, dict) else str(pp)
-    pain_map.append({
+    pain_point_map.append({
         "pain_point": pp_text,
         "evaluation_factor": _link_to_factor(pp_text, evaluation),
         "our_response": _company_counter(pp_text, company_profile),
@@ -263,7 +310,7 @@ position_obj = {
     },
     "incumbent": incumbent if has_incumbent else None,
     "ghost_strategy": ghosts,
-    "pain_map": pain_map,
+    "pain_point_map": pain_point_map,
     "switching_costs": switching_costs,
     "win_conditions": win_conditions,
     "go_nogo_input": {
@@ -304,7 +351,7 @@ for g in ghosts:
 lines.append("## Pain-Point Map\n\n")
 lines.append("| Pain point | Evaluation factor | Our response | Demonstrated in |\n")
 lines.append("|------------|-------------------|--------------|-----------------|\n")
-for pm in pain_map:
+for pm in pain_point_map:
     lines.append(f"| {pm['pain_point'][:80]} | {pm.get('evaluation_factor') or '—'} | {pm['our_response'][:120]} | {pm['demonstrated_in']} |\n")
 lines.append("\n")
 
@@ -323,7 +370,7 @@ for wc in win_conditions:
     lines.append(f"**Owner sections:** {', '.join(wc['owner_sections'])}\n\n---\n\n")
 
 write_file(f"{folder}/outputs/COMPETITIVE_POSITION.md", "".join(lines))
-log(f"COMPETITIVE_POSITION written: {len(ghosts)} ghosts, {len(pain_map)} pain points, {len(win_conditions)} win conditions")
+log(f"COMPETITIVE_POSITION written: {len(ghosts)} ghosts, {len(pain_point_map)} pain points, {len(win_conditions)} win conditions")
 ```
 
 ### Step 8: Report
@@ -333,7 +380,7 @@ log(f"COMPETITIVE_POSITION written: {len(ghosts)} ghosts, {len(pain_map)} pain p
 ================================
 Incumbent:        {incumbent name or 'None'}
 Ghost statements: {len(ghosts)}
-Pain points:      {len(pain_map)}
+Pain points:      {len(pain_point_map)}
 Switching costs:  {len(switching_costs)}
 Win conditions:   {len(win_conditions)}
 
@@ -356,13 +403,13 @@ The phase agent MUST verify each of the following BEFORE reporting completion. T
 2. **COMPETITIVE_POSITION.json** exists at `{folder}/shared/bid/COMPETITIVE_POSITION.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
 
 ### Schema fidelity
-3. **COMPETITIVE_POSITION.json top-level keys** include `generated_at`, `buyer`, `incumbent`, `ghost_strategy`, `pain_map`, `switching_costs`, `win_conditions` — evidence: list actual top-level keys found
+3. **COMPETITIVE_POSITION.json top-level keys** include `generated_at`, `buyer`, `incumbent`, `ghost_strategy`, `pain_point_map`, `switching_costs`, `win_conditions` — evidence: list actual top-level keys found
 4. **win_conditions** contains 3-5 entries, each with `id`, `condition`, `rationale`, `owner_sections` — evidence: print `len(win_conditions)` and keys of win_conditions[0]
 5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
 
 ### Cross-stage consistency
 6. **Ghost statements free of competitor proper nouns** — grep COMPETITIVE_POSITION.md for competitor names in sections containing "ghost" content returned 0 hits — evidence: grep result
-7. **Pain-point map links each pain to an evaluation factor** — every pain_map entry has non-null `evaluation_factor` OR has a documented "no factor match" reason — evidence: count null evaluation_factor entries
+7. **Pain-point map links each pain to an evaluation factor** — every pain_point_map entry has non-null `evaluation_factor` OR has a documented "no factor match" reason — evidence: count null evaluation_factor entries
 8. **Switching-cost analysis present when incumbent exists** — if `incumbent` is non-null, `switching_costs` array length >= 1 — evidence: print incumbent name and switching_costs length
 9. **Ghost statements >= 1 per pain point** (when incumbent documented) — evidence: print `len(ghost_strategy)` vs `len(incumbent.known_issues)`
 

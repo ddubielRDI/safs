@@ -12,6 +12,66 @@ sub-skill: compliance-audit
 
 Extract ALL mandatory requirements and validate 100% coverage. This is a **BLOCKING GATE** - the pipeline cannot proceed until all mandatory items are addressed.
 
+## ⛔ MOJIBAKE SCRUB DISCIPLINE (codified 2026-05-20 — MARS incident)
+
+The MARS run on 2026-05-20 produced a COMPLIANCE_MATRIX.json with **1,789 U+FFFD replacement characters** across 776 `mandatory_items[*].text` locations because Phase 0 flattened Attachment A with a lossy decoder. Phase 1.7 extracted faithfully but propagated the upstream corruption.
+
+**Two mandatory protections:**
+
+1. **Every text field extracted from flattened/* MUST pass through `scrub_mojibake(text, source_hint=...)`** (defined in `skill-win.md`, MOJIBAKE SCRUB section). Use the repaired string in the output, not the raw input. This applies to: `mandatory_items[].text`, `submission_required_attachments[].name`, `non_negotiable_items[].description` and `.action_required`, `rtm_entities.mandatory_items[].text`, AND any other text field extracted from flattened sources.
+
+2. **Add a `pipeline_metadata.encoding_audit` block to the output JSON** with this exact schema:
+   ```json
+   {
+     "pipeline_metadata": {
+       "encoding_audit": {
+         "scrubbed_total_chars": <int>,
+         "items_with_scrubs": <int>,
+         "items_with_unrepairable_residual": [
+           {"path": "mandatory_items[27].text", "unrepairable_count": 1, "indices": [42]}
+         ],
+         "residual_total": <int>
+       }
+     }
+   }
+   ```
+   Every unrepairable U+FFFD (or `?` mid-word) MUST be logged with its dotted field path and the character index inside that field. The verifier uses this audit to distinguish upstream PDF data-loss (acceptable) from scrub-heuristic misses (FAIL).
+
+**Why the audit-not-block approach:** Some U+FFFD residuals reflect PDF glyph storage that has no recoverable source character (e.g., unmapped CIDs for bullet markers). Refusing to write the matrix on any residual would deadlock the pipeline on every real-world PDF. The audit gives the verifier the data it needs to PASS legitimate upstream-loss cases and FAIL avoidable misses.
+
+**Defense-in-source:** Phase 0 flatten (`phase1-flatten-win.md`) is the proper fix point — it must use `errors='strict'` on every decode so encoding bugs fail loudly upstream. The Phase 1.7 scrub is defense-in-depth, not a substitute.
+
+## ⛔ RETRY_HISTORY DISCIPLINE (codified 2026-05-20 — duplicate-append bug)
+
+Each retry of Phase 1.7 MUST write **exactly one** record to `pipeline_metadata.retry_history[]` per retry, with this **canonical schema** (no field-name variants):
+
+```json
+{
+  "retry_number": 2,
+  "timestamp": "2026-05-20T20:15:41Z",
+  "reason": "User-authorized RFPAttH atomic extraction",
+  "fix_applied": "Re-walked flattened/RFPAttH... with sentence-level reflow + atomic SHALL clause extractor",
+  "authorized_by": "user_override_via_AskUserQuestion",
+  "codification_summary": "Codified atomic-vs-grouped extraction policy; widened verifier SRC-id regex"
+}
+```
+
+**Idempotency contract:** before appending, check whether `pipeline_metadata.retry_history[]` already contains a record with the same `retry_number`. If yes, **replace-in-place** (overwrite that record); if no, append. Never append a 2nd record for the same retry_number.
+
+**Why this discipline:** the MARS retry-2 (2026-05-20) revealed that prior retry-1 wrote `retry_at` (different field name) and the retry-2 producer wrote `timestamp` plus added/missing fields per pass, producing 4 entries when 2 were expected — a duplicate-append bug compounded with schema drift. Future readers (auditors, the SVA, future retry agents) need a clean ledger to determine "did this phase already retry for X reason."
+
+```python
+def append_retry_record(metadata, record):
+    """Idempotent retry ledger writer. Replace-in-place by retry_number."""
+    history = metadata.setdefault("retry_history", [])
+    rnum = record["retry_number"]
+    for i, existing in enumerate(history):
+        if existing.get("retry_number") == rnum:
+            history[i] = record   # overwrite
+            return
+    history.append(record)
+```
+
 ## Inputs
 
 - `{folder}/flattened/*.md` - Flattened RFP documents

@@ -40,9 +40,17 @@
           "severity": "MEDIUM",
           "category": "Content",
           "enabled": true,
-          "description": "domain-context.json confidence >= 0.8. Check detected compliance frameworks align with domain.",
+          "description": "domain-context.json passes EITHER (clear_winner AND confidence>=0.5) OR (margin>=30 AND top_score>=60). Strong-margin gate added 2026-05-20 to mirror phase1.5-domain-win.md Step 5 — with 6 domains splitting the score pool, share-of-total confidence rarely reaches 0.8 even for overwhelming winners.",
           "threshold": 0.8,
-          "auto_correctable": false
+          "auto_correctable": false,
+          "lessons_learned": [
+            {
+              "date": "2026-05-20",
+              "finding": "MARS Phase 1.5 selected state_local_government correctly (margin=125, top_score=242) but confidence=0.39 failed the 0.8 share-of-total gate. The rule blocked Stage 1 progression despite the phase output being correct.",
+              "detail": "Share-of-total math (top_score / sum_of_all_scores) is fundamentally bounded by 1/N for N domains — with 6 domains, even a runaway winner with 70% of the points only hits confidence=0.7. The right signal is margin-over-second-place, which the phase file already uses.",
+              "guidance": "Rule logic now applies both gates and passes if EITHER fires. Confidence path retained for legacy compatibility; strong-margin path catches dominant winners."
+            }
+          ]
         },
         {
           "id": "SVA1-EVAL-EXTRACTION",
@@ -78,6 +86,12 @@
               "finding": "Items/keywords ratio misleading due to contextual SHALL/MUST keywords",
               "detail": "SHALL/MUST keywords are often contextual — appearing in section headers, quoted regulations, and compound sentences restating the same obligation. Initial ratio of 0.58 improved to 0.745 after keyword mapping analysis revealed duplication.",
               "guidance": "Rule should consider keyword deduplication before computing the ratio. Many SHALL/MUST occurrences are continuations, headers, or regulatory quotes, not distinct mandatory items. Deduplicate by clause before comparing to COMPLIANCE_MATRIX.json item count."
+            },
+            {
+              "date": "2026-05-20",
+              "finding": "Lessons_learned guidance from 2026-03-03 was captured but never wired into the rule",
+              "detail": "MARS run produced ratio=0.493 (760 items vs 1543 raw keywords) and blocked Stage 1. After implementing clause-level dedup per the original guidance, denominator drops dramatically (target ~760-850 distinct clauses) and the ratio normalizes.",
+              "guidance": "Rule logic now applies sentence-level dedup + filters for section headers, regulatory blockquotes, and definition lists. Both raw_count and clause_dedup_count are reported in details for diagnostic visibility."
             }
           ]
         },
@@ -90,6 +104,24 @@
           "description": "Mandatory items span at least 3 different categories.",
           "threshold": 3,
           "auto_correctable": false
+        },
+        {
+          "id": "SVA1-JURISDICTION-CONSISTENCY",
+          "name": "Jurisdiction Consistency Across Stage 1",
+          "severity": "CRITICAL",
+          "category": "Consistency",
+          "enabled": true,
+          "description": "domain-context.json jurisdiction_anchor.state must match the jurisdiction observed in EVALUATION_CRITERIA.json, COMPLIANCE_MATRIX.json, and SUBMISSION_STRUCTURE.json. Catches Phase 1.5 hallucination where a fabricated state name (e.g., Alaska) propagates into downstream phases that read the actual RFP correctly (e.g., Oregon).",
+          "auto_correctable": true,
+          "corrective_phase": "1.5",
+          "lessons_learned": [
+            {
+              "date": "2026-05-20",
+              "finding": "Phase 1.5 hallucinated 'State of Alaska' for State of Oregon MARS RFP",
+              "detail": "When domain scoring landed on 'default' (gov 117 vs finance 100, below clear-winner margin), the agent compensated by writing an ad-hoc 'mars_domain_hints' block with an invented State of Alaska / Title 36-37 attribution. Phase 1.6 cited 'Oregon ORS 279B' and Phase 1.7 cited Oregon Secretary of State — both read the RFP correctly. A cross-stage check would have caught this immediately.",
+              "guidance": "Compare jurisdiction tokens across all four Stage 1 outputs. Any disagreement is a CRITICAL block that re-runs Phase 1.5 with the disagreeing-token evidence appended to the prompt."
+            }
+          ]
         }
       ]
     },

@@ -36,17 +36,130 @@ Previous pipelines extracted only 158 requirements. Apply aggressive extraction 
 
 ## Instructions
 
+### HARD RULES (V3-F14 / V3-F15 — codified 2026-05-20, retry-2)
+
+These two rules are FAIL-class — every phase 2 run MUST satisfy them or the verifier returns FAIL.
+
+**RULE V3-F14 (SERIALIZATION-BOUNDARY SCRUB):** every deliverable string field — across `requirements[].text`, `requirements[].section`, `requirements[].full_context`, `rtm_rfp_sources[].section`, `rtm_rfp_sources[].text_excerpt`, `rtm_rfp_sources[].document`, and every string in `sample-data-analysis.json` — MUST pass through `scrub_mojibake()` at the WRITE boundary, not just at the extraction boundary. The extraction step protects in-memory data; the serialization step protects what reaches the JSON file. **Both gates are required.** Specifically, `existing_sources` is seeded from upstream `COMPLIANCE_MATRIX.json` which may carry pre-existing mojibake — scrubbing only the requirements text leaves the seeded rtm entries corrupted. The MARS 2026-05-20 retry-0 attempt shipped 191 U+FFFD in `rtm_rfp_sources[]` because the scrub sweep at line ~893 covered `requirements[]` but skipped `existing_sources[]`. Defensive coding rule: **scrub every string the moment before it crosses the JSON boundary**, even strings that originated in another phase.
+
+**RULE V3-F15 (RTM-SCOPE-PARITY):** every `rtm_rfp_sources[]` entry MUST satisfy BOTH gates at the rtm BUILD step (not after):
+  1. `is_requirement_source(entry.document)` returns True (V3-F1 scope filter applies to rtm, not only to extraction sources)
+  2. `entry.source_id` is referenced by at least one `requirement.source_ids[]` (no orphan/unreferenced rtm entries)
+
+The producer pattern that violates V3-F15 is loading `existing_sources` from `COMPLIANCE_MATRIX.json` (which was built from a different scope) and never filtering it back down. The MARS 2026-05-20 retry-0 attempt shipped 196 rtm entries from blacklisted documents (Att A contract clauses, _combined concat artifact, Att C/D/G bidder forms, vendor pricing analysis) plus 1,319 unreferenced entries (1.84× bloat). The fix is two filters applied immediately before `write_json`:
+
+```python
+# Gate 1: scope parity — only requirements-bearing documents
+existing_sources = [s for s in existing_sources if is_requirement_source(s.get("document", ""))]
+# Gate 2: reference parity — only entries cited by at least one requirement
+referenced_source_ids = {sid for r in requirements for sid in (r.get("source_ids") or [])}
+existing_sources = [s for s in existing_sources if s.get("source_id") in referenced_source_ids]
+# Gate 3: serialization scrub — every string field
+def _scrub_rtm(s):
+    s["section"], _ = scrub_mojibake(s.get("section", ""), source_hint=f"rtm:{s.get('source_id')}.section")
+    s["text_excerpt"], _ = scrub_mojibake(s.get("text_excerpt", ""), source_hint=f"rtm:{s.get('source_id')}.text_excerpt")
+    s["document"], _ = scrub_mojibake(s.get("document", ""), source_hint=f"rtm:{s.get('source_id')}.document")
+    return s
+existing_sources = [_scrub_rtm(s) for s in existing_sources]
+```
+
+This MUST run BEFORE `write_json(...requirements_output)`. The order is non-negotiable: scope filter, then reference filter, then mojibake scrub. Filtering before scrubbing avoids wasted scrub work on entries that will be discarded.
+
 ### Step 1: Load Documents
 
 ```python
 import glob
 
-flattened_files = glob.glob(f"{folder}/flattened/*.md")
-combined_content = ""
+# V3-F1 fix 2026-05-20: scope Phase 2 extraction to REQUIREMENTS-bearing docs only.
+#
+# RFP DOCUMENT ROLES & RESPONSIBILITY MAP — every doc IS read & considered, by the
+# appropriate phase. Excluding a doc here does NOT mean it is ignored by the
+# pipeline; it means Phase 2 (requirements extraction) is NOT the right consumer.
+#
+#   Doc                                          | Consumed by                  | What it provides
+#   --------------------------------------------|------------------------------|---------------------------
+#   RFP-s-16500-*.md (main RFP body)            | phase2 ✓                     | system requirements
+#   RFPAttH-*-Detailed-Requirements-*.md         | phase2 ✓                     | system requirements
+#   Attachment-A-Sample-XaaS-Contract-*.md       | phase1.7 (compliance)        | contract terms vendor must accept
+#                                                | phase8.4r (req review)       | T&C references for compliance section
+#                                                | phase8e PDF assembly         | submittal volume content
+#   RFPAttB-Disclosure-Exemption-Affidavit*.md   | phase1.85 (questions)        | proposer disclosure form template
+#                                                | phase8.1 (submittal vol)     | submittal form to populate
+#   RFPAttC-Proposer-Information-*.md            | phase1.85, phase8.1          | bidder certification form
+#   RFPAttD-Reference-Check*.md                  | phase1.85, phase8.1          | reference check form
+#   RFPAttE-Cost-Proposal-*.md                   | phase8.5 (financial)         | cost proposal structure & pricing
+#   RFPAttG-Responsibility-Inquiry*.md           | phase1.85, phase8.1          | bidder responsibility form
+#   MARS_RFP_COTS_Vendor_Pricing_Analysis.md     | phase1.95 (intel), phase3a   | market/pricing context for tech stack
+#
+# Why Phase 2 excludes them: prior runs ingested 383 contract clauses from
+# Attachment-A ("Contractor shall be entitled to recover...", indemnification,
+# termination, force majeure, conflict-of-interest certs) as system requirements,
+# contaminating the RTM. Those clauses are real obligations but they belong in
+# the compliance/contract phases, not the system requirements catalog.
+EXTRACTION_BLACKLIST_PATTERNS = [
+    "sample", "xaas-contract", "disclosure-exemption-affidavit",
+    "proposer-information", "reference-check", "responsibility-inquiry",
+    "cost-proposal", "vendor_pricing", "vendor-pricing"
+]
 
+def is_requirement_source(file_path):
+    """Return True if this flattened file should contribute to extraction."""
+    fname_lower = os.path.basename(file_path).lower()
+    for bl in EXTRACTION_BLACKLIST_PATTERNS:
+        if bl in fname_lower:
+            return False
+    return True
+
+all_flattened = glob.glob(f"{folder}/flattened/*.md")
+flattened_files = sorted([f for f in all_flattened if is_requirement_source(f)])
+excluded_files = sorted([f for f in all_flattened if not is_requirement_source(f)])
+log(f"Extraction sources: {len(flattened_files)} included, {len(excluded_files)} excluded")
+for ex in excluded_files:
+    log(f"  EXCLUDED (not a requirements doc): {os.path.basename(ex)}")
+
+combined_content = ""
+file_offsets = []  # track (start_offset, file_path) for section-heading lookup later
 for file_path in flattened_files:
+    file_offsets.append((len(combined_content), file_path))
     combined_content += read_file(file_path) + "\n\n"
 
+# V3-F2 fix 2026-05-20: collapse PDF soft-wrap line breaks BEFORE regex extraction.
+# Flattened PDFs preserve mid-sentence \n from the original visual line wrap. This
+# breaks regex captures that use \n as a terminator (sub-item Rule 3, etc.) and
+# truncates requirements mid-word (e.g., "tamper-\nproof" -> captured as "tamper-").
+# A line break is treated as a soft-wrap (and joined to a space) when:
+#   - the previous line does NOT end with sentence-terminating punctuation [.!?:;]
+#   - AND the next character is lowercase, a digit, or a hyphen continuation
+# Hard breaks (end of paragraph, after a period) are preserved as \n\n equivalents.
+def collapse_soft_wraps(text):
+    # Join "x-\ny" -> "x-y" (hyphenated word splits across line)
+    text = re.sub(r'-\n([a-z])', r'-\1', text)
+    # V3-F7 fix 2026-05-20: collapse "...sentence\n\nN.\n\ncontinuation" patterns
+    # produced by PDF page breaks that insert orphan list-numbers between
+    # mid-sentence text. Recognize when prev token isn't sentence-terminal
+    # punctuation, an orphan numeric marker sits alone on a line, and the next
+    # line begins lowercase/digit — these signal a list-number artifact, not a
+    # genuine new requirement.
+    text = re.sub(
+        r'([^.!?:;\n])\n+\s*\d+\.?\s*\n+\s*([a-z])',
+        r'\1 \2',
+        text
+    )
+    # Join "word\nword" -> "word word" when prev line doesn't end in [.!?:;]
+    # and next line starts with lowercase/digit/comma (continuation).
+    text = re.sub(r'([^.!?:;\n])\n([a-z0-9,])', r'\1 \2', text)
+    # Same for double-newline soft wraps that aren't followed by a heading or
+    # list marker (just continuation prose).
+    text = re.sub(r'([^.!?:;\n])\n\n([a-z])', r'\1 \2', text)
+    return text
+
+combined_content_raw = combined_content
+combined_content = collapse_soft_wraps(combined_content)
+log(f"Soft-wrap collapse: {len(combined_content_raw)} -> {len(combined_content)} chars "
+    f"({len(combined_content_raw) - len(combined_content)} line breaks joined)")
+
+# Adjust file_offsets after collapse (positions shift slightly). For now we keep
+# the raw offsets — section-heading lookup uses the raw content stream.
 domain_context = read_json(f"{folder}/shared/domain-context.json")
 workflow_reqs = read_json(f"{folder}/shared/workflow-extracted-reqs.json")
 ```
@@ -82,36 +195,127 @@ REQUIREMENT_PATTERNS = [
     # Security requirements
     (r"(?:security|authentication|authorization)\s+(?:shall|must|will)\s+(.{20,300})", "SECURITY")
 ]
+
+# V3-F12 fix 2026-05-20 (MARS foundation-tier under-extraction):
+# the subject-specific patterns above only catch ~23% of SHALL clauses in
+# detailed-requirements attachments (RFPAttH-style). Detailed-requirements
+# attachments are dominated by subjects like "User", "Notification",
+# "Administrator", "Entity", "Role", "List", "Item", "Alert", "Report" — each
+# of which appears 10-300+ times. Without a generic subject pattern, ~840
+# atomic SHALLs are silently dropped. Two new patterns capture them:
+GENERIC_SHALL_PATTERN = (
+    # Generic [Capitalized Subject] shall|must|will [verb phrase]
+    # Subject = 1 capitalized token + 0-4 modifier tokens (and|or|the|a|an|to|
+    # for|in|on|by|from + secondary capitalized words). Terminates on sentence
+    # punctuation NOT inside a quote (V3-F8 quote-aware terminator).
+    r"(?<![A-Za-z])([A-Z][A-Za-z]{2,30}(?:\s+(?:and|or|of|with|the|a|an|to|for|in|on|by|from|[A-Z][a-z]+)){0,4})"
+    r"\s+(?:shall|must|will)\s+(.{20,400}?)"
+    r"(?:[.;](?![\"\'])(?=\s|$|\n)|\n\n|$)",
+    "GENERIC_SHALL",
+)
+NUMBERED_LIST_PATTERN = (
+    # Numbered list items "1. [Capitalized text containing shall/must/will...]"
+    # This catches the canonical RFPAttH structure where each numbered item is
+    # a discrete atomic requirement.
+    r"(?:^|\n)\s*\d+\.\s+([A-Z][^?\n]{20,400}(?:shall|must|will)[^?\n]{5,400})",
+    "NUMBERED_LIST",
+)
+
+# SUBJECT_STOPWORDS — false-positive guard for GENERIC_SHALL. These tokens
+# can occur at the start of a line followed by "shall", but they're heading
+# fragments or filler, not legitimate requirement subjects.
+SUBJECT_STOPWORDS = {
+    "page", "attachment", "section", "table", "figure",
+    "this", "that", "these", "those", "however", "therefore",
+    "additionally", "furthermore", "moreover", "thus",
+    "consequently", "nevertheless", "meanwhile",
+}
 ```
 
 ### Step 3: Extract Primary Requirements
 
 ```python
 requirements = []
-seen_text = set()
 req_id = 1
+captured_positions = set()  # bucket of (position // 10) — used to dedup
+                            # pattern overlaps at the same starting offset
 
+def try_add_requirement(text_capture, full_context, position, req_type,
+                        source="pattern_extraction"):
+    """Single unified add path: apply ALL rejection filters consistently and
+    bucket-dedup by starting position. Returns True if added.
+
+    V3-F12 codified 2026-05-20: previously each pattern loop appended directly,
+    so the same SHALL clause was captured by multiple patterns (e.g. "system
+    shall provide" hit both SYSTEM and CAPABILITY patterns). Bucket-dedup at
+    position // 10 keeps adjacent atomic SHALLs (~20+ chars apart) as distinct
+    while collapsing co-located pattern overlaps."""
+    global req_id
+
+    text = re.sub(r"\s+", " ", text_capture.strip())
+
+    # V3-F9 ToC chrome — never let body text with leader dots through
+    if TOC_CHROME_RE.search(text):
+        return False
+    # V3-F11 contract-clause filter (defense after V3-F1 file exclusion)
+    if is_contract_clause(text) or is_contract_clause(full_context):
+        return False
+    # V3-F10 truncated tails (ends with hanging connector / subordinator)
+    if looks_truncated(text):
+        return False
+    # V3-F8 quote-internal truncation
+    if QUOTE_TRUNC.search(text):
+        return False
+    # V3-F6 question-mark requirements (checklist Qs, not obligations)
+    if text.rstrip().endswith("?"):
+        return False
+    # Length sanity
+    if len(text) < 20:
+        return False
+    # Position-bucket dedup
+    pos_key = position // 10
+    if pos_key in captured_positions:
+        return False
+    captured_positions.add(pos_key)
+
+    # Cap at 500 chars BEFORE adding (so truncation filters above catch caps
+    # that happen to land on a subordinator boundary; V3-F10 hardening 2026-05-20)
+    requirements.append({
+        "id": f"REQ{req_id:03d}",
+        "text": text[:500],
+        "type": req_type,
+        "source": source,
+        "full_context": full_context[:600],
+        "position": position,
+        "sub_items": [],
+    })
+    req_id += 1
+    return True
+
+
+# Pass A: NUMBERED_LIST first (Att-H-style structure — highest precedence so
+# the type label "NUMBERED_LIST" wins the position bucket before generic
+# patterns overwrite it)
+pat, _ = NUMBERED_LIST_PATTERN
+for m in re.finditer(pat, combined_content):
+    try_add_requirement(m.group(1), m.group(0), m.start(), "NUMBERED_LIST")
+
+# Pass B: subject-specific patterns (yields type hints for downstream)
 for pattern, req_type in REQUIREMENT_PATTERNS:
-    matches = re.finditer(pattern, combined_content, re.IGNORECASE | re.DOTALL)
-    for match in matches:
-        text = match.group(1).strip()
-        text = re.sub(r'\s+', ' ', text)
+    for m in re.finditer(pattern, combined_content, re.IGNORECASE | re.DOTALL):
+        try_add_requirement(m.group(1), m.group(0), m.start(), req_type)
 
-        # Phase 2 emits all extractions raw; phase2b owns dedup via SequenceMatcher
-        # (single authoritative pass). V2-F8 fix 2026-05-18: removed prefix-50 dedup
-        # that conflicted with phase2b's full-text similarity check and accidentally
-        # collided requirements that shared identical first-50 chars (e.g. all
-        # "the system shall provide a user interface that ..." variants).
-        requirements.append({
-            "id": f"REQ{req_id:03d}",
-            "text": text[:500],
-            "type": req_type,
-            "source": "pattern_extraction",
-            "full_context": match.group(0)[:600],
-            "position": match.start(),
-            "sub_items": []
-        })
-        req_id += 1
+# Pass C: generic SHALL pattern — catches any `[Subject] shall [verb]` not yet
+# captured by the more specific patterns above. The V3-F12 fix.
+pat, _ = GENERIC_SHALL_PATTERN
+for m in re.finditer(pat, combined_content, re.DOTALL):
+    subject = m.group(1).strip()
+    verb_phrase = m.group(2).strip()
+    full_text = f"{subject} shall {verb_phrase}"
+    subject_first = subject.split()[0].lower()
+    if subject_first in SUBJECT_STOPWORDS:
+        continue
+    try_add_requirement(full_text, m.group(0), m.start(), "GENERIC_SHALL")
 ```
 
 ### Step 4: Aggressive Sub-Item Extraction
@@ -146,8 +350,16 @@ def extract_sub_items(requirement):
             })
 
     # Rule 3: Items with distinct SHALL/MUST
-    shall_pattern = r'(?:shall|must|will)\s+(.{15,150}?)(?:\.|\n|$)'
-    shalls = re.findall(shall_pattern, text, re.IGNORECASE)
+    # V3-F2 fix 2026-05-20: dropped `\n` from terminators. Soft-wrapped source
+    # caused this rule to capture truncated fragments like "generate secure, tamper-"
+    # when the actual requirement continued on the next line. Now: terminate
+    # only on sentence punctuation or end of containing text.
+    # V3-F8 fix 2026-05-20: don't terminate on a period that sits INSIDE a
+    # quoted term (`"primary."`). Require the period/semicolon to be followed
+    # by whitespace, end-of-string, or a paragraph break — not by a closing
+    # quote. The (?![\"']) negative lookahead protects quote-internal periods.
+    shall_pattern = r'(?:shall|must|will)\s+(.{15,200}?)(?:[.;](?![\"\'])(?=\s|$)|\n\n|$)'
+    shalls = re.findall(shall_pattern, text, re.IGNORECASE | re.DOTALL)
     if len(shalls) > 1:  # Multiple SHALL statements in one requirement
         for shall in shalls[1:]:  # Skip first (it's the main requirement)
             sub_items.append({
@@ -529,33 +741,113 @@ except (FileNotFoundError, Exception):
 existing_sources = compliance_data.get("rtm_entities", {}).get("rfp_sources", [])
 source_id_counter = len(existing_sources) + 1
 
-# Map each requirement to the flattened file where it was found
+# Map each requirement to the flattened file where it was found,
+# AND extract the nearest preceding section heading for the `section` field.
+#
+# V3-F3 fix 2026-05-20: prior code set section = full_context[:100], which is
+# garbled surrounding text (e.g., "ty shall be required to file annual reports;
+# an entity is considered active..."). That destroyed RTM traceability — an
+# evaluator could not match the requirement back to "Att H 3.1". Now: parse
+# the source content backward from the match position for the nearest section
+# heading. Heading patterns recognized (in priority order):
+#   1. Markdown headings: `^## 3.1.1 ...` or `^### 4.1.1.1.14 Title`
+#   2. Numbered references in body: `^3.1.1` or `4.2.6.1` at start of line
+#   3. Attachment-style labels: `Section 3.1.1` or `Att H 5.4.3.2`
+SECTION_HEADING_PATTERNS = [
+    # Markdown heading with explicit dotted section number
+    re.compile(r'^(#{1,6})\s+(\d+(?:\.\d+){0,5})\s+(.+)$', re.MULTILINE),
+    # Body line starting with dotted section number
+    re.compile(r'^(\d+(?:\.\d+){1,5})\s+(.+)$', re.MULTILINE),
+]
+
+# V3-F9 fix 2026-05-20: Table-of-contents lines also match the dotted-section
+# pattern (e.g., "10.7 Annual Report Filing Decision Tree ...........  42").
+# Reject any candidate heading whose "title" contains leader dots, trailing
+# page numbers, or other ToC chrome.
+TOC_CHROME_RE = re.compile(r'\.{4,}|\s+\d{1,4}\s*$')
+
+def is_toc_chrome(title):
+    """Return True if title text looks like a table-of-contents entry."""
+    return bool(TOC_CHROME_RE.search(title))
+
+def find_section_heading(content, position, doc_basename):
+    """Scan content backward from position for the nearest section heading.
+    Returns a short label like '3.1.1' or '3.1.1 Authentication Requirements'.
+    Falls back to a document-stem label if none found."""
+    # Search backward at most 4000 chars (defensive cap — keeps lookup O(1))
+    window_start = max(0, position - 4000)
+    window = content[window_start:position]
+    best_heading = None
+    best_offset = -1
+    for pattern in SECTION_HEADING_PATTERNS:
+        for m in pattern.finditer(window):
+            if m.end() <= best_offset:
+                continue
+            groups = m.groups()
+            if len(groups) == 3:
+                num, title = groups[1], groups[2]
+            elif len(groups) == 2:
+                num, title = groups
+            else:
+                continue
+            # V3-F9: skip ToC entries (leader dots + page number)
+            if is_toc_chrome(title):
+                continue
+            best_offset = m.end()
+            best_heading = f"{num} {title.strip()}"
+    if best_heading:
+        # Trim to a reasonable display length
+        return best_heading[:120]
+    # Fallback: use the doc basename as section identifier
+    stem = doc_basename.replace("RFPAttH-Attahcment-H-Detailed-Requirements-1", "Att H")
+    stem = stem.replace("RFP-s-16500-00015514-Hosted-Municipal-Accounting-Reporting-Soltion", "RFP body")
+    stem = stem.replace(".md", "")
+    return f"(no heading in scope; {stem})"
+
+# Pre-read each flattened file ONCE for offset mapping (faster than re-reading per req)
+file_content_cache = {fp: read_file(fp) for fp in flattened_files}
+
 for req in requirements:
     position = req.get("position", 0)
     source_file = None
+    local_position = position
 
     # Determine which flattened file this requirement came from
-    # by tracking cumulative character offsets
     cumulative_offset = 0
     for file_path in flattened_files:
-        file_content = read_file(file_path)
+        file_content = file_content_cache[file_path]
         file_len = len(file_content)
         if cumulative_offset <= position < cumulative_offset + file_len:
             source_file = os.path.basename(file_path)
+            local_position = position - cumulative_offset
             break
-        cumulative_offset += file_len + 2  # +2 for "\n\n" separator
+        cumulative_offset += file_len + 2
+
+    # Resolve the actual section heading at this position
+    if source_file:
+        section_label = find_section_heading(
+            file_content_cache[file_path], local_position, source_file
+        )
+    else:
+        section_label = "(unknown source file)"
 
     # Create source reference
     source_id = f"SRC-{source_id_counter:03d}"
     req["source_ids"] = [source_id]
+    req["section"] = section_label  # surface on the requirement itself too
+    req["source_file"] = source_file or "unknown"
 
-    # Add to rfp_sources list for Phase 4
+    # V3-F14 fix 2026-05-20 (retry-2): scrub at the BUILD boundary so each rtm
+    # entry leaves this step already-clean. The Step 8 serialization-boundary
+    # filter applies the scrub AGAIN as defense-in-depth (V3-F14 hard rule).
+    scrubbed_section, _ = scrub_mojibake(section_label, source_hint=f"rtm:{source_id}.section")
+    scrubbed_excerpt, _ = scrub_mojibake(req.get("text", "")[:500], source_hint=f"rtm:{source_id}.text_excerpt")
     existing_sources.append({
         "source_id": source_id,
         "document": source_file or "unknown",
-        "section": req.get("full_context", "")[:100],
+        "section": scrubbed_section,
         "page_or_row": "",
-        "text_excerpt": req.get("text", "")[:500]
+        "text_excerpt": scrubbed_excerpt,
     })
     source_id_counter += 1
 
@@ -570,6 +862,48 @@ for req in requirements:
 ### Step 8: Write Output
 
 ```python
+# ─── V3-F14 / V3-F15 SERIALIZATION-BOUNDARY GATE (codified 2026-05-20 retry-2) ───
+# This block MUST execute BEFORE write_json. The order is non-negotiable:
+#   (1) RTM-SCOPE-PARITY filter — drop entries from non-requirements docs
+#   (2) RTM-REFERENCE-PARITY filter — drop entries no requirement cites
+#   (3) SERIALIZATION-BOUNDARY SCRUB — sweep every string field one last time
+# Filtering before scrubbing avoids wasted scrub on soon-to-be-discarded rows.
+
+# (1) Scope parity: rtm entries must come from requirements-bearing docs only
+_before_scope = len(existing_sources)
+existing_sources = [
+    s for s in existing_sources
+    if is_requirement_source(s.get("document", ""))
+]
+log(f"V3-F15 scope filter: {_before_scope} -> {len(existing_sources)} rtm entries "
+    f"({_before_scope - len(existing_sources)} dropped — blacklisted docs)")
+
+# (2) Reference parity: rtm entries must be cited by at least one requirement
+referenced_source_ids = {
+    sid for r in requirements for sid in (r.get("source_ids") or [])
+}
+_before_ref = len(existing_sources)
+existing_sources = [
+    s for s in existing_sources
+    if s.get("source_id") in referenced_source_ids
+]
+log(f"V3-F15 reference filter: {_before_ref} -> {len(existing_sources)} rtm entries "
+    f"({_before_ref - len(existing_sources)} dropped — orphan/unreferenced)")
+
+# (3) Serialization-boundary mojibake scrub — every deliverable string in rtm
+def _scrub_rtm_entry(s):
+    s["section"], _ = scrub_mojibake(s.get("section", ""), source_hint=f"rtm:{s.get('source_id')}.section")
+    s["text_excerpt"], _ = scrub_mojibake(s.get("text_excerpt", ""), source_hint=f"rtm:{s.get('source_id')}.text_excerpt")
+    s["document"], _ = scrub_mojibake(s.get("document", ""), source_hint=f"rtm:{s.get('source_id')}.document")
+    return s
+existing_sources = [_scrub_rtm_entry(s) for s in existing_sources]
+
+# Sanity assertions (defense): no entries from blacklisted docs, no unreferenced
+assert all(is_requirement_source(s.get("document", "")) for s in existing_sources), \
+    "V3-F15 violation: rtm contains entries from non-requirements docs"
+assert all(s.get("source_id") in referenced_source_ids for s in existing_sources), \
+    "V3-F15 violation: rtm contains unreferenced entries"
+
 requirements_output = {
     "extracted_at": datetime.now().isoformat(),
     "summary": {
@@ -840,5 +1174,31 @@ The phase agent MUST verify each of the following BEFORE reporting completion. T
 13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
 14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
 
+### V3 extraction-quality gates (added 2026-05-20)
+15. **Non-requirements docs excluded from extraction** — evidence: print `files_excluded_from_extraction[]` from output; must contain Sample/XaaS-Contract, Disclosure-Exemption-Affidavit, Cost-Proposal, Reference-Check, Responsibility-Inquiry, Vendor_Pricing, Proposer-Information variants if present in `flattened/`. Each excluded doc must be cross-referenced to its consuming phase (see "RFP Document Roles & Responsibility Map" comment in Step 1).
+16. **Soft-wrap collapse applied** — evidence: print pre/post char counts from `collapse_soft_wraps()`; non-zero reduction expected on any PDF-flattened source.
+17. **No truncated requirement text in raw output** — evidence: count requirements whose text ends with `-`, `,`, or subordinator words (`the/a/an/or/and/to/of/for/with/by/from/in/on/at/as/if/that/which/such/including/associating/those`); must be 0.
+18. **No quote-internal truncations** — evidence: grep for `"[a-z]+$` in requirement texts; must be 0 (catches `"primary` style truncation where regex stopped at quote-internal period).
+19. **No checklist questions captured** — evidence: count requirements ending with `?`; must be 0 (these are proposer self-evaluation prompts, not requirements).
+20. **Section heading is real, not ToC chrome** — evidence: count requirements whose `section` contains `....` (4+ consecutive dots = leader dots) or trailing page number `\s+\d{1,4}\s*$`; must be 0. ≥80% of requirements should carry a numbered section identifier (e.g., `3.1.1 Security requirements`).
+21. **No contract-template boilerplate in raw** — evidence: grep raw output for `"Contractor shall"`, `"Proposer certifies"`, `indemnif`, `force majeure`, `Maximum Not-To-Exceed`; must be 0 (verifies Step 1 file exclusion worked).
+21a. **Foundation-tier capture ratio (V3-F12)** — evidence: when a detailed-requirements attachment is present (e.g., RFPAttH-*-Detailed-Requirements-*.md), the count of pattern_extraction requirements from that file must be >=60% of the raw SHALL/MUST/WILL count in that file. Below 60% indicates the GENERIC_SHALL and NUMBERED_LIST patterns aren't firing (re-check subject stopwords + bucket dedup). Above 100% indicates over-capture (re-check soft-wrap collapse cleanly closed sentences).
+21b. **No bullet-marker U+FFFD in deliverable text (V3-F13)** — evidence: count requirements where `text` contains U+FFFD (REPLACEMENT CHARACTER); must be <5 across the whole catalog. Higher counts indicate `scrub_mojibake()`'s Pass 4 (bullet-marker strip) didn't run — verify `_BULLET_MARKER` regex in skill-win.md scrub_mojibake() is being invoked.
+
+### V3-F14 / V3-F15 serialization-boundary gates (added 2026-05-20 retry-2)
+22a. **V3-Q22 (mojibake at serialization boundary, V3-F14):** evidence: count of U+FFFD across the ENTIRE rebuilt `requirements-raw.json` file (not just `requirements[].text`) must be ≤5. This includes `rtm_rfp_sources[].section`, `rtm_rfp_sources[].text_excerpt`, `rtm_rfp_sources[].document`, plus every other string field. Verification command:
+```python
+text_full = json.dumps(data, ensure_ascii=False)
+assert text_full.count('�') <= 5
+```
+Higher counts mean the Step 8 serialization-boundary scrub didn't run on `existing_sources[]`. Apply `scrub_mojibake()` to `section`, `text_excerpt`, and `document` for every entry.
+
+22b. **V3-Q23 (rtm scope parity, V3-F15 gate 1):** evidence: `[s for s in rtm_rfp_sources if not is_requirement_source(s["document"])]` returns empty list. No entry may originate from a document in `EXTRACTION_BLACKLIST_PATTERNS` (sample contracts, bidder forms, vendor pricing, _combined concat artifacts). Apply the scope filter BEFORE the reference filter.
+
+22c. **V3-Q24 (rtm reference parity, V3-F15 gate 2):** evidence: `set(s["source_id"] for s in rtm_rfp_sources) ⊆ {sid for r in requirements for sid in r["source_ids"]}`. No orphan/unreferenced rtm entries. A 1.0× bloat ratio (rtm count = referenced count) is the target; ≤1.05× is acceptable for promoted-sub-item sources; >1.1× is FAIL.
+
 ### Memory discipline
-15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "Phase 2 does NOT dedup — Phase 2b owns the single authoritative dedup pass — applied correctly")
+22. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable. MUST include:
+    - `feedback_codify_in_skills.md` — every fix lands in the phase file + checklist, not as a one-shot script
+    - `feedback_screen_encoding_truncation.md` — UTF-8 + no `[:N]` truncation + no row caps
+    - `feedback_requirements_extraction_quality.md` (if exists) — V3 extraction discipline applied

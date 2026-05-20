@@ -272,6 +272,64 @@ data flow patterns. Focus on how data architecture serves requirements.]
 > to meet {relevant requirement IDs}."
 > Pull full details from Past_Projects.md using the project_number.]
 
+### 3.4 Real-World Use Cases (MANDATORY)
+
+This subsection brings the architecture to life for non-technical evaluators
+through persona-led vignettes. Speaks to Program Managers, Project Sponsors,
+and Executive Reviewers who score the bid alongside the Technical Reviewer.
+
+**Sourcing & structure (MANDATORY):**
+
+1. **Identify Presentation-tier user types** from ARCHITECTURE.md (§3 High-Level
+   Architecture and/or §5.1 Presentation Layer). Common patterns:
+   - External submitter / filer / customer / citizen
+   - Anonymous public searcher (if a public portal exists)
+   - Internal reviewer / auditor / agency admin
+2. **MINIMUM one persona vignette per distinct Presentation-tier user type.**
+   Default count: 3. Expand to 4-5 only if there are clearly distinct populations
+   (e.g., two separate external user classes with different workflows).
+3. **Each vignette MUST include:**
+   - A named persona grounded in the RFP's domain (e.g., "Maria, City Clerk for
+     Sisters, Oregon" -- NOT "Generic Filer")
+   - A concrete moment with stakes (deadline, investigation, review-queue
+     pressure) grounded in the RFP's user-population context
+   - End-to-end traversal of the architecture layers the persona touches
+4. **Each vignette MUST embed >= 3 "Why this design?" sidebar callouts** at
+   meaningful layer hops. Each callout names:
+   - The governing ADR or architectural Principle from ARCHITECTURE.md
+   - The alternative that was *considered and rejected* (in italics)
+   - Use the format:
+     ```
+     > **Why [the design choice]?**
+     > [ADR-NNN or Principle #N] -- [one-sentence rationale].
+     > *Rejected: [alternative]* ([one-sentence consequence of the alternative]).
+     ```
+5. **Figure embedding:** If a sequence diagram exists in `outputs/bid/` that
+   illustrates one of the vignettes (e.g., `integration_sequence.png`), embed
+   it INSIDE that vignette as a numbered figure (continue the existing
+   `Figure N` numbering from §3.1/§3.3).
+6. **Close §3.4** with a "pattern across all use cases" paragraph that ties
+   each architecture layer back to a user who would feel its absence (e.g.,
+   "Remove the Edge layer and Maria's filing has no rate-limit protection
+   on October 15.").
+
+**Format constraints (anti-regression):**
+- `--` (double hyphen) only -- NO em dashes (fitz.Story renders em dashes as
+  mojibake; see Output Formatting Rules at top of this phase file).
+- Vignettes are 300-450 words each; aggregate §3.4 length 1,500-2,200 words.
+- Persona names + roles + locations must be specific to the RFP's domain
+  (Oregon municipal filing => Oregon-named locations; Federal aviation RFP
+  => airport/control-tower roles; etc.). No generic placeholders.
+- Sidebar callouts use `> **Why...?**` blockquote format with the
+  `*Rejected: ...*` italic alternative on the closing line.
+- Use Case sub-headings use `#### Use Case N -- [Persona name], [role]` so
+  Quality Checklist item 17 can grep for them.
+
+**Voice:** Plain language for non-technical readers. Show the architecture
+working FOR the user, not the architecture's mechanics in isolation. The
+"Why this design?" callouts are the bridge -- they let an evaluator who
+skipped §3.1-3.3 still grasp the rationale.
+
 ## 4. Integration and Interoperability
 
 > **Evaluation Factor:** Integration / Interoperability ({weight} points)
@@ -562,3 +620,10 @@ The phase agent MUST verify each of the following BEFORE reporting completion. T
 
 ### Memory discipline
 16. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., ".NET 8.0 LTS EOL Nov 2026 — rejected; current LTS from tech-lifecycle-evidence.json used")
+
+### Real-World Use Cases (§3.4) -- MANDATORY
+17. **§3.4 Real-World Use Cases present with >= 3 persona vignettes** -- evidence: grep `^#### Use Case` in `outputs/bid-sections/03_TECHNICAL.md` returned >= 3 hits, each with a named persona and a domain-specific role/location (NOT "Generic Filer").
+18. **Each vignette contains >= 3 "Why this design?" sidebar callouts** -- evidence: for each Use Case, grep `> \*\*Why ` between that Use Case header and the next `####` or `##` returned >= 3 hits.
+19. **Every "Why this design?" callout cites an ADR/Principle AND a rejected alternative** -- evidence: every `> **Why` block contains both `ADR-` or `Principle #` AND `*Rejected:` on a later line within the same blockquote.
+20. **§3.4 closes with a "pattern across all use cases" paragraph** that names each architecture layer alongside a user who would feel its absence -- evidence: grep for layer-name + persona-name pairs in the §3.4 closing paragraph.
+21. **No em dashes in §3.4** -- evidence: grep `—` (Unicode em dash U+2014) in `outputs/bid-sections/03_TECHNICAL.md` returned 0 hits (fitz.Story mojibake guard).

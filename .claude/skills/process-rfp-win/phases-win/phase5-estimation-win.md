@@ -279,8 +279,10 @@ def generate_estimation_md(requirements, summary, domain):
 |--------|----------|------|------------|------|-------|-------------|
 """
 
+    # V4-F6 fix 2026-05-20: NEVER cap deliverable table rows. Prior code applied
+    # [:15] and [:20] slices, silently dropping qualifying requirements. Emit all.
     high_effort = [r for r in requirements if r["estimation"]["total_hours"] > 40]
-    for req in sorted(high_effort, key=lambda x: x["estimation"]["total_hours"], reverse=True)[:15]:
+    for req in sorted(high_effort, key=lambda x: x["estimation"]["total_hours"], reverse=True):
         est = req["estimation"]
         doc += f"| {req.get('canonical_id', 'N/A')} | {req.get('category', 'N/A')} | {est['base_hours']} | {est['complexity_factor']}x | {est['risk_multiplier']}x | {est['total_hours']} | {est['ai_assisted_hours']} |\n"
 
@@ -293,7 +295,7 @@ def generate_estimation_md(requirements, summary, domain):
 """
 
     medium_effort = [r for r in requirements if 16 <= r["estimation"]["total_hours"] <= 40]
-    for req in sorted(medium_effort, key=lambda x: x["estimation"]["total_hours"], reverse=True)[:20]:
+    for req in sorted(medium_effort, key=lambda x: x["estimation"]["total_hours"], reverse=True):
         est = req["estimation"]
         doc += f"| {req.get('canonical_id', 'N/A')} | {req.get('category', 'N/A')} | {est['total_hours']} | {est['ai_assisted_hours']} |\n"
 

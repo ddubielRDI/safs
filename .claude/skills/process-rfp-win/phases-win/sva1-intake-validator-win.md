@@ -50,6 +50,7 @@ Rules are loaded from `${CLAUDE_SKILL_DIR}/config-win/sva-rules-registry.json` u
 | SVA1-EVAL-EXTRACTION | HIGH | Evaluation criteria has >= 3 factors, weights sum ~100% |
 | SVA1-COMPLIANCE-COVERAGE | CRITICAL | Mandatory items / SHALL+MUST ratio > 0.7 |
 | SVA1-COMPLIANCE-CATEGORIES | MEDIUM | Mandatory items span >= 3 categories |
+| SVA1-JURISDICTION-CONSISTENCY | CRITICAL | jurisdiction_anchor.state matches state observed in EVALUATION_CRITERIA / COMPLIANCE_MATRIX / SUBMISSION_STRUCTURE (codified 2026-05-20 after MARS hallucination — see lessons_learned in registry) |
 
 ---
 
@@ -300,18 +301,50 @@ Verify domain detection confidence meets the 0.8 threshold.
 
 ```python
 def check_domain_confidence():
-    """Domain detection confidence must be >= 0.8."""
+    """Domain detection meets EITHER (confidence >= 0.8) OR (margin-dominance gate).
+
+    Codified 2026-05-20: mirrors the strong-margin alt path codified into
+    phase1.5-domain-win.md Step 5. With 6 domains splitting the score pool,
+    share-of-total `confidence = top_score / sum(scores)` rarely reaches 0.8
+    even for an overwhelming winner — MARS scored state_local_government=242
+    with margin=125 over second-place but confidence=242/623=0.39.
+
+    Pass condition (either gate satisfies):
+      (a) clear_winner == True AND confidence >= 0.5  (legacy gate)
+      (b) margin >= 30 AND top_score >= 60            (strong-margin gate)
+
+    Either gate is sufficient evidence the domain was correctly selected.
+    """
     rule_def = sva1_rules.get("SVA1-DOMAIN-CONFIDENCE")
     if not rule_def:
         return None
 
     confidence = domain_context.get("confidence", 0)
     selected_domain = domain_context.get("selected_domain", "unknown")
+    clear_winner = domain_context.get("clear_winner", False)
+    margin = domain_context.get("margin", 0)
+    scores = domain_context.get("scores", {})
+    top_score = max(
+        (s.get("score", 0) if isinstance(s, dict) else s)
+        for s in scores.values()
+    ) if scores else 0
     threshold = rule_def.get("threshold", 0.8)
     frameworks = domain_context.get("compliance_frameworks", [])
 
-    passed = confidence >= threshold
-    score = confidence * 100
+    # Apply BOTH gates — pass if either is satisfied
+    confidence_gate = bool(clear_winner and confidence >= 0.5)
+    strong_margin_gate = bool(margin >= 30 and top_score >= 60)
+    passed = confidence_gate or strong_margin_gate
+
+    # Score reflects which gate fired
+    if passed:
+        # Use 100 if strong margin or high confidence; scale otherwise
+        if strong_margin_gate:
+            score = 100.0
+        else:
+            score = min(confidence / threshold, 1.0) * 100
+    else:
+        score = confidence * 100
 
     return {
         "rule_id": "SVA1-DOMAIN-CONFIDENCE",
@@ -324,13 +357,24 @@ def check_domain_confidence():
         "details": {
             "selected_domain": selected_domain,
             "confidence": confidence,
+            "clear_winner": clear_winner,
+            "margin": margin,
+            "top_score": top_score,
+            "confidence_gate_passed": confidence_gate,
+            "strong_margin_gate_passed": strong_margin_gate,
+            "gate_used": "strong_margin" if strong_margin_gate else ("confidence" if confidence_gate else "none"),
             "compliance_frameworks_detected": frameworks,
             "framework_count": len(frameworks)
         },
         "corrective_action": {
             "type": "user_review",
             "target_phase": "1.5",
-            "instruction": f"Domain detected as '{selected_domain}' with {confidence:.0%} confidence. User should verify domain classification.",
+            "instruction": (
+                f"Domain detected as '{selected_domain}' with confidence={confidence:.0%}, "
+                f"margin={margin}, top_score={top_score}. Neither gate satisfied "
+                f"(need: clear_winner+conf>=0.5 OR margin>=30+top>=60). "
+                f"User should verify domain classification."
+            ),
             "auto_correctable": False
         } if not passed else None
     }
@@ -421,7 +465,25 @@ Verify the ratio of mandatory items found in COMPLIANCE_MATRIX.json to SHALL/MUS
 
 ```python
 def check_compliance_coverage():
-    """Mandatory items / SHALL+MUST occurrences ratio > 0.7."""
+    """Mandatory items / SHALL+MUST distinct-clause ratio > 0.7.
+
+    Codified 2026-05-20: implements the 2026-03-03 lessons_learned guidance that
+    was captured but never wired in. Raw keyword count over-inflates the
+    denominator because SHALL/MUST appear in:
+      - section headers (each section title may contain "SHALL")
+      - regulatory quotes from cited statutes (e.g., a clause that quotes
+        ORS 279B and itself contains 5x "shall")
+      - compound restatements (one obligation restated 3-4 times across a clause)
+      - definition lists ("'Shall' means ...")
+
+    The fixed denominator is DISTINCT CLAUSE-LEVEL keyword occurrences:
+      - one keyword per sentence (collapse multiples within the same sentence)
+      - exclude sentences that are pure header text (all-caps, < 8 words, no period)
+      - exclude sentences inside a `>` blockquote (regulatory quote indicator)
+      - exclude sentences in definition lists (line starts with `**X**` or `"X" means`)
+
+    MARS 2026-05-20 raw count = 1543; clause-dedup count = ~760-850.
+    """
     rule_def = sva1_rules.get("SVA1-COMPLIANCE-COVERAGE")
     if not rule_def:
         return None
@@ -429,22 +491,39 @@ def check_compliance_coverage():
     mandatory_items = compliance_matrix.get("mandatory_items", [])
     mandatory_count = len(mandatory_items)
 
-    # Count SHALL/MUST occurrences across all flattened documents
-    shall_must_count = 0
     keyword_pattern = re.compile(r'\b(SHALL|MUST|REQUIRED|MANDATORY)\b', re.IGNORECASE)
+    sentence_split = re.compile(r'(?<=[\.\?\!])\s+')
+    header_check = re.compile(r'^\s*#{1,6}\s+|^[A-Z][A-Z0-9\s\-]{6,}$')
+    blockquote_check = re.compile(r'^\s*>\s+')
+    definition_check = re.compile(r'^\s*[\*"][^*"]{1,40}[\*"]\s+(means|refers to|is defined as)', re.IGNORECASE)
 
+    # Clause-deduped count + raw count (for diagnostics)
+    raw_keyword_count = 0
+    clause_dedup_count = 0
     for f_path in flattened_files:
         content = open(f_path, 'r', encoding='utf-8').read()
-        matches = keyword_pattern.findall(content)
-        shall_must_count += len(matches)
+        raw_keyword_count += len(keyword_pattern.findall(content))
+        # Per-line scan so we can apply line-level filters before sentence-splitting
+        for line in content.split("\n"):
+            if not line.strip():
+                continue
+            if header_check.match(line):
+                continue  # skip pure headers (count once via sentence split below if mixed)
+            if blockquote_check.match(line):
+                continue  # skip regulatory quotes
+            if definition_check.match(line):
+                continue  # skip definition list entries
+            # Sentence-level: 1 keyword per sentence regardless of repetition
+            for sent in sentence_split.split(line):
+                if keyword_pattern.search(sent):
+                    clause_dedup_count += 1
 
-    # Compute ratio
+    # Threshold check uses CLAUSE-DEDUP count
     threshold = rule_def.get("threshold", 0.7)
-    if shall_must_count == 0:
-        # No SHALL/MUST found -- if no mandatory items either, that is acceptable
+    if clause_dedup_count == 0:
         ratio = 1.0 if mandatory_count == 0 else 0.0
     else:
-        ratio = mandatory_count / shall_must_count
+        ratio = mandatory_count / clause_dedup_count
 
     passed = ratio >= threshold
     score = min(ratio / threshold, 1.0) * 100
@@ -459,7 +538,9 @@ def check_compliance_coverage():
         "threshold": threshold * 100,
         "details": {
             "mandatory_items_found": mandatory_count,
-            "shall_must_occurrences": shall_must_count,
+            "shall_must_occurrences_raw": raw_keyword_count,
+            "shall_must_occurrences_clause_dedup": clause_dedup_count,
+            "denominator_used": "clause_dedup (per 2026-03-03 lessons_learned)",
             "ratio": round(ratio, 3),
             "threshold_ratio": threshold,
             "gate_status": compliance_matrix.get("gate_status", "unknown"),
@@ -471,7 +552,11 @@ def check_compliance_coverage():
         "corrective_action": {
             "type": "retry_phase",
             "target_phase": rule_def.get("corrective_phase", "1.7"),
-            "instruction": f"Re-run compliance extraction. Found {mandatory_count} items vs {shall_must_count} SHALL/MUST keywords (ratio={ratio:.2f}, need >{threshold}).",
+            "instruction": (
+                f"Re-run compliance extraction. Found {mandatory_count} items vs "
+                f"{clause_dedup_count} clause-deduped SHALL/MUST occurrences "
+                f"(raw={raw_keyword_count}; ratio={ratio:.2f}, need >{threshold})."
+            ),
             "auto_correctable": rule_def.get("auto_correctable", True)
         } if not passed else None
     }
@@ -530,6 +615,175 @@ def check_compliance_categories():
     }
 
 finding = check_compliance_categories()
+if finding:
+    findings.append(finding)
+```
+
+### Step 8.5: Rule SVA1-JURISDICTION-CONSISTENCY (CRITICAL)
+
+Cross-validate jurisdiction across Phase 1.5, 1.6, 1.7, 1.8 outputs. Catches Phase 1.5 hallucination where a fabricated state name silently propagates into the rest of Stage 1. Codified 2026-05-20 — MARS RFP incident (Phase 1.5 wrote "Alaska" for an unambiguously Oregon RFP; downstream phases all read "Oregon" because they were forced to cite RFP sections).
+
+```python
+def check_jurisdiction_consistency():
+    """Cross-validate jurisdiction across all Stage 1 outputs.
+
+    The canonical anchor is domain-context.json::jurisdiction_anchor.state.
+    Each downstream output must reference the same state name when its content
+    contains a jurisdiction token (Oregon, Washington, California, etc.) or a
+    state-specific statute prefix (ORS/OAR, RCW/WAC, Cal., Tex., AS, etc.)."""
+    rule_def = sva1_rules.get("SVA1-JURISDICTION-CONSISTENCY")
+    if not rule_def:
+        return None
+
+    # Submission structure may not be loaded above — load it now.
+    submission_structure = load_json_safe(f"{folder}/shared/SUBMISSION_STRUCTURE.json")
+
+    # 1) Read the canonical anchor from Phase 1.5
+    anchor = domain_context.get("jurisdiction_anchor", {}) if isinstance(domain_context, dict) else {}
+    anchor_state = (anchor.get("state") or {}).get("value")
+    anchor_citation = (anchor.get("state") or {}).get("citation")
+
+    # 2) Define a small state-prefix→state map so we can resolve statute prefixes.
+    STATUTE_PREFIX_TO_STATE = {
+        "ORS": "Oregon", "OAR": "Oregon",
+        "RCW": "Washington", "WAC": "Washington",
+        "Cal.": "California", "Cal ": "California",
+        "Tex.": "Texas",
+        "Fla.": "Florida",
+        "N.Y.": "New York",
+        "Ohio Rev": "Ohio",
+        "Ill. Comp": "Illinois",
+        "AS": "Alaska",
+    }
+    # Inverse — state to its allowed statute prefixes (used for contradiction check)
+    STATE_TO_PREFIXES = {}
+    for prefix, state in STATUTE_PREFIX_TO_STATE.items():
+        STATE_TO_PREFIXES.setdefault(state, []).append(prefix)
+
+    KNOWN_STATES = sorted(set(STATUTE_PREFIX_TO_STATE.values()) | {
+        "Oregon", "Washington", "California", "Texas", "New York", "Florida",
+        "Alaska", "Arizona", "Colorado", "Idaho", "Montana", "Nevada", "Utah",
+        "Wyoming", "Hawaii", "Massachusetts", "Connecticut", "Maine", "Rhode Island",
+        "Vermont", "New Hampshire", "New Jersey", "Pennsylvania", "Ohio", "Michigan",
+        "Indiana", "Illinois", "Wisconsin", "Minnesota", "Iowa", "Missouri", "Kansas",
+        "Nebraska", "North Dakota", "South Dakota", "Oklahoma", "Arkansas",
+        "Louisiana", "Mississippi", "Alabama", "Georgia", "South Carolina",
+        "North Carolina", "Tennessee", "Kentucky", "West Virginia", "Virginia",
+        "Maryland", "Delaware", "New Mexico"
+    }, key=len, reverse=True)
+
+    def scan_doc_for_state(doc, source_label):
+        """Return (state_name_or_None, evidence_snippet, prefix_seen) for the first
+        state token or statute prefix found in the document's serialized form."""
+        if not doc:
+            return (None, None, None)
+        # Stringify the doc so we can pattern-match against any text field.
+        # ensure_ascii=False so accented chars round-trip (defensive)
+        text = json.dumps(doc, ensure_ascii=False)
+        # Prefer statute prefixes (very specific) before generic "State of X"
+        for prefix, state in STATUTE_PREFIX_TO_STATE.items():
+            if re.search(rf"\b{re.escape(prefix)}\s*[\d§\.]", text):
+                return (state, f"statute prefix '{prefix}' in {source_label}", prefix)
+        # Then look for "State of X" phrasing
+        m = re.search(rf"State of ({'|'.join(re.escape(s) for s in KNOWN_STATES)})", text)
+        if m:
+            return (m.group(1), f"'State of {m.group(1)}' in {source_label}", None)
+        # Last fallback — bare state name
+        for state in KNOWN_STATES:
+            if re.search(rf"\b{re.escape(state)}\b", text):
+                return (state, f"'{state}' token in {source_label}", None)
+        return (None, None, None)
+
+    eval_state, eval_evidence, _ = scan_doc_for_state(eval_criteria, "EVALUATION_CRITERIA.json")
+    comp_state, comp_evidence, _ = scan_doc_for_state(compliance_matrix, "COMPLIANCE_MATRIX.json")
+    sub_state, sub_evidence, _ = scan_doc_for_state(submission_structure, "SUBMISSION_STRUCTURE.json")
+
+    observed = {
+        "phase_1.5_anchor": anchor_state,
+        "phase_1.6_eval": eval_state,
+        "phase_1.7_compliance": comp_state,
+        "phase_1.8_submission": sub_state,
+    }
+    evidence = {
+        "phase_1.5_anchor": anchor_citation,
+        "phase_1.6_eval": eval_evidence,
+        "phase_1.7_compliance": comp_evidence,
+        "phase_1.8_submission": sub_evidence,
+    }
+
+    # Determine the "majority" state from phases 1.6/1.7/1.8 (they read RFP with citations
+    # — more trustworthy than 1.5 which historically hallucinates when domain is unclear).
+    downstream = [s for s in (eval_state, comp_state, sub_state) if s]
+    majority = None
+    if downstream:
+        from collections import Counter
+        c = Counter(downstream)
+        majority, _count = c.most_common(1)[0]
+
+    # Disagreements: every non-null observation must equal anchor (if anchor set) AND majority.
+    non_null = {k: v for k, v in observed.items() if v}
+    distinct = set(non_null.values())
+    consistent = (len(distinct) <= 1)
+
+    # Anchor vs majority — separate check because anchor hallucination is the main risk.
+    anchor_disagrees_with_majority = (
+        anchor_state is not None
+        and majority is not None
+        and anchor_state != majority
+    )
+
+    passed = consistent and not anchor_disagrees_with_majority
+    # Score: 100 if all agree, 50 if anchor disagrees with majority,
+    # 0 if downstream phases themselves disagree.
+    if not non_null:
+        score = 0.0
+    elif anchor_disagrees_with_majority:
+        score = 0.0
+    elif not consistent:
+        score = 25.0
+    else:
+        score = 100.0
+
+    instruction = None
+    if anchor_disagrees_with_majority:
+        instruction = (
+            f"Phase 1.5 jurisdiction_anchor.state='{anchor_state}' but phases 1.6/1.7/1.8 "
+            f"consistently observed '{majority}'. Re-run Phase 1.5 with corrective guidance: "
+            f"the RFP is for the State of {majority} — confirm via grep against flattened/* "
+            f"and rewrite jurisdiction_anchor with grep-cited evidence. Do NOT add ad-hoc "
+            f"*_domain_hints blocks (forbidden by Rule J3 in phase1.5-domain-win.md)."
+        )
+    elif not consistent and downstream:
+        instruction = (
+            f"Stage 1 outputs disagree on jurisdiction: {observed}. Re-read the RFP and "
+            f"establish the canonical state in Phase 1.5 first, then re-run downstream "
+            f"phases as needed."
+        )
+
+    return {
+        "rule_id": "SVA1-JURISDICTION-CONSISTENCY",
+        "rule_name": rule_def["name"],
+        "category": rule_def["category"],
+        "severity": rule_def["severity"],
+        "passed": passed,
+        "score": score,
+        "threshold": 100.0,
+        "details": {
+            "observed_by_phase": observed,
+            "evidence_by_phase": evidence,
+            "majority_downstream_state": majority,
+            "anchor_disagrees_with_majority": anchor_disagrees_with_majority,
+            "downstream_consistent": consistent
+        },
+        "corrective_action": ({
+            "type": "retry_phase",
+            "target_phase": rule_def.get("corrective_phase", "1.5"),
+            "instruction": instruction,
+            "auto_correctable": rule_def.get("auto_correctable", True)
+        } if not passed else None)
+    }
+
+finding = check_jurisdiction_consistency()
 if finding:
     findings.append(finding)
 ```

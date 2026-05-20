@@ -258,8 +258,13 @@ APPENDICES = [
     ("B", "04_RISK_REGISTER.md", "RISK_REGISTER", "Risk Register"),
 ]
 
-def clean_markdown(content):
+def clean_markdown(content, strip_internal_refs=True):
     """Clean markdown for PDF rendering. Strips HTML, anchors, and editorial markers.
+
+    strip_internal_refs: when True (default), removes internal artifact filenames like
+    `company-profile.json`, `Past_Projects.md`, etc. that should never appear in
+    evaluator-facing bid volumes. Set False for operator-facing index docs
+    (EXECUTIVE_SUMMARY.md, NAVIGATION_GUIDE.md) which legitimately name these files.
 
     Source .md files are NOT modified -- cleaning happens at render time only.
     """
@@ -291,25 +296,57 @@ def clean_markdown(content):
     # 4. > **REVIEW REQUIRED:** ... -> empty (process-note blockquotes)
     content = re.sub(r'^>\s*\*\*REVIEW REQUIRED:\*\*.*$', '', content, flags=re.MULTILINE)
 
-    # --- Internal reference stripping (PDF only) ---
-    # 5. Strip internal file references that should never appear in deliverables
-    #    Patterns: "company-profile.json field.subfield", "Past_Projects.md Section",
-    #    "EVALUATION_CRITERIA.json", "evidence-library.json", etc.
-    content = re.sub(r'(?:company-profile\.json|Past_Projects\.md|rfp-summary\.json|'
-                     r'bid-outcomes\.json|evidence-library\.json|domain-context\.json|'
-                     r'EVALUATION_CRITERIA\.json|COMPLIANCE_MATRIX\.json|'
-                     r'SUBMISSION_STRUCTURE\.json|POSITIONING_OUTPUT\.json|'
-                     r'bid-context-bundle\.json|PERSONA_COVERAGE\.json)'
-                     r'[\s\w.\[\]()]*', '', content)
-    # 6. Clean up artifacts from reference stripping (dangling "per ", "from ", etc.)
-    content = re.sub(r'\b(per|from|in|via|see)\s*\.\s', '. ', content)
-    content = re.sub(r'\(\s*\)', '', content)  # empty parens
-    content = re.sub(r'  +', ' ', content)  # double spaces
+    # --- Internal reference stripping (PDF only, evaluator-facing volumes) ---
+    # 5. Strip internal file references that should never appear in deliverables.
+    #    SKIPPED for operator-facing index docs (EXECUTIVE_SUMMARY, NAVIGATION_GUIDE)
+    #    which legitimately reference these filenames as navigation aids.
+    #
+    # V4-F4 fix 2026-05-20: prior regex had two bugs that destroyed deliverable text:
+    #   (a) suffix `[\s\w.\[\]()]*` consumed closing parens — eating sentences like
+    #       "(100% accounted for in COMPLIANCE_MATRIX.json)" down to "(100% accounted for in"
+    #   (b) no backtick anchors — when filename was wrapped in `code`, only the inner
+    #       token was deleted, leaving empty `` pairs in the rendered PDF
+    #   (c) no backtick anchors also meant bare filenames in tables (e.g.
+    #       "EXECUTIVE_SUMMARY.md + Past_Projects.md + COMPETITIVE_POSITION.md")
+    #       had the middle reference silently nuked, leaving "+ +"
+    if strip_internal_refs:
+        internal_filenames = (
+            r'company-profile\.json|Past_Projects\.md|rfp-summary\.json|'
+            r'bid-outcomes\.json|evidence-library\.json|domain-context\.json|'
+            r'EVALUATION_CRITERIA\.json|COMPLIANCE_MATRIX\.json|'
+            r'SUBMISSION_STRUCTURE\.json|POSITIONING_OUTPUT\.json|'
+            r'bid-context-bundle\.json|PERSONA_COVERAGE\.json'
+        )
+        # Match the full backtick-wrapped span if present, else bare token.
+        # Suffix limited to whitespace + word chars + dot (no parens, no brackets)
+        # so surrounding punctuation is never consumed.
+        content = re.sub(
+            r'`(?:' + internal_filenames + r')(?:[\s\w.])*`'   # `filename.ext optional trailing words`
+            r'|'
+            r'(?:' + internal_filenames + r')(?:[\s\w.])*',     # bare filename.ext optional trailing words
+            '', content
+        )
+        # 6. Clean up artifacts from reference stripping (dangling "per ", "from ", etc.)
+        content = re.sub(r'\b(per|from|in|via|see)\s*\.\s', '. ', content)
+        content = re.sub(r'\(\s*\)', '', content)  # empty parens left after deletion
+        content = re.sub(r'\+\s*\+', '+', content)  # dangling "+ +" between dropped table tokens
+        content = re.sub(r'  +', ' ', content)  # double spaces
 
     # --- Em dash replacement (fitz.Story cannot render U+2014) ---
     # 7. Replace em dashes with -- to prevent mojibake in PDF
     content = content.replace('\u2014', '--')
     content = content.replace('\u2013', '--')  # en dash too
+
+    # --- Image path rewrite for fitz.Story (added 2026-05-20) ---
+    # 8. fitz.Story's Archive resolver CANNOT walk `..` segments in image src.
+    #    Bid section .md files reference diagrams as `../bid/foo.png` (relative
+    #    to bid-sections/). Rewrite to `./foo.png` so that
+    #    `Section(root=BID_OUT_ABS)` (the bid/ folder) resolves them correctly.
+    #    EXTENSION-AGNOSTIC: this regex matches the directory segment only, so
+    #    `.png`, `.svg`, `.jpg`, etc. are all rewritten identically. Without
+    #    this rewrite, fitz.Story silently embeds ZERO images regardless of
+    #    format.
+    content = re.sub(r'\]\(\.\./bid/', '](./', content)
 
     return content
 
@@ -351,7 +388,10 @@ domain = read_json(f"{folder}/shared/domain-context.json")
 rfp_title = domain.get("rfp_title", domain.get("project_name", "[RFP Title]"))
 
 # --- 5a: Generate consolidated Draft_Bid.pdf ---
-pdf = MarkdownPdf(toc_level=2)
+# optimize=True is MANDATORY (see "PDF Size Discipline" section below).
+# Without it, raster images embed uncompressed and Draft_Bid.pdf can exceed
+# the 25 MB procurement portal limit.
+pdf = MarkdownPdf(toc_level=2, optimize=True)
 pdf.meta["title"] = f"Draft Bid - {rfp_title}"
 pdf.meta["author"] = company.get("company_name", "Resource Data, Inc.")
 
@@ -381,7 +421,8 @@ cover = f"""
 
 ---
 """
-pdf.add_section(Section(cover, toc=False))
+BID_OUT_ABS = os.path.abspath(OUT_DIR)  # fitz.Story archive root for image resolution
+pdf.add_section(Section(cover, toc=False, root=BID_OUT_ABS))
 
 # Add all volumes (with content validation)
 all_validation = {}
@@ -392,7 +433,7 @@ for vol_num, filename, tag, title in VOLUMES:
         findings = validate_content(content, filename)
         if findings:
             all_validation[filename] = findings
-        pdf.add_section(Section(f"\n\n---\n\n# Volume {vol_num}: {title}\n\n" + content))
+        pdf.add_section(Section(f"\n\n---\n\n# Volume {vol_num}: {title}\n\n" + content, root=BID_OUT_ABS))
 
 for app_id, filename, tag, title in APPENDICES:
     filepath = os.path.join(BID_DIR, filename)
@@ -401,7 +442,7 @@ for app_id, filename, tag, title in APPENDICES:
         findings = validate_content(content, filename)
         if findings:
             all_validation[filename] = findings
-        pdf.add_section(Section(f"\n\n---\n\n# Appendix {app_id}: {title}\n\n" + content))
+        pdf.add_section(Section(f"\n\n---\n\n# Appendix {app_id}: {title}\n\n" + content, root=BID_OUT_ABS))
 
 pdf.save(os.path.join(OUT_DIR, "Draft_Bid.pdf"))
 
@@ -412,15 +453,20 @@ for vol_num, filename, tag, title in VOLUMES + [(a[0], a[1], a[2], a[3]) for a i
         continue
     content = clean_markdown(read_file(filepath))
     validate_content(content, filename)  # Log any remaining artifacts
-    vol_pdf = MarkdownPdf(toc_level=2)
+    vol_pdf = MarkdownPdf(toc_level=2, optimize=True)  # optimize=True MANDATORY for portal-safe size
     vol_pdf.meta["title"] = f"{title} - {rfp_title}"
     vol_pdf.meta["author"] = company.get("company_name", "Resource Data, Inc.")
     header = f"**{company.get('company_name', 'Resource Data, Inc.')} | {rfp_title}**\n\n---\n\n"
-    vol_pdf.add_section(Section(header + content))
+    vol_pdf.add_section(Section(header + content, root=BID_OUT_ABS))
     pdf_name = f"{bidder_name}_{vol_num}_{tag}.pdf"
     vol_pdf.save(os.path.join(OUT_DIR, pdf_name))
 
 # --- 5c: Generate supporting PDFs ---
+# Operator-facing index docs (EXECUTIVE_SUMMARY, NAVIGATION_GUIDE) legitimately reference
+# internal filenames as navigation aids — skip the internal-reference stripping so those
+# tokens (and their surrounding punctuation) survive intact in the rendered PDF.
+OPERATOR_FACING = {"EXECUTIVE_SUMMARY.md", "NAVIGATION_GUIDE.md"}
+
 for md_name, pdf_name in [
     ("EXECUTIVE_SUMMARY.md", "EXECUTIVE_SUMMARY.pdf"),
     ("REQUIREMENTS_CATALOG.md", "REQUIREMENTS_CATALOG.pdf"),
@@ -428,11 +474,12 @@ for md_name, pdf_name in [
 ]:
     md_path = f"{folder}/outputs/{md_name}"
     if os.path.exists(md_path):
-        content = clean_markdown(read_file(md_path))
+        strip_refs = md_name not in OPERATOR_FACING
+        content = clean_markdown(read_file(md_path), strip_internal_refs=strip_refs)
         validate_content(content, md_name)  # Log any remaining artifacts
-        s_pdf = MarkdownPdf(toc_level=2)
+        s_pdf = MarkdownPdf(toc_level=2, optimize=True)  # optimize=True MANDATORY for portal-safe size
         s_pdf.meta["title"] = md_name.replace(".md", "").replace("_", " ")
-        s_pdf.add_section(Section(content))
+        s_pdf.add_section(Section(content, root=BID_OUT_ABS))
         s_pdf.save(os.path.join(OUT_DIR, pdf_name))
 ```
 
@@ -575,6 +622,57 @@ for pdf_name in sorted(pdf_files):
         qa_issues.append((pdf_name, "NO_STYLED_HEADERS",
                          "No colored table headers detected — CSS may not be applied"))
 
+    # QA-5: Detect downsampled diagram embeds (BLOCKER — added 2026-05-20)
+    # fitz.Story silently downsamples PNGs wider than ~1500px to ~816x1056 (page DPI),
+    # destroying text labels into black blobs. Detection has TWO conjoined gates to
+    # avoid false positives on legitimate small graphics (icons, logos):
+    #   Gate 1 (embed shape): width < 900 AND height > 600 (matches Letter-page
+    #     ~816x1056 downsample artifact; rejects portrait-ish icons under 600px tall)
+    #   Gate 2 (source-disk cross-check): the figure-registry source PNG on disk
+    #     is wider than 1500px. If the source is already small, the embed shape
+    #     reflects the source — not a downsample. Only when source > 1500 AND
+    #     embed < 900 do we have the signature of the failure mode.
+    fig_registry = read_json_safe(f"{folder}/outputs/bid/figure-registry.json") or {}
+    fig_files = {f.get("file"): f.get("file") for f in fig_registry.get("figures", []) if f.get("file")}
+
+    downsampled_flagged = set()  # avoid duplicate reports for the same xref across pages
+    for page_idx in range(doc.page_count):
+        for img in doc[page_idx].get_images(full=True):
+            xref = img[0]
+            if xref in downsampled_flagged:
+                continue
+            info = doc.extract_image(xref)
+            ew, eh = info["width"], info["height"]
+            # Gate 1: embed-shape heuristic — Letter-page downsample artifact (816x1056)
+            if not (ew < 900 and eh > 600):
+                continue
+            # Gate 2: source-disk cross-check — was there a >1500px source PNG?
+            #   We can't reverse-look-up which source produced this embed, so we
+            #   approximate by checking if ANY figure-registry source is >1500px.
+            #   If no oversized sources exist on disk, this can't be the downsample
+            #   bug and the embed is some legitimate small graphic.
+            has_oversized_source = False
+            for fname in fig_files:
+                fpath = os.path.join(folder, "outputs", "bid", fname)
+                if not os.path.exists(fpath):
+                    continue
+                try:
+                    from PIL import Image as _PIL
+                    with _PIL.open(fpath) as _src:
+                        if _src.size[0] > 1500:
+                            has_oversized_source = True
+                            break
+                except Exception:
+                    pass
+            if not has_oversized_source:
+                # No oversized PNG sources -> embed is legitimately small (icon/logo)
+                continue
+            qa_issues.append((pdf_name, "DOWNSAMPLED_DIAGRAM",
+                             f"Embedded image xref={xref} {ew}x{eh} (page {page_idx+1}) matches "
+                             f"fitz.Story downsample signature AND a >1500px source exists. "
+                             f"Pre-resize source PNGs in outputs/bid/ to <=1400px before render."))
+            downsampled_flagged.add(xref)
+
     doc.close()
 
 # Report QA results
@@ -584,7 +682,7 @@ if qa_issues:
     for pdf_name, issue_type, desc in qa_issues:
         log(f"  [{issue_type}] {pdf_name}: {desc}")
     # CORRUPT or EMPTY issues are blockers — fail the phase
-    blockers = [q for q in qa_issues if q[1] in ("CORRUPT", "EMPTY", "TOO_SMALL")]
+    blockers = [q for q in qa_issues if q[1] in ("CORRUPT", "EMPTY", "TOO_SMALL", "DOWNSAMPLED_DIAGRAM")]
     if blockers:
         raise RuntimeError(f"QA BLOCKED: {len(blockers)} critical PDF issues found")
 else:
@@ -599,6 +697,7 @@ else:
 | QA-2: File size | Corrupt/blank PDFs under 10KB | BLOCKER |
 | QA-3: Blank pages | Pages with no text content | WARNING |
 | QA-4: Styled headers | Missing CSS (no colored table headers) | WARNING |
+| QA-5: Downsampled diagrams | fitz.Story shrank source PNG to <900px wide — text labels destroyed into black blobs | BLOCKER |
 
 **BLOCKER issues** cause the phase to fail. **WARNING issues** are reported but don't block.
 

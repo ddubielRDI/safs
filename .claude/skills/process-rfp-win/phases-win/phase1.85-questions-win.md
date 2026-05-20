@@ -65,10 +65,75 @@ for fp in flattened_files:
 
 ### Step 2: Resolve Deadline Posture
 
+**⛔ CANONICAL TOKEN SET (codified 2026-05-20 — MARS Phase 1.85 incident):**
+`deadline_status` written to `clarifying-questions-summary.json` MUST be one of EXACTLY these eight lowercase tokens:
+`{"open", "closing_soon", "imminent", "closed", "expired", "none", "not_permitted", "unknown"}`.
+
+SUBMISSION_STRUCTURE.json uses upstream event-stage markers (e.g., `status: "PASSED"`, `status: "UPCOMING"`) that are NOT in this set. The canonicalization map below MUST be applied — never write event-stage values like `"passed"` directly. The Phase 1.85 verifier's Check 4 enforces this set explicitly; a mismatch is a CRITICAL FAIL that halts the pipeline.
+
 ```python
-deadline_status = (submission.get("questions_deadline") or "unknown").lower()
-deadline_date   = submission.get("questions_deadline_date")
-mode = "open"   # full Q&A list, expect submission
+deadline_block  = submission.get("questions_deadline") or {}
+# SUBMISSION_STRUCTURE schema: questions_deadline may be either a plain string
+# (legacy) or a nested {status, date_iso, time, days_relative_to_today} dict.
+# Handle both shapes.
+if isinstance(deadline_block, str):
+    raw_status = deadline_block
+    deadline_date = submission.get("questions_deadline_date")
+    days_relative = None
+elif isinstance(deadline_block, dict):
+    raw_status = deadline_block.get("status", "UNKNOWN")
+    deadline_date = deadline_block.get("date_iso") or deadline_block.get("date")
+    days_relative = deadline_block.get("days_relative_to_today")
+else:
+    raw_status = "UNKNOWN"
+    deadline_date = None
+    days_relative = None
+
+# Canonicalize to the closed token set (MANDATORY — see header note above).
+# event-stage markers (PASSED, UPCOMING, NA) → canonical states based on the
+# date_relative signal when available, otherwise on the literal token.
+CANONICAL_STATUS_MAP = {
+    # Event-stage markers from SUBMISSION_STRUCTURE
+    "PASSED": "closed",       # deadline date has passed
+    "EXPIRED": "expired",
+    "UPCOMING": "open",       # future date but unspecified urgency
+    "IMMINENT": "imminent",
+    "CLOSING_SOON": "closing_soon",
+    "OPEN": "open",
+    "NA": "not_permitted",
+    "NOT_PERMITTED": "not_permitted",
+    "NONE": "none",
+    "UNKNOWN": "unknown",
+    # Already-canonical tokens
+    "closed": "closed", "expired": "expired", "open": "open",
+    "imminent": "imminent", "closing_soon": "closing_soon",
+    "none": "none", "not_permitted": "not_permitted", "unknown": "unknown",
+}
+deadline_status = CANONICAL_STATUS_MAP.get(str(raw_status).strip(), "unknown")
+
+# If the upstream marker was "UPCOMING" but days_relative is small/negative,
+# upgrade urgency. Avoids stale "open" labels when the deadline is actually close.
+if deadline_status == "open" and isinstance(days_relative, int):
+    if days_relative < 0:
+        deadline_status = "closed"
+    elif days_relative <= 2:
+        deadline_status = "imminent"
+    elif days_relative <= 5:
+        deadline_status = "closing_soon"
+
+# Defensive assertion — refuse to proceed if the token isn't canonical.
+_ALLOWED_TOKENS = {
+    "open", "closing_soon", "imminent", "closed", "expired",
+    "none", "not_permitted", "unknown",
+}
+assert deadline_status in _ALLOWED_TOKENS, (
+    f"Phase 1.85 contract violation: deadline_status={deadline_status!r} "
+    f"is not in the canonical set {_ALLOWED_TOKENS}. raw_status={raw_status!r}. "
+    f"Update CANONICAL_STATUS_MAP above to handle this upstream token."
+)
+
+# Mode follows from canonical status.
+mode = "open"
 if deadline_status in ("closed", "expired"):
     mode = "post_deadline"
 elif deadline_status in ("closing_soon", "imminent"):
@@ -76,8 +141,12 @@ elif deadline_status in ("closing_soon", "imminent"):
 elif deadline_status in ("none", "not_permitted"):
     mode = "internal_only"
 
-log(f"Question deadline posture: {mode} (status={deadline_status}, date={deadline_date})")
+log(f"Question deadline posture: {mode} (status={deadline_status}, "
+    f"raw_upstream={raw_status!r}, date={deadline_date}, days={days_relative})")
 ```
+
+**⛔ EVIDENCE-SNIPPET MOJIBAKE SCRUB (codified 2026-05-20 — MARS Phase 1.85 Q-I11 incident):**
+Every evidence snippet captured from `flattened_text` for inclusion in `outputs/CLARIFYING_QUESTIONS.md` MUST be passed through `scrub_mojibake(snippet, source_hint=f"Q-{qid}.evidence")` before being written. The MARS run shipped two U+FFFD `�` characters in Q-I11's `ADEQUATE � Response meets...` evidence quote, traceable to upstream font-mapping loss in the RFP §5.2 rubric. The scrub helper (defined in `skill-win.md`) repairs the common patterns; residuals MUST be replaced with ` -- ` (ASCII-safe em-dash) or annotated `[?]` before the snippet leaves Phase 1.85.
 
 ### Step 3: Scan for Ambiguity Patterns
 

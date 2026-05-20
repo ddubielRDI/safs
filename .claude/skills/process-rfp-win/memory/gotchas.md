@@ -162,3 +162,24 @@ b'\\u00e2\\u20ac\\u201d' in raw   # True if file is JSON-escaped mojibake
 **Action:** Un-deprecate, refresh against current architecture (compare to `phase3e-ui-win.md`), register in PHASES array under Stage 3, apply UTF-8 + path fixes consistent with rest of Stage 3.
 **Why it was deprecated:** Unknown — file rename history may clarify.
 **Caveat:** Until restoration completes, do NOT add `phase3d` entries to PHASES array; the file is still suffixed `.deprecated` and would not load correctly.
+
+---
+
+## Phase 2 under-extraction when RFP uses non-standard subjects (V3-F12)
+
+**Status:** ACTIVE — codified 2026-05-20 after MARS run produced only 245 extracted from 1,090 atomic SHALLs in RFPAttH (~23% capture ratio).
+**Symptom:** Phase 2 requirements-raw.json count is much lower than the COMPLIANCE_MATRIX mandatory_items count (a 4x-5x gap is the tell). Stage 4 RTM has no chains to build for the missed requirements; the bid silently omits them.
+**Cause:** The default REQUIREMENT_PATTERNS only catch `system|application|solution|user shall`. Detailed-requirements attachments are dominated by other subjects: `User`, `Notification`, `Administrator`, `Entity`, `Role`, `List`, `Item`, `Alert`, `Report`, `Date`, `Information`. These are silently dropped.
+**Resolution:** Phase 2 must run a GENERIC_SHALL pattern AND a NUMBERED_LIST pattern in addition to the subject-specific patterns. See phase2-extract-win.md Step 2/Step 3 (V3-F12 codification). Run order: NUMBERED_LIST first (highest precedence so type labels win the position bucket), then subject-specific, then GENERIC_SHALL with SUBJECT_STOPWORDS guard for false-positives (Page/Attachment/Section/Table/Figure/This/That/These/Those/etc.).
+**Verification:** quality-checklist item 21a — pattern_extraction count from the detailed-requirements attachment must be >=60% of the file's raw SHALL/MUST/WILL count.
+**MARS evidence:** with V3-F12 active, MARS 2026-05-20 jumped from 245 -> 814 pattern-extracted requirements, plus 119 sub-item-promoted = 933 from the 1,090 raw SHALLs (86% capture, within target range).
+
+---
+
+## Mojibake bullet markers (U+FFFD) leak into deliverable requirements (V3-F13)
+
+**Status:** ACTIVE — codified 2026-05-20 after MARS Phase 2 emitted 271 requirements containing residual U+FFFD glyphs as bullet markers.
+**Symptom:** Requirements text contains the diamond-question-mark character (U+FFFD, displays as "�") where the source PDF had bullet glyphs. Visible in REQUIREMENTS_CATALOG.md, RTM_REPORT.md, and any bid section that copies requirement text verbatim.
+**Cause:** Attachment H PDFs use a custom glyph for the bullet character "•" that markitdown can't decode, leaving runs of U+FFFD as the bullet column. The default scrub_mojibake() catches inline `word?word` patterns but NOT standalone bullet markers between sentences/lists.
+**Resolution:** scrub_mojibake() in skill-win.md now includes a Pass 4 that strips standalone U+FFFD bullet markers (`(?:(?<=\s)|(?<=^)|(?<=[.,;:!?]))\s*(?:�\s+)+`). All phases consuming flattened/* benefit automatically.
+**Verification:** quality-checklist item 21b — requirements with residual U+FFFD must be <5 across the catalog. MARS 2026-05-20 final: 1 residual (a single trailing curly-quote glyph at end of a requirement, not a bullet).

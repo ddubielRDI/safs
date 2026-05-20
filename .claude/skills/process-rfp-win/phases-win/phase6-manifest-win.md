@@ -98,7 +98,9 @@ def generate_manifest(file_inventory, progress, domain, req_count):
     for phase_id, phase_data in sorted(phases.items()):
         status = phase_data.get("status", "unknown")
         status_icon = "✅" if status == "completed" else "❌" if status == "failed" else "⏳"
-        message = phase_data.get("message", "")[:50]
+        # NEVER truncate deliverable content -- emit the full message; if it contains
+        # pipe characters that would break the markdown table, escape them.
+        message = phase_data.get("message", "").replace("|", "\\|")
         doc += f"| {phase_id} | {status_icon} {status} | - | {message} |\n"
 
     doc += """
@@ -282,11 +284,42 @@ Key risks identified and mitigation strategies:
 
 ## Investment Summary
 
-Detailed estimates are provided in the Effort Estimation document. Key figures:
+"""
 
-- **Total Effort:** See EFFORT_ESTIMATION.md
-- **Recommended Team:** 5-6 FTE
-- **AI-Assisted Savings:** ~35% efficiency gain
+    # --- Schema-bound Investment Summary (V4-F5 fix 2026-05-20) ---
+    # The Investment Summary MUST source figures from shared/effort-estimation.json
+    # using these exact field names. Never label the Traditional baseline as
+    # "(AI-assisted savings applied)" -- that is the figure BEFORE savings.
+    #   summary["total_hours"]         -> Traditional baseline (BEFORE savings)
+    #   summary["ai_assisted_hours"]   -> After-savings figure (USED for cost math)
+    #   summary["ai_savings_percent"]  -> Percent reduction applied
+    effort = read_json_safe(f"{folder}/shared/effort-estimation.json") or {}
+    eff_summary = effort.get("summary", {})
+    traditional_hrs = eff_summary.get("total_hours", 0)
+    ai_hrs = eff_summary.get("ai_assisted_hours", 0)
+    ai_savings_pct = eff_summary.get("ai_savings_percent", 0)
+    cost_est = eff_summary.get("cost_estimate", {})
+    blended_rate = cost_est.get("blended_rate_usd_per_hr", 160.0)
+    direct_labor = cost_est.get("direct_labor_usd", ai_hrs * blended_rate)
+    with_overhead = cost_est.get("with_overhead_usd", direct_labor * 1.15)
+    with_profit = cost_est.get("total_cost_usd", with_overhead * 1.10)
+
+    if traditional_hrs == 0 or ai_hrs == 0:
+        raise RuntimeError(
+            "Phase 6 cannot generate Investment Summary: shared/effort-estimation.json "
+            "is missing or has zero total_hours/ai_assisted_hours. Re-run Phase 5 before Phase 6."
+        )
+
+    doc += f"""
+| Component | Value |
+|-----------|-------|
+| Total Effort (Traditional Baseline, BEFORE savings) | {traditional_hrs:,.0f} hr |
+| Total Effort (AI-Assisted, AFTER {ai_savings_pct:.0f}% savings) | {ai_hrs:,.0f} hr |
+| Blended Labor Rate | ${blended_rate:,.2f}/hr |
+| Direct Labor (AI-Assisted hours x blended rate) | ${direct_labor:,.0f} |
+| With Overhead (15%) | ${with_overhead:,.0f} |
+| With Profit (10% on overhead-loaded) | ${with_profit:,.0f} |
+| **Total Cost** | **${with_profit:,.0f}** |
 
 ---
 
@@ -317,6 +350,33 @@ Detailed estimates are provided in the Effort Estimation document. Key figures:
 exec_summary = generate_executive_summary(domain, req_count, requirements, domain_context)
 write_file(f"{folder}/outputs/EXECUTIVE_SUMMARY.md", exec_summary)
 ```
+
+### Step 4a -- Schema Rules for EXECUTIVE_SUMMARY.md (MANDATORY)
+
+The Python template above is the **minimum** Phase 6 output. The executing agent typically synthesizes a richer EXECUTIVE_SUMMARY.md that adds an "At a Glance" table at the top, opportunity/solution narrative, evaluation alignment, top risks, win themes, and an SVA-4 disposition block. When you compose this richer version, the following schema rules are NON-NEGOTIABLE -- a violation is a Phase 6 failure regardless of how well the rest of the document reads.
+
+**Effort and cost figures (single source of truth = `shared/effort-estimation.json`):**
+
+1. Read `shared/effort-estimation.json`. Use these fields and no others:
+   - `summary.total_hours` -- **Traditional baseline**, BEFORE AI savings. NEVER use this figure to compute cost.
+   - `summary.ai_assisted_hours` -- **After-savings figure**, USED for all cost math.
+   - `summary.ai_savings_percent` -- the percent applied.
+2. The "At a Glance" table's `Total Effort` row MUST cite the AI-Assisted figure (`ai_assisted_hours`). The cell text MUST read like `36,624 hr (after {pct}% AI savings; traditional baseline {total_hours:,} hr)` so the reader sees BOTH figures with unambiguous labels. NEVER write `56,360 hours (35% AI-assisted savings applied)` -- that label implies savings have been subtracted from 56,360, which is the opposite of the truth.
+3. The Investment Summary table MUST contain BOTH rows: a "Total Effort (Traditional Baseline, BEFORE savings)" row AND a "Total Effort (AI-Assisted, AFTER X% savings)" row. NEVER collapse them into a single ambiguous "Total Hours" row.
+4. The `Direct Labor` row MUST cite `ai_assisted_hours * blended_rate`. If your arithmetic implies a different multiplier, you have used the wrong field -- recompute.
+5. The `Total Cost` headline cell MUST equal `direct_labor * 1.15 * 1.10` to 1-dollar precision. If it doesn't reconcile, recompute before writing the file.
+
+**Filename references in tables:**
+
+6. Every filename token referenced in any table cell (e.g., `Past_Projects.md`, `EXECUTIVE_SUMMARY.md`, `COMPLIANCE_MATRIX.json`) MUST be backtick-wrapped consistently within that cell. Mixing wrapped and bare filenames in the same cell triggers downstream PDF render bugs in Phase 8e and produces "+ +" artifacts where the bare token was eaten by the internal-reference stripper.
+
+**Truncation:**
+
+7. NEVER truncate deliverable cells with `[:N]` slices. NEVER cap table rows. NEVER emit `_Showing N of M_` notices. If a table has 200 rows, emit 200 rows -- the PDF render can paginate.
+
+**Failure mode:**
+
+8. If `shared/effort-estimation.json` is missing or its `summary.total_hours` / `summary.ai_assisted_hours` are zero, HALT Phase 6 with an explicit error message naming Phase 5 as the upstream dependency to re-run. NEVER paper over missing data with placeholders.
 
 ### Step N — Navigation Guide Generation (merged 2026-05-18 from former Phase 6b)
 
