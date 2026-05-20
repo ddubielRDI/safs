@@ -286,11 +286,112 @@ def table_to_markdown(table):
     return '\n'.join(lines)
 ```
 
-## Quality Checklist
+## Mid-Word Reconstruction Discipline
 
-- [ ] All documents in `original/` have corresponding `.md` files in `flattened/`
-- [ ] `flatten-results.json` created with processing status
-- [ ] Tables converted to markdown format
-- [ ] Heading structure preserved
-- [ ] Source file metadata in YAML frontmatter
-- [ ] No binary content in output files
+**Problem:** PDF-to-markdown extraction via markitdown/pdfminer produces line breaks at arbitrary positions. When a line ends with a hyphenated word (e.g., `tamper-\n`) the extraction preserves the newline, leaving the text fragment `tamper-` as a standalone string. When Phase 2 extracts requirement text, it ingests the truncated value and propagates it to all downstream consumers (RISKS.json, UNIFIED_RTM.json, bid sections, PDFs).
+
+**Root cause:** markitdown follows PDF text flow, which breaks lines at display boundaries. Hyphenated compounds (`tamper-proof`, `multi-tenant`) and sentence-ending fragments (`preventive mea\nsures`) appear split across lines.
+
+**MANDATORY: Apply mid-word reconstruction BEFORE writing to `flattened/*.md`**
+
+Add this post-processing step immediately after `markitdown` output is read:
+
+```python
+import re
+
+def reconstruct_midword_breaks(text):
+    """
+    Join lines where a word is split by PDF line-break hyphenation or
+    arbitrary line breaks mid-sentence.
+
+    Two patterns:
+    1. Hyphenated line-end: "word-\nmore"  → "word-more"
+       A line ending with lowercase letters + hyphen, followed by a line
+       starting with lowercase letters = hyphenated compound broken across lines.
+    2. Bare mid-word break: "preventive mea\nsures" → "preventive measures"
+       A line ending with lowercase letters (no punctuation), followed by a
+       line starting with lowercase letters (no space, suggesting continuation).
+
+    SAFE guard: Only join when both halves together form a plausible word.
+    Do NOT join when the next line starts a new sentence (uppercase) or is
+    a numbered list item or heading.
+    """
+    # Pattern 1: hyphen at line end + continuation on next line
+    # "tamper-\nproof" → "tamper-proof"
+    text = re.sub(r'([a-z]+-)\n([a-z])', r'\1\2', text)
+
+    # Pattern 2: bare lowercase line end + lowercase line start (mid-word split)
+    # "preventive mea\nsures" → "preventive measures"
+    # Only join if the next line starts with 2+ lowercase chars (word continuation)
+    # and the current line ends with 2+ lowercase chars (not a complete word ending)
+    text = re.sub(r'([a-z]{2,})\n([a-z]{2,})', lambda m: (
+        m.group(1) + m.group(2)  # join: mid-word split
+        if not m.group(2)[0].isupper()
+        else m.group(1) + '\n' + m.group(2)  # keep: next line is new sentence
+    ), text)
+
+    return text
+```
+
+**Apply in `flatten_pdf` after reading markitdown output:**
+
+```python
+if len(content) > 100:
+    content = reconstruct_midword_breaks(content)  # REQUIRED: fix PDF line-break artifacts
+    return content
+```
+
+**Verification gate:** After writing all `flattened/*.md` files, run this check:
+
+```python
+import re, glob
+
+issues = []
+for fpath in glob.glob(f"{folder}/flattened/*.md"):
+    with open(fpath, encoding='utf-8') as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines, 1):
+        stripped = line.rstrip('\n')
+        # Flag: line ends with lowercase+hyphen (should have been joined)
+        if re.search(r'[a-z]-$', stripped):
+            issues.append(f"{fpath}:{i}: hyphen-end detected: {stripped[-40:]}")
+
+if issues:
+    log(f"WARNING: {len(issues)} mid-word break artifacts after reconstruction:")
+    for issue in issues[:10]:
+        log(f"  {issue}")
+else:
+    log("Mid-word reconstruction: CLEAN (0 hyphen-end artifacts)")
+```
+
+## Quality Checklist (MANDATORY — report each by name with evidence)
+
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **flatten-results.json** exists at `{folder}/shared/flatten-results.json` — evidence: `ls -la` size > 200 bytes and parses as valid JSON
+2. **Flattened .md files** — every document in `{folder}/original/` (not in failed/) has a corresponding `.md` in `{folder}/flattened/` — evidence: count comparison `ls original/ | grep -v failed` vs `ls flattened/*.md`
+
+### Schema fidelity
+3. **flatten-results.json top-level keys** include `processed_at`, `documents`, `summary` — evidence: list actual top-level keys found
+4. **summary** contains `success`, `partial`, `failed` counts — evidence: print summary block values
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Mid-word reconstruction applied** — zero hyphen-end artifacts in flattened/*.md — evidence: grep `[a-z]-$` across all flattened files returned 0 matches (or list the count with file:line for any remaining)
+7. **YAML frontmatter present** in every .md file (lines 1-5 contain `---` and `source:`) — evidence: spot-check first 5 lines of 3 random .md files
+
+### Anti-regression rules (universal)
+8. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+9. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+10. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+11. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches in cells with HIGH/MEDIUM/CRITICAL severity rows
+12. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+13. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "pdfplumber BANNED — used markitdown Tier 0 as mandated")

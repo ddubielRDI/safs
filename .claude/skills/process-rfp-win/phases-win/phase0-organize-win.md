@@ -331,14 +331,37 @@ Created directories:
   ✅ outputs/bid-sections/ (ready for multi-file bid section markdown)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] Security validation passed (no path traversal, no shell metacharacters)
-- [ ] All 8 directories exist (original, flattened, shared, shared/validation, outputs, outputs/bid, outputs/bid-sections)
-- [ ] All documents MOVED to `original/` (copy + delete)
-- [ ] **CRITICAL: No document files (.docx, .xlsx, .pdf, etc.) remain in root folder**
-- [ ] **CRITICAL: No npm artifacts (package.json, package-lock.json, node_modules) in RFP folder**
-- [ ] `.gitignore` generated or verified in RFP folder
-- [ ] `source-manifest.json` created in `shared/`
-- [ ] Filename conflicts resolved with depth suffix
-- [ ] Verification step confirmed root folder is clean
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **source-manifest.json** exists at `{folder}/shared/source-manifest.json` — evidence: `ls -la` size > 200 bytes
+2. **original/ directory** exists and contains all source documents — evidence: `ls {folder}/original/ | wc -l` matches document count from manifest
+3. **flattened/ directory** exists — evidence: `ls -d {folder}/flattened/`
+4. **shared/validation/ directory** exists — evidence: `ls -d {folder}/shared/validation/`
+5. **outputs/bid/ directory** exists — evidence: `ls -d {folder}/outputs/bid/`
+6. **outputs/bid-sections/ directory** exists — evidence: `ls -d {folder}/outputs/bid-sections/`
+
+### Schema fidelity
+7. **source-manifest.json top-level keys** include `organized_at`, `source_folder`, `documents`, `document_count` — evidence: list actual top-level keys found
+8. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+9. **Root folder clean** — zero document files (.docx, .xlsx, .pdf, .doc, .pptx, .ppt, .txt, .rtf) remain in `{folder}/` root (not in subdirectories) — evidence: `ls {folder}/*.docx {folder}/*.pdf ...` returns empty or "no such file"
+10. **npm artifact free** — no package.json, package-lock.json, or node_modules in root, outputs/, or bid/ — evidence: glob check returned 0 hits
+
+### Anti-regression rules (universal)
+11. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+12. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+13. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+14. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches in cells with HIGH/MEDIUM/CRITICAL severity rows
+15. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+16. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "Phase 0 must MOVE docs to original/, not copy — applied shutil.move()")

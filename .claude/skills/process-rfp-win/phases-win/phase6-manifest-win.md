@@ -471,11 +471,35 @@ write_file(f"{folder}/outputs/NAVIGATION_GUIDE.md", navigation_md)
 log(f"NAVIGATION_GUIDE.md generated ({len(documents)} documents cataloged)")
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `MANIFEST.md` created in `outputs/`
-- [ ] `EXECUTIVE_SUMMARY.md` created in `outputs/`
-- [ ] `NAVIGATION_GUIDE.md` created in `outputs/` (merged 2026-05-18 from former Phase 6b)
-- [ ] All output files inventoried
-- [ ] Phase execution logged
-- [ ] Audit trail complete
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **MANIFEST.md** exists at `{folder}/outputs/MANIFEST.md` — evidence: `ls -la` size > 512 bytes
+2. **EXECUTIVE_SUMMARY.md** exists at `{folder}/outputs/EXECUTIVE_SUMMARY.md` — evidence: `ls -la` size > 512 bytes
+3. **NAVIGATION_GUIDE.md** exists at `{folder}/outputs/NAVIGATION_GUIDE.md` — evidence: `ls -la` size > 512 bytes
+
+### Schema fidelity
+4. **MANIFEST.md inventories all output files** — count of files listed in MANIFEST.md matches `ls {folder}/outputs/*.md | wc -l` — evidence: print both counts
+5. **NAVIGATION_GUIDE.md Quick Start table present** — grep "I want to..." returned >= 1 hit — evidence: grep result
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **MANIFEST.md Verification Checklist** marks ARCHITECTURE.md, SECURITY_REQUIREMENTS.md, REQUIREMENTS_CATALOG.md, TRACEABILITY.md, EFFORT_ESTIMATION.md as ✅ Present — evidence: grep each filename in MANIFEST.md and confirm "✅ Present" adjacent to it
+8. **NAVIGATION_GUIDE.md Use Case Guides** covers at least the 5 standard use cases — evidence: count `###` headings in the Use Case Guides section (must be >= 5)
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

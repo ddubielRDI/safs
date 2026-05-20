@@ -475,13 +475,35 @@ Common Ambiguity Patterns:
 ➡️ Recommendation: Review ambiguous_requirements in output JSON and seek RFP clarifications before finalizing specs.
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `requirements-normalized.json` created in `shared/`
-- [ ] Duplicates merged (5%+ reduction expected)
-- [ ] All requirements have canonical IDs
-- [ ] All requirements have priorities
-- [ ] Validation scores calculated
-- [ ] Invalid requirements documented separately
-- [ ] Ambiguity analysis completed for all requirements
-- [ ] High-priority ambiguous requirements flagged for user review
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **requirements-normalized.json** exists at `{folder}/shared/requirements-normalized.json` — evidence: `ls -la` size > 1,024 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **requirements-normalized.json top-level keys** include `normalized_at`, `summary`, `requirements`, `invalid_requirements`, `ambiguous_requirements` — evidence: list actual top-level keys found
+3. **Every requirement in `requirements[]`** has `canonical_id`, `priority`, `validation`, `ambiguity_analysis` — evidence: print key set of requirements[0]
+4. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+5. **Every normalized requirement preserves `source_ids[]` from its raw input(s)** — dedup merges must union source_ids from all merged duplicates — evidence: count requirements with empty source_ids (must be 0 for requirements from pattern_extraction)
+6. **Dedup reduction ratio between 10% and 40%** (sanity bounds) — if reduction < 10%, likely dedup threshold too strict; if > 40%, likely over-aggressive — evidence: print `summary.deduplication_rate` and flag if outside bounds (warn only)
+7. **SHOULD-only requirements capped at MEDIUM priority** — no requirement whose text contains "should" (without "shall"/"must") has priority CRITICAL or HIGH — evidence: grep `requirements[]` for advisory-only items with CRITICAL/HIGH priority, count must be 0
+8. **source_ids preserved through dedup** — when two requirements are merged, the surviving entry has source_ids from both merged items — evidence: spot-check one merged requirement to confirm source_ids length >= 2
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "schema note: ambiguous_requirements[].text_preview is a display-only field — not renamed")

@@ -1039,22 +1039,38 @@ Output: {folder}/shared/bid/POSITIONING_OUTPUT.json
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `POSITIONING_OUTPUT.json` created in `shared/bid/`
-- [ ] Core positioning defined (tagline, value prop)
-- [ ] 5 evaluator messages generated
-- [ ] Content priority determined
-- [ ] Win themes established
-- [ ] `theme_eval_mapping` links every theme to >= 1 eval factor
-- [ ] `section_theme_mandates` covers all major bid sections
-- [ ] `evaluator_messages` aligned with themes
-- [ ] `Past_Projects.md` parsed and scored against RFP domain/industry/technology
-- [ ] `matched_projects[]` included in output with 5-8 ranked projects
-- [ ] Each matched project has score_breakdown, key_metrics, relevance_statement
-- [ ] Override projects from company-profile.json applied (if any)
-- [ ] Zero-match fallback handled (warning if <3 strong matches)
-- [ ] `matched_evidence` populated from `config-win/evidence-library.json`
-- [ ] `evidence_summary` includes total_available, populated, unpopulated counts
-- [ ] `ghost_strategy` populated with >=1 ghost phrase per win theme
-- [ ] Counter narratives address all HIGH risks from Go/No-Go assessment
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **POSITIONING_OUTPUT.json** exists at `{folder}/shared/bid/POSITIONING_OUTPUT.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **POSITIONING_OUTPUT.json top-level keys** include `core_positioning`, `evaluator_messages`, `content_priority_order`, `win_themes`, `theme_eval_mapping`, `section_theme_mandates`, `matched_projects`, `match_metadata`, `matched_evidence`, `ghost_strategy` — evidence: list actual top-level keys found
+3. **5 evaluator messages generated** with keys TECHNICAL, FINANCIAL, RISK, EXECUTIVE, OPERATIONAL — evidence: print `list(evaluator_messages.keys())`
+4. **3-5 win themes** in `win_themes` OR in `core_positioning.themes` — evidence: print theme count
+5. **`theme_eval_mapping` links every theme to >= 1 eval factor** — evidence: count themes with empty factor list (must be 0)
+6. **`matched_projects[]` contains 5-8 ranked projects** — evidence: print `len(matched_projects)` and names of first 3
+7. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+8. **`Past_Projects.md` parsed and scored** — evidence: print `match_metadata.total_projects_evaluated` (must be > 0)
+9. **ghost_strategy populated** with >= 1 ghost phrase — evidence: print `len(ghost_strategy.ghost_phrases)`
+10. **Zero-match fallback handled** — evidence: print `match_metadata.match_warning` (null = OK; non-null = warn but continue)
+11. **section_theme_mandates covers all major bid sections** — evidence: print keys of section_theme_mandates dict
+
+### Anti-regression rules (universal)
+12. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+13. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+14. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+15. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+16. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+17. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "score_breakdown.technology is a NESTED dict — used .get('score', 0) pattern; no file names in rationale")

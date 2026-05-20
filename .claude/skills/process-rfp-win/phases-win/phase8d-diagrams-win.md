@@ -47,6 +47,55 @@ After rendering each diagram:
 2. Verify font legibility at 100% scale.
 3. If any text is illegible, increase font_size and re-render — do not ship illegible diagrams.
 
+### Diagram Embedding Discipline (MANDATORY — added 2026-05-19)
+
+**Rendering a PNG is NOT enough.** The phase that produces the bid section
+markdown (currently phase8.2, 8.3, 8.4, 8.4k, 8.6) MUST embed each rendered
+diagram into the relevant bid section .md file before phase8e runs.
+
+**Standard placement map** (binding contract between phase8d and the
+authoring phases):
+
+| Diagram | Embed in | Section |
+|---------|----------|---------|
+| `orgchart.png` | `02_MANAGEMENT.md` | after § "3.1 Staffing Plan" |
+| `timeline.png` | `02_MANAGEMENT.md` | before § "6. Transition Plan" |
+| `architecture.png` | `03_TECHNICAL.md` | inside § "3.1 Architecture Overview" |
+| `data_model.png` | `03_TECHNICAL.md` | inside § "3.3 Data Architecture" |
+| `integration_sequence.png` | `06_INTEGRATION.md` | inside § "2.1 Tyler / NIC Oregon Integration" |
+| `risk_heatmap.png` | `04_RISK_REGISTER.md` | in § "Executive Summary" (Figure A) |
+
+**Markdown syntax** (bid sections live in `outputs/bid-sections/`):
+
+```markdown
+**Figure N. <Title>** -- <one-sentence persuasive caption tying back to a
+win theme; describes what the diagram ENABLES or PROVES>.
+
+![Alt text describing the diagram contents for screen readers and a11y](../bid/<diagram>.png)
+```
+
+Each embed has THREE required elements:
+1. A bold "Figure N. <Title>" caption ABOVE the image, with a persuasive
+   action-caption sentence per the guidelines below.
+2. The `![]()` markdown image syntax with a real descriptive alt-text
+   (not "diagram" or "architecture diagram" — name the components and
+   what the viewer learns from it).
+3. A blank line after for proper markdown rendering.
+
+**Phase8e (PDF assembly) caveats** — the rendering engine (fitz.Story via
+markdown_pdf) cannot resolve `..` in image src paths. Phase8e's
+`clean_markdown` MUST rewrite `../bid/foo.png` to `bid/foo.png` and set
+`Section(root=outputs/)` so the PNG resolves. Without this, the PDF ships
+with broken image links and zero embedded images.
+
+**Failure mode being prevented:** previous MARS runs shipped PDFs with all
+the PNGs sitting on disk but no markdown embeds. The bid PDF had zero
+diagrams — a visible-to-evaluator quality defect.
+
+**Verification:** before phase8e runs, assert that every PNG referenced in
+`figure-registry.json` appears as an embed in at least one bid section .md
+file. If not, fail loudly and surface which figures are unreferenced.
+
 
 ## Inputs
 
@@ -58,6 +107,17 @@ After rendering each diagram:
 - `{folder}/outputs/bid/timeline.png`
 - `{folder}/outputs/bid/orgchart.png`
 - `{folder}/outputs/bid/figure-registry.json`
+
+## Related Optional Output: Interactive Architecture Demo HTML
+
+A complementary, evaluator-facing HTML deliverable can be produced at `{folder}/outputs/ARCHITECTURE_DEMO.html`. Authorship lives in `phase3h-diagrams-win.md` (the blueprint phase), NOT here — that phase already owns "what should the architecture diagrams say". This phase remains focused on rendering the mermaid blueprints to PNG for the PDF bid.
+
+If the interactive HTML demo is desired:
+
+- See `phase3h-diagrams-win.md` § "Interactive HTML demo (optional output)" for the full requirements: dual-audience toggle (Executive | Technical), D3 + dagre layered layout, bezier edges, label-collision discipline, white pill backgrounds, halo strokes, live RFP-requirement traceability per entity (must consume `shared/UNIFIED_RTM.json`), coverage banner per view.
+- The HTML is a SIBLING to `TRACEABILITY_EXPLORER.html` — they cross-link (each architecture entity in the HTML links to `TRACEABILITY_EXPLORER.html#req-{ID}` anchors).
+- Producer scripts live in `outputs/_arch_demo_v2_builder.py` + `_arch_demo_v2.js` + `_arch_demo_v2.css`; verifier in `_verify_arch_demo.js` (headless Playwright run that asserts zero label collisions).
+- Build artifacts (underscored files) are NOT included in the bid PDF.
 
 ## Instructions
 
@@ -401,13 +461,61 @@ Output directory: {folder}/outputs/bid/
 """)
 ```
 
+## ⛔ SVG-Preferred Rendering Discipline (BLOCKING — added 2026-05-19)
+
+**Problem:** mmdc `--scale 2 -w 1920` renders PNG at ~3000px wide, which
+fitz.Story embeds UNCOMPRESSED (no Filter in PDF stream). A single architecture
+diagram expands to 15-27 MB uncompressed in the PDF. 6 diagrams = 85 MB of raw
+raster data in Draft_Bid.pdf — exceeding all procurement portal upload limits.
+
+**Rule:** ALWAYS render SVG as the PRIMARY format. mmdc supports SVG natively
+(`-o foo.svg`). fitz.Story accepts SVG via `<img src="...svg">` and rasterises
+it at page DPI (~96 DPI for Letter), producing a ~30 KB compressed image per
+diagram. Keep PNG as FALLBACK only.
+
+**Rendering order (MANDATORY for all 6 diagrams):**
+
+```bash
+# SVG first (primary for PDF embed — tiny, crisp, compresses well)
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
+  -i "$BID_DIR/foo.mmd" -o "$BID_DIR/foo.svg" \
+  -b white --backgroundColor white
+
+# PNG second (kept as fallback if SVG embed fails)
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli \
+  -i "$BID_DIR/foo.mmd" -o "$BID_DIR/foo.png" \
+  -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
+```
+
+**Markdown embed syntax:** reference SVG, not PNG:
+
+```markdown
+![Alt text](../bid/architecture.svg)
+```
+
+phase8e `clean_markdown()` MUST resolve SVG paths (rewrite `../bid/foo.svg`
+to `bid/foo.svg`) identically to PNG paths, and check for SVG presence before
+falling back to PNG.
+
+**figure-registry.json:** track both `file_svg` and `file_png` per figure;
+set `file` to the SVG path when available.
+
+**Size verification:** each SVG should be <300 KB on disk. After PDF render
+with `optimize=True`, each embedded image in the final PDF should be <200 KB
+(PyMuPDF `doc.extract_image(xref)["image"]` length check).
+
+**Cross-reference:** phase8e-pdf-win.md contains the `optimize=True` and
+size-limit discipline. Together these two rules eliminate the 90 MB → <1 MB
+PDF size regression.
+
 ## Rendering Commands Summary
 
 **IMPORTANT: Always run from skill directory to avoid polluting RFP folder with package.json/package-lock.json**
 
 ```bash
-# All rendering commands for reference. NEW-V4-F12 + V4-F9 fix 2026-05-18:
-# fallback SKILL_DIR and consistent 1920x1080 output for evaluator-quality.
+# All rendering commands for reference. Render SVG FIRST (primary), PNG second (fallback).
+# NEW-V4-F14 2026-05-19: SVG-preferred to prevent 90 MB PDF size regression.
+# NEW-V4-F12 + V4-F9 fix 2026-05-18: fallback SKILL_DIR and consistent 1920x1080 output.
 if [ -z "${CLAUDE_SKILL_DIR:-}" ]; then
     SKILL_DIR="C:/Resource Data/WSL/safs/.claude/skills/process-rfp-win"
 else
@@ -415,25 +523,51 @@ else
 fi
 BID_DIR="{folder}/outputs/bid"
 
-# Architecture (flowchart)
+# Architecture (flowchart) — SVG primary, PNG fallback
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.svg" -b white --backgroundColor white
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/architecture.mmd" -o "$BID_DIR/architecture.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 
-# Timeline (Gantt)
+# Timeline (Gantt) — SVG primary, PNG fallback
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.svg" -b white --backgroundColor white
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/timeline.mmd" -o "$BID_DIR/timeline.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 
-# Org Chart (flowchart)
+# Org Chart (flowchart) — SVG primary, PNG fallback
+cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.svg" -b white --backgroundColor white
 cd "$SKILL_DIR" && npx @mermaid-js/mermaid-cli -i "$BID_DIR/orgchart.mmd" -o "$BID_DIR/orgchart.png" -b white -w 1920 -H 1080 --scale 2 --backgroundColor white
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `architecture.png` created (>10KB)
-- [ ] `timeline.png` created (>10KB)
-- [ ] `orgchart.png` created (>5KB)
-- [ ] All diagrams render clearly
-- [ ] No raw Mermaid code in final bid document
-- [ ] `figure-registry.json` created with action captions for all rendered diagrams
-- [ ] Each caption is persuasive (action-oriented), not merely descriptive
-- [ ] Figure numbers are sequential (1, 2, 3...)
-- [ ] Section cross-references point to correct bid sections
-- [ ] **Diagram Quality Criteria met** (see top-of-file section): >= 14pt fonts, WCAG 2.2 AA contrast, colorblind-safe palette, descriptive titles with view names, legend present when symbols/colors carry meaning, source citation watermark, classDef-based consistent styling
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **Every blueprint in `diagram-blueprints.json` has corresponding rendered file** — for each blueprint, its `render_target` path exists in `outputs/bid/` — evidence: for each blueprint name, confirm `ls {folder}/outputs/bid/{name}.svg` OR `{name}.png` succeeds; list any missing
+2. **figure-registry.json** exists at `{folder}/outputs/bid/figure-registry.json` — evidence: `ls -la` size > 200 bytes and parses as valid JSON
+3. **architecture.png** (or .svg) created (>10KB for png, >1KB for svg) — evidence: `ls -la` with size confirmation
+4. **timeline.png** (or .svg) created (>10KB for png, >1KB for svg) — evidence: `ls -la` with size confirmation
+5. **orgchart.png** (or .svg) created (>5KB for png, >1KB for svg) — evidence: `ls -la` with size confirmation
+
+### Schema fidelity
+6. **Every rendered PNG/SVG has `![]()` reference** in some bid section — evidence: grep `!\[.*\](.*architecture\.\(png\|svg\))` across all bid-sections/*.md returned >= 1 hit; same for timeline and orgchart
+7. **figure-registry.json figures array** contains one entry per rendered diagram — evidence: print `len(figure_registry["figures"])`
+8. **Each caption is persuasive (action-oriented)** — no `[GENERATE:` markers remain — evidence: grep "[GENERATE:" in figure-registry.json returned 0 matches
+9. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+10. **PDF size compliance — SVG primary format used** — evidence: confirm mmdc output is .svg (primary) not .png (fallback) to prevent 90 MB PDF regression; print the formats actually generated
+11. **Diagram Quality Criteria met** — >= 14pt fonts, WCAG 2.2 AA contrast, colorblind-safe palette — evidence: confirm mermaid source contains `fontSize: '14px'` and Okabe-Ito hex colors (e.g., #0072B2) in classDef blocks
+
+### Anti-regression rules (universal)
+12. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+13. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+14. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+15. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+16. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+17. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "SVG primary / PNG fallback — prevents 90 MB PDF regression per NEW-V4-F14")

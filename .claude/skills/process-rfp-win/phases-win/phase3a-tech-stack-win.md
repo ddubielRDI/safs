@@ -214,10 +214,35 @@ Components (by category):
 - `phase3a-architecture-win.md` — reads the evidence file to build the `tech_stack` dict labels and to render the ADR section. Phase 3a no longer issues version lookups itself.
 - `sva3-spec-validator-win.md` — rule `SVA3-TECH-STACK-LTS-VERIFIED` reads the file to verify freshness (<= 7 days) and that no component fails the contract+2yr lifecycle check.
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `tech-lifecycle-evidence.json` written to `{folder}/shared/`
-- [ ] Every component has `source_url` AND `fetched_at`
-- [ ] No component has `passes_contract_lifecycle: false`
-- [ ] No hardcoded version numbers anywhere in this phase's output
-- [ ] `contract_years` resolved from `domain-context.json`, not hardcoded
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **tech-lifecycle-evidence.json** exists at `{folder}/shared/tech-lifecycle-evidence.json` — evidence: `ls -la` size > 200 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **tech-lifecycle-evidence.json top-level keys** include `generated_at`, `contract_years`, `min_required_eol`, `components` — evidence: list actual top-level keys found
+3. **Every component has `source_url` AND `fetched_at`** populated (not null, not empty string) — evidence: count components missing either field (must be 0)
+4. **Every primary runtime has `classification = "LTS"` OR `migration_plan_present = true`** — evidence: count components where classification != "LTS" AND migration_plan_present is false (must be 0)
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **No component has `passes_contract_lifecycle: false`** — the phase HALTS on failures; this checklist confirms the output file is clean — evidence: grep `"passes_contract_lifecycle": false` in tech-lifecycle-evidence.json returned 0 matches
+7. **`contract_years` resolved from `domain-context.json`** (not hardcoded) — evidence: print the actual contract_years value and confirm it matches domain_context["contract_years"] (or its default of 5 if field absent)
+8. **No hardcoded version numbers** in this phase's emitted code — evidence: grep for specific framework version patterns (e.g., `\.NET 8`, `\.NET 9`, `8\.0`, `9\.0`) in any scripts this phase writes returned 0 hits
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., ".NET 8.0 LTS EOL Nov 2026 — NEVER proposed for 2026+ contracts; used live WebFetch to confirm current LTS")

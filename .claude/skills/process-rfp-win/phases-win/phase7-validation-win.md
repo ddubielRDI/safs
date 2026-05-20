@@ -553,16 +553,36 @@ Outputs:
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `validation-results.json` created in `shared/` (with gap_analysis data merged)
-- [ ] `GAP_ANALYSIS.md` created in `outputs/`
-- [ ] All output files validated (structural)
-- [ ] Size requirements checked
-- [ ] Required sections verified
-- [ ] JSON files validated
-- [ ] Cross-references checked
-- [ ] Requirements assessed against benchmarks
-- [ ] Specifications assessed against benchmarks
-- [ ] Gaps identified with recommendations
-- [ ] Overall score calculated
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **validation-results.json** exists at `{folder}/shared/validation-results.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+2. **GAP_ANALYSIS.md** exists at `{folder}/outputs/GAP_ANALYSIS.md` — evidence: `ls -la` size > 512 bytes
+
+### Schema fidelity
+3. **validation-results.json top-level keys** include `validated_at`, `files`, `summary`, `gap_analysis` — evidence: list actual top-level keys found
+4. **summary** contains `total`, `passed`, `failed`, `warnings` — evidence: print summary block values
+5. **gap_analysis** contains `requirements`, `specifications`, `gaps`, `overall_score` — evidence: print top-level keys of gap_analysis
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **All required output files validated** — `files` array length equals count of .md files in outputs/ plus JSON files validated — evidence: print `summary.total`
+8. **Requirements assessed against benchmark (247+ target)** — evidence: print `gap_analysis.requirements.total` vs `gap_analysis.requirements.target` and `meets_target`
+9. **Overall score calculated** — evidence: print `gap_analysis.overall_score` (must be a float 0-100)
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

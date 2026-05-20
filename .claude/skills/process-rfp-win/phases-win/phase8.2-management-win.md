@@ -393,23 +393,36 @@ Output: outputs/bid-sections/02_MANAGEMENT.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `02_MANAGEMENT.md` created (>10KB)
-- [ ] Company overview populated from company-profile.json
-- [ ] Project management methodology described with governance
-- [ ] Staffing plan with key personnel (or USER INPUT markers)
-- [ ] OCM approach with training plan
-- [ ] Section 5 auto-populated with 3-5 real case studies from Past_Projects.md
-- [ ] Each case study has: Client, Duration, Challenge, Solution, Results table, Relevance statement
-- [ ] No `[CASE STUDY PLACEHOLDER]` or `[USER INPUT REQUIRED]` in Section 5 (except contact verification)
-- [ ] References table populated from matched project clients
-- [ ] Transition plan (in and out)
-- [ ] Win themes threaded throughout (>= 2 themes per major section)
-- [ ] Evaluation factor callout box at every major section header (Sections 1-6)
-- [ ] Sections ordered by evaluation weight where RFP structure permits
-- [ ] `section_theme_mandates` checked — all mandated themes present in required sections
-- [ ] `evaluator_messages` integrated: EXECUTIVE (S1), RISK (S2), TECHNICAL (S3), OPERATIONAL (S4)
-- [ ] `content_priority_guide` used to prioritize highest-impact requirements first
-- [ ] Theme coverage verified: every theme appears >= 2 times across document
-- [ ] At least one ghost phrase per major win theme woven into differentiator sections
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **02_MANAGEMENT.md** exists at `{folder}/outputs/bid-sections/02_MANAGEMENT.md` — evidence: `ls -la` showing size > 10,240 bytes
+
+### Schema fidelity
+2. **No `[CASE STUDY PLACEHOLDER]` markers remain** in Section 5 — evidence: grep "[CASE STUDY PLACEHOLDER]" returned 0 matches
+3. **Each case study has: Client, Duration, Challenge, Solution, Results table, Relevance statement** — evidence: spot-check case study #1 structure confirms all 6 elements present
+4. **Evaluation factor callout box at every major section header** — grep "**Evaluation Factor:**" returned >= 6 hits (Sections 1-6) — evidence: grep result with count
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Win themes threaded** — every theme appears >= 2 times across document — evidence: for each theme name, grep count in 02_MANAGEMENT.md >= 2
+7. **3-5 real case studies auto-populated** from Past_Projects.md — evidence: count "## Case Study" or equivalent headings in document (must be >= 3)
+8. **section_theme_mandates checked** — all management-section mandated themes present — evidence: print management-relevant themes from mandates and confirm each appears in file
+9. **evaluator_messages integrated** — grep for EXECUTIVE persona headline (S1), RISK persona keyword (S2), TECHNICAL persona keyword (S3), OPERATIONAL persona keyword (S4) each returned >= 1 hit — evidence: grep result per section
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

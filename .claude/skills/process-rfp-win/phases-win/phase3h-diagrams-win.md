@@ -28,13 +28,15 @@ You are a **Visual Design Architect** with deep expertise in:
 - `{folder}/outputs/INTEROPERABILITY.md` — integration / sequence source
 - `{folder}/outputs/SECURITY_REQUIREMENTS.md` — security overlay on architecture
 - `{folder}/shared/REQUIREMENT_RISKS.json` — risk heat-map source
-- `{folder}/shared/UNIFIED_RTM.json` *(if exists; produced by Phase 4)* — for in-document IDs to cite
+- **`{folder}/shared/UNIFIED_RTM.json` — MANDATORY for the interactive HTML output.**
+  Every architecture entity (component, container, external system, API, data store, risk) MUST surface its `linked_requirement_ids` via this file. Without it, the optional `ARCHITECTURE_DEMO.html` deliverable cannot be produced.
 - `{folder}/shared/tech-lifecycle-evidence.json` — for evidence-backed tech labels on architecture diagrams
 
 ## Required Outputs
 
 - `{folder}/outputs/DIAGRAM_BLUEPRINTS.md` (≥5 KB) — human-reviewable blueprint document
 - `{folder}/shared/diagram-blueprints.json` — machine-readable blueprint set; consumed by phase8d-diagrams-win.md
+- `{folder}/outputs/ARCHITECTURE_DEMO.html` *(optional but recommended)* — self-contained interactive architecture demonstration. See **Interactive HTML demo** section below.
 
 ## Mandatory Diagrams (cite source spec elements for each)
 
@@ -507,14 +509,126 @@ Mandatory diagrams covered:
   ✅ Risk Heat Map
 ```
 
-## Quality Checklist
+## Interactive HTML demo (optional output) — `outputs/ARCHITECTURE_DEMO.html`
 
-- [ ] `outputs/DIAGRAM_BLUEPRINTS.md` ≥ 5 KB
-- [ ] `shared/diagram-blueprints.json` written and contains all six mandatory diagrams
-- [ ] Every blueprint cites at least one spec element
-- [ ] Every mermaid block parses (mmdc --validate)
-- [ ] Every classDef uses an Okabe-Ito palette token
-- [ ] Every diagram declares `fontSize: 14px` (or higher) via theme init
-- [ ] Every diagram has a persuasive `caption` AND a screen-reader `alt_text`
-- [ ] Sequence-diagram messages are labeled
-- [ ] Gantt critical-path tasks are flagged with the `crit` keyword
+A complementary deliverable to the mermaid blueprints: a single-file, self-contained interactive HTML demonstration that lets evaluators explore the architecture and **see live RFP-requirement traceability per entity**. Pattern proven on the MARS bid (2026-05-19). Producer: `outputs/_arch_demo_v2_builder.py` (sibling Python file that emits the HTML).
+
+### Dual-audience toggle pattern (MANDATORY)
+
+The HTML MUST include a top-level audience toggle that adapts every view's content depth without changing the tab structure:
+
+- **`[ Executive | Technical ]`** toggle above the 8-tab strip
+- **Executive mode:** plain-English labels (e.g., "State Payment Service" not "Tyler / NIC Oregon Common Checkout"), protocol/auth detail hidden (HTTPS / TLS / OAuth / JWT), per-service nodes collapsed into "service clusters" (e.g., the 8 microservices in Container view collapse to a single "MARS Services" cluster), trust-boundary boxes merge into a single "Secure Boundary" tint, EOL/.NET-LTS sub-labels replaced with "Modern Platform", item lists in Roadmap truncated to top-2 per phase.
+- **Technical mode:** full protocol/auth annotations on edges, ADR refs, EOL dates, dagre-layered topology for the Container view, full per-microservice nodes, all sequence numbers, all 5 ranks of services.
+- Both modes share the same 8 tabs; each tab adapts depth.
+- Toggle state persists across page reloads (`localStorage`).
+- Anchors to C4 (Simon Brown — "design for your audience: executives need Context; developers need Containers + Components") and arc42 §1 stakeholder mapping.
+
+### Layout discipline (MANDATORY — research-driven)
+
+These rules are non-negotiable. The previous (v1) HTML failed label-collision UX badly enough that a coordinator escalation was required.
+
+- **D3 v7 + dagre.js** loaded from CDN with SHA-384 SRI. Dagre is the same hierarchical-layered layout engine MermaidJS uses (`dagrejs/dagre`). It computes node positions for Technical-mode Container/Component views; hand-laid coords retained for Executive mode where simplification beats precision.
+- **Bezier-curved edges (cubic).** No straight overlapping lines. Curvature proportional to edge length. Parallel edges alternate bulge direction (id-hash bias) so a fan of edges doesn't all curve the same way.
+- **Label-collision detection** per edge: sample 3-5 candidate anchors along the bezier (t=0.5, 0.3, 0.7, 0.4, 0.6). Test each candidate's AABB against a per-view registry of (a) all node footprints with 6px padding, and (b) all previously placed labels. Pick the first that fits. If all candidates collide, DROP the visible label and surface it on hover via SVG `<title>` (still keyboard-accessible). Dropped count > 30% of edges in a view = layout needs redesign.
+- **White rounded-rect pill backgrounds** behind every edge label: `rx=4`, `fill:#FFFFFF`, `fill-opacity:0.94`, `stroke:#E2E5E9`, `stroke-width:0.75`. Pill computed from text bbox + 5px horizontal × 2px vertical padding.
+- **Halo strokes via `paint-order: stroke fill`** (MDN paint-order, CSS-Tricks accessible SVGs): every node label and edge label gets a 2-3px white stroke painted BEHIND the fill via paint-order, so text stays legible if the pill background slips. `stroke-linejoin: round` prevents spiky corners.
+- **Auto-wrap long labels** at ~14ch per line, max 3 lines per label; ellipsize the last line if more.
+- **Minimum 24px padding** around every node; minimum 60px clearance between node centres.
+- **SVG viewBox sized to content** (use dagre's computed maxX/maxY for dagre layouts). Horizontal scroll permitted on Technical Container view if needed.
+- **All text ≥ 14px.** Smaller fonts cause WCAG SC 1.4.4 (resize text) failures and evaluator squinting.
+
+### Live RFP-requirement traceability (MANDATORY)
+
+Every architecture entity surfaces its linked requirements via UNIFIED_RTM.json:
+
+1. **Per-node spec mapping:** the Python builder maintains a `NODE_SPEC_MAP` dict mapping each architecture node ID (e.g., `tyler`, `frontdoor`, `apim`, `filing`, `splunk`, etc.) to a list of `spec_id`s from UNIFIED_RTM whose `linked_requirement_ids` that node is responsible for. Curated by hand because architecture nodes are hand-laid — if you can't trace a node to a spec, ask the user.
+2. **Inline req chip on every node:** a small dark-blue pill in the top-right corner of each node shows the requirement count — "12 reqs" in Technical mode, "12 RFP needs" in Executive mode.
+3. **Selection panel surfaces the full list:** clicking a node, edge, or risk opens a sidebar block that lists `req_ids` with a `<details>` disclosure of up to 12 sample requirements (priority-sorted) — each req ID links to the anchor in `TRACEABILITY_EXPLORER.html` (e.g., `TRACEABILITY_EXPLORER.html#req-001TEC`).
+4. **Cross-cutting marker:** nodes whose `spec_ids` resolve to zero linked requirements get a subtle amber star with a `<title>` tooltip "Cross-cutting — not tied to a specific requirement". Honest signal.
+5. **Coverage banner per view per mode:** the top of the sidebar shows "X of Y RFP requirements addressed in this view (Z%)" — computed at build time as the union of `req_ids` across all visible nodes in that view/mode, divided by the total requirement count. Container view typically lands at 60-80%; Component view (a single container drill-in) typically 15-35%.
+
+### 8-view structure (C4 + lifecycle + risk + roadmap)
+
+| # | View | Pattern | Audience notes |
+|---|------|---------|----------------|
+| 1 | Context | C4 L1, hand-laid | Same for both — exec rewords labels |
+| 2 | Container | C4 L2, dagre Technical / collapsed cluster Executive | Most divergence between modes |
+| 3 | Component | C4 L3, focal service | Numbered sequence steps in tech, simplified arrows in exec |
+| 4 | Data Flow | Swimlane with classification colour | Lane labels in pills (no overlap) |
+| 5 | Deployment | Region groups + tier-coloured nodes | Region tint + pill labels |
+| 6 | Tech & Lifecycle | Gantt-style timeline | Tech mode: GA/EOL dates + "source ↗" link; exec: "Through 2028" |
+| 7 | Risk Heat Map | 5x5 grid, force-collide displacement | Top-5 callouts unchanged |
+| 8 | Roadmap | 5-year phase blocks | Exec truncates to top-2 items per phase |
+
+### Quality criteria for the HTML
+
+- [ ] Audience toggle works; both modes render every view without errors.
+- [ ] Headless Playwright run reports **zero** edge-label-on-edge-label collisions and **zero** edge-label-on-node-label collisions in every view in every mode. Dropped labels are accessible via `<title>` tooltip.
+- [ ] Every node shows a requirement-count chip (or cross-cutting marker).
+- [ ] Coverage banner shows correct % per view per mode.
+- [ ] WCAG 2.2 AA contrast verified: body text 4.5:1, edge-label text on pill 16:1, graphics 3:1. High-contrast mode toggle works.
+- [ ] Print stylesheet collapses to single-column doc; details expanded.
+- [ ] `prefers-reduced-motion` disables transitions.
+- [ ] D3 + dagre loaded with SHA-384 SRI; offline fallback message shown if CDN fails.
+- [ ] File ≤ 5 MB (current MARS deliverable: 502 KB).
+
+### Web research that should be consulted at run time
+
+These are the sources the v2 implementation cited; the implementer should re-verify they're still current and consult any new authoritative sources:
+
+- **C4 model (Simon Brown)** — https://c4model.com — different views for different audiences; the audience-toggle pattern is the C4 "zoom in/out" principle made interactive
+- **arc42 stakeholder concerns** — https://docs.arc42.org/tips/1-21/ — Tip 1-21: maintain a stakeholder table; map per-audience information needs
+- **dagre.js** — https://github.com/dagrejs/dagre — hierarchical graph layout used by MermaidJS
+- **MDN SVG paint-order** — https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/paint-order — stroke-then-fill halo behind text glyphs
+- **CSS-Tricks Accessible SVGs** — https://css-tricks.com/accessible-svgs/ — halo strokes + paint-order for legibility
+- **WCAG 2.2** — https://www.w3.org/TR/WCAG22/ — 4.5:1 text, 3:1 graphics, reduced-motion
+- **Okabe & Ito (2008)** — https://jfly.uni-koeln.de/color/ — colorblind-safe categorical palette
+- **AntV G6 D3-force docs** — https://g6.antv.antgroup.com/en/manual/layout/d3-force-layout — collision-force semantics for risk heat-map displacement
+
+### Verification step
+
+After building, run headless Playwright to screenshot all 8 views in both modes and emit a metrics JSON:
+
+```bash
+cd {folder}/outputs
+node _verify_arch_demo.js
+# Outputs: _arch_demo_shots/{audience}_{view}.png and _results.json
+# Expectation: edge-edge=0 and edge-node=0 in every row.
+```
+
+## Quality Checklist (MANDATORY — report each by name with evidence)
+
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **DIAGRAM_BLUEPRINTS.md** exists at `{folder}/outputs/DIAGRAM_BLUEPRINTS.md` — evidence: `ls -la` showing size >= 5,120 bytes
+2. **diagram-blueprints.json** exists at `{folder}/shared/diagram-blueprints.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+3. **diagram-blueprints.json contains all six mandatory diagrams** — print names: architecture, integration_sequence, data_model, timeline, orgchart, risk_heatmap — evidence: print `[bp["name"] for bp in blueprints]`
+4. **Every blueprint** has `name`, `mermaid`, `source_citation`, `intent`, `caption`, `alt_text`, `render_target` — evidence: print key set of blueprints[0]
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Every blueprint in `diagram-blueprints.json` has corresponding rendered file** — at phase-3h time this is a pre-flight check: `render_target` paths are declared but rendering happens in Phase 8d; confirm the paths are correct — evidence: print render_target for each blueprint
+7. **Every blueprint cites at least one spec element** — `source_citation` is non-empty and references a real file (ARCHITECTURE.md, INTEROPERABILITY.md, etc.) — evidence: count blueprints with empty source_citation (must be 0)
+8. **Every mermaid block parses (mmdc --validate)** — evidence: report the number of blueprints that passed validation vs total; any failures must be named
+9. **Every diagram declares `fontSize: 14px`** via theme init directive — evidence: grep mermaid source strings for "fontSize" returned N hits where N equals len(blueprints)
+10. **Every diagram has a persuasive `caption` AND a screen-reader `alt_text`** — evidence: count blueprints with empty caption or empty alt_text (must be 0)
+11. **Gantt critical-path tasks flagged with `crit` keyword** in timeline blueprint — evidence: grep timeline mermaid source for ":crit," returned >= 1 hit
+
+### Anti-regression rules (universal)
+12. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+13. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+14. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+15. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+16. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+17. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

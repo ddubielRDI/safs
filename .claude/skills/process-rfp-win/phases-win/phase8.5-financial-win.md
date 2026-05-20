@@ -323,19 +323,36 @@ Output: outputs/bid-sections/05_FINANCIAL.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `05_FINANCIAL.md` created (>5KB)
-- [ ] Cost summary table with totals (labor + overhead + profit)
-- [ ] Labor rate schedule with Rate Source column (COMPANY RATE / MARKET DEFAULT / UNPOPULATED)
-- [ ] GSA Range column for market context
-- [ ] All rates > $0 (no UNPOPULATED roles — if any remain, flag prominently)
-- [ ] Rate source attribution: company rates override market defaults
-- [ ] Cost breakdown by phase from effort estimation
-- [ ] Key assumptions documented
-- [ ] Cost evaluation alignment section (LPTA vs Best Value strategy)
-- [ ] Value proposition connecting cost to AI-assisted efficiency
-- [ ] Total cost of ownership (3-year / 5-year if multi-year contract)
-- [ ] Payment schedule auto-generated from Phase 5 milestones
-- [ ] Market default rates flagged with REVIEW REQUIRED markers
-- [ ] All unpopulated rates flagged with ACTION REQUIRED markers
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **05_FINANCIAL.md** exists at `{folder}/outputs/bid-sections/05_FINANCIAL.md` — evidence: `ls -la` showing size > 5,120 bytes
+
+### Schema fidelity
+2. **Cost summary table present** with totals (labor + overhead + profit) — grep "Total Proposed Cost" returned >= 1 hit — evidence: grep result
+3. **Labor rate schedule present** with Rate Source column — grep "Rate Source" or "COMPANY RATE" returned >= 1 hit — evidence: grep result
+4. **GSA Range column present** — grep "GSA Range" or "gsa_range" returned >= 1 hit — evidence: grep result
+5. **Payment schedule present** — grep "Payment Schedule" or "Milestone" returned >= 1 hit — evidence: grep result
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **All UNPOPULATED rates flagged with ACTION REQUIRED markers** — evidence: count roles with `source = "UNPOPULATED"` in labor_rates; confirm each has "[USER INPUT REQUIRED" or "ACTION REQUIRED" marker adjacent to it in the document
+8. **Market default rates flagged with REVIEW REQUIRED markers** — evidence: grep "REVIEW REQUIRED" or "MARKET DEFAULT" in 05_FINANCIAL.md returned >= 1 hit (if any market defaults were used)
+9. **Rate source attribution** — company rates override market defaults — evidence: confirm `c_rate > 0` check was applied before falling back to market_rate
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

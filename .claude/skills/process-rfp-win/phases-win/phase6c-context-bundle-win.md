@@ -826,26 +826,41 @@ Stage 7 bid author now has FULL CONTEXT for compelling bid generation.
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `bid-context-bundle.json` created in `shared/`
-- [ ] At least 10 sources aggregated
-- [ ] Requirements summary includes priority breakdown
-- [ ] Top 10 risks extracted with mitigations
-- [ ] Evaluation criteria sorted by weight
-- [ ] 3-5 win themes defined
-- [ ] Competitive contrasts populated
-- [ ] Compliance achievements summarized
-- [ ] Case study placeholder template included
-- [ ] Bid author instructions included
-- [ ] `evaluation_to_bid_mapping` included (full mapping, not just summary)
-- [ ] `evaluation_factors_by_weight` sorted descending by weight
-- [ ] `theme_eval_mapping` included if POSITIONING_OUTPUT.json exists
-- [ ] `section_theme_mandates` included if available
-- [ ] `evaluator_messages` included if available
-- [ ] `section_content_guide` merges eval factors + themes + top requirements per section
-- [ ] `matched_evidence` passed through from POSITIONING_OUTPUT.json
-- [ ] `evidence_summary` passed through from POSITIONING_OUTPUT.json
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **bid-context-bundle.json** exists at `{folder}/shared/bid-context-bundle.json` — evidence: `ls -la` size > 10,240 bytes and parses as valid JSON via `python -c "import json; json.load(open(..., encoding='utf-8'))"`
+
+### Schema fidelity
+2. **bid-context-bundle.json top-level keys** include `meta`, `requirements_summary`, `risk_highlights`, `evaluation_alignment`, `win_themes`, `competitive_position`, `compliance_achievements`, `content_priority_guide`, `bid_author_instructions` — evidence: list actual top-level keys found
+3. **At least 10 sources aggregated** — evidence: print `meta.source_count`
+4. **requirements_summary.by_priority** contains all four priority levels (CRITICAL, HIGH, MEDIUM, LOW) — evidence: print by_priority dict
+5. **Top 10 risks extracted with mitigations** — evidence: print `len(risk_highlights.top_10_risks)` and confirm each has `mitigation_strategies` key
+6. **3-5 win themes defined** — evidence: print `len(win_themes.themes)`
+7. **evaluation_factors_by_weight sorted descending** — evidence: confirm factors[0]["weight_normalized"] >= factors[1]["weight_normalized"]
+8. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits; confirm `critical_reqs[].text` is FULL (no [:200] slice per 2026-05-18 fix)
+
+### Cross-stage consistency
+9. **coverage_claim sourced from RTM** (not fabricated) — evidence: print `requirements_summary.coverage_source`; must be "rtm.verification.forward_coverage.bid_coverage_pct" OR "unavailable" (never a made-up percentage)
+10. **risk_highlights reads from `rtm_risks` key** (not the empty `risks` key) — evidence: confirm `build_risk_highlights` was called with the correct key per HUNT-A-0002 fix; print actual total_risks_assessed
+11. **content_priority_guide.available = true** (if UNIFIED_RTM.json existed) — evidence: print content_priority_guide.available
+
+### Anti-regression rules (universal)
+12. **UTF-8 encoding** on every `open()` call — evidence: confirm the output write uses `open(..., encoding='utf-8', newline='\n')`
+13. **ensure_ascii=False** on every `json.dump` call — evidence: confirm `json.dump(..., ensure_ascii=False)` in the write step
+14. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+15. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+16. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+17. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "content_priority_guide moved to Step 4b.5 before Step 4c to fix forward-reference — applied correctly per HUNT-A-0001")
 
 ## Verification
 

@@ -333,12 +333,35 @@ ui_specs = generate_ui_specs(ui_reqs, domain_context)
 write_file(f"{folder}/outputs/UI_SPECS.md", ui_specs)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `UI_SPECS.md` created in `outputs/`
-- [ ] Design system defined
-- [ ] Page templates included
-- [ ] Component library documented
-- [ ] WCAG 2.2 AA requirements addressed (or RFP-mandated version if narrower) — including the 9 new Success Criteria added in 2.2
-- [ ] WCAG version source URL cited with verification date
-- [ ] Responsive design specified
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **UI_SPECS.md** exists at `{folder}/outputs/UI_SPECS.md` — evidence: `ls -la` size > 1,024 bytes
+
+### Schema fidelity
+2. **Design System section present** — grep "Design System" returned >= 1 hit — evidence: grep result
+3. **Accessibility Requirements section present** — grep "Accessibility Requirements" or "WCAG" returned >= 1 hit — evidence: grep result
+4. **Screen Specifications section present** — grep "Screen Specifications" or "Screen [0-9]" returned >= 1 hit — evidence: grep result
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **WCAG version matches RFP-mandated version** — if RFP explicitly cited WCAG 2.1 or 2.2, confirm that version appears in UI_SPECS.md and in the log — evidence: print `wcag_version` variable value and the `wcag_note` explaining the selection
+7. **WCAG version source URL cited with verification date** — grep for "https://www.w3.org/TR/WCAG" in UI_SPECS.md returned >= 1 hit; grep for a date in YYYY-MM-DD format near that URL — evidence: grep result
+8. **WCAG 2.2 new Success Criteria included** when wcag_version == "2.2" — grep for "2.5.8" or "3.3.8" (new in 2.2) returned >= 1 hit — evidence: grep result (SKIPPED if RFP mandated 2.1 specifically)
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

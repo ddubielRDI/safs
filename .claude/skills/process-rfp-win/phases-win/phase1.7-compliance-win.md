@@ -326,11 +326,35 @@ if not gate_status["passed"]:
     )
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `COMPLIANCE_MATRIX.json` created in `shared/`
-- [ ] All mandatory items extracted (SHALL, MUST, REQUIRED)
-- [ ] Items categorized by type
-- [ ] Format requirements extracted (page limits, fonts)
-- [ ] Gate status calculated
-- [ ] If gate failed, gaps clearly documented
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **COMPLIANCE_MATRIX.json** exists at `{folder}/shared/COMPLIANCE_MATRIX.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **COMPLIANCE_MATRIX.json top-level keys** include `extracted_at`, `gate_status`, `format_requirements`, `mandatory_items`, `category_summary`, `rtm_entities` — evidence: list actual top-level keys found
+3. **gate_status** contains `passed` (bool), `total_mandatory`, `addressed`, `gaps`, `coverage_percentage` — evidence: print gate_status block values
+4. **rtm_entities** contains `rfp_sources` and `mandatory_items` arrays — evidence: print lengths of both arrays
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Every mandatory item linked to a requirement OR explicitly marked `WAIVED` with reason** — at phase-1.7 time all items begin as `PLANNED`; verify no item has `coverage.status = null` — evidence: count of items where status is null (must be 0)
+7. **Category summary** totals equal `len(mandatory_items)` — evidence: `sum(category_summary.values())` vs len(mandatory_items)
+8. **source_ids present** on every mandatory item in `rtm_entities.mandatory_items` — evidence: count items missing source_ids (must be 0)
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches in cells with HIGH/MEDIUM/CRITICAL severity rows
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

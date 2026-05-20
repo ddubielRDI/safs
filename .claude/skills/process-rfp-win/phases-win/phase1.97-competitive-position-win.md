@@ -342,12 +342,36 @@ Outputs:
   - shared/bid/COMPETITIVE_POSITION.json (consumed by phase3a–3g + phase8.0)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `outputs/COMPETITIVE_POSITION.md` >= 3 KB
-- [ ] `shared/bid/COMPETITIVE_POSITION.json` written
-- [ ] If incumbent known, ≥1 ghost statement per documented incumbent pain point
-- [ ] Pain-point map links each pain to an evaluation factor + bid section
-- [ ] Switching-cost analysis present when incumbent exists
-- [ ] 3-5 named win conditions, each with owner sections
-- [ ] No proper-noun naming of competitors in the GHOST sections (legal-risk gate)
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **COMPETITIVE_POSITION.md** exists at `{folder}/outputs/COMPETITIVE_POSITION.md` — evidence: `ls -la` showing size >= 3,072 bytes
+2. **COMPETITIVE_POSITION.json** exists at `{folder}/shared/bid/COMPETITIVE_POSITION.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+3. **COMPETITIVE_POSITION.json top-level keys** include `generated_at`, `buyer`, `incumbent`, `ghost_strategy`, `pain_map`, `switching_costs`, `win_conditions` — evidence: list actual top-level keys found
+4. **win_conditions** contains 3-5 entries, each with `id`, `condition`, `rationale`, `owner_sections` — evidence: print `len(win_conditions)` and keys of win_conditions[0]
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Ghost statements free of competitor proper nouns** — grep COMPETITIVE_POSITION.md for competitor names in sections containing "ghost" content returned 0 hits — evidence: grep result
+7. **Pain-point map links each pain to an evaluation factor** — every pain_map entry has non-null `evaluation_factor` OR has a documented "no factor match" reason — evidence: count null evaluation_factor entries
+8. **Switching-cost analysis present when incumbent exists** — if `incumbent` is non-null, `switching_costs` array length >= 1 — evidence: print incumbent name and switching_costs length
+9. **Ghost statements >= 1 per pain point** (when incumbent documented) — evidence: print `len(ghost_strategy)` vs `len(incumbent.known_issues)`
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

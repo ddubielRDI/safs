@@ -633,6 +633,166 @@ def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
 findings.append(check_tech_stack_lts_verified(spec_files, folder, contract_years=5))
 ```
 
+### Step 3c: Rule SVA3-TECH-STACK-VERSION-CONSISTENCY (CRITICAL)
+
+Cross-check every technology version cited in bid markdown files against `shared/tech-lifecycle-evidence.json`. The existing `SVA3-TECH-STACK-LTS-VERIFIED` gate (Step 3b) validates structural lifecycle evidence and ARCHITECTURE.md. This rule extends coverage to the final deliverable markdown — `outputs/*.md` and `outputs/bid-sections/*.md` — where stale version strings (.NET 8, .NET 9) contaminate evaluator-visible PDFs even after the evidence file and ARCHITECTURE.md are corrected.
+
+**Why separate from SVA3-TECH-STACK-LTS-VERIFIED:** Phase 8 (bid authoring) re-reads specs and past-project data, providing a second path for stale versions to enter the deliverable. SVA3-TECH-STACK-LTS-VERIFIED only checks spec files (ARCHITECTURE.md, SECURITY_REQUIREMENTS.md, etc.); it does NOT scan bid-sections/*.md. This rule closes that gap.
+
+**Negative-citation exemption:** Lines that reference a version in a *competitive warning* or *rejected-alternative* context are skipped. The same `NEGATIVE_CITATION` pattern from Step 3b applies here, extended with common bid-prose rejection markers ("bidders proposing", "avoid", "risk of proposing", "competitor").
+
+```python
+def check_tech_stack_version_consistency(folder, evidence_path=None):
+    """
+    CRITICAL: Scan outputs/*.md and outputs/bid-sections/*.md for technology version
+    mentions. Each cited version must appear in shared/tech-lifecycle-evidence.json
+    recommended_version fields. Versions found only in negative-citation / competitive-
+    warning context are exempted (they document why we rejected them).
+
+    Counterfactual: would have caught .NET 8 LTS / .NET 9 LTS contamination in
+    03_TECHNICAL.md and 04_RISK_REGISTER.md during the 2026-05-18 rfp-mars run,
+    where SVAs reported PASS 94.2/100 while these strings were live in PDFs.
+    """
+    import re as _re
+    import glob as _glob
+
+    if evidence_path is None:
+        evidence_path = f"{folder}/shared/tech-lifecycle-evidence.json"
+
+    # Gate: evidence file must exist (Step 3b already blocks if missing, but be safe)
+    if not os.path.exists(evidence_path):
+        return {
+            "rule_id": "SVA3-TECH-STACK-VERSION-CONSISTENCY",
+            "rule_name": "Tech Stack Version Consistency (Bid Markdown)",
+            "category": "Tech Stack Governance",
+            "severity": "CRITICAL",
+            "passed": False,
+            "score": 0.0,
+            "threshold": 100.0,
+            "details": {"error": "tech-lifecycle-evidence.json missing; cannot verify bid markdown versions"},
+            "corrective_action": {
+                "type": "retry_phase", "target_phase": "3a", "auto_correctable": True,
+                "instruction": "Re-run Phase 3a Step 4 to generate tech-lifecycle-evidence.json before scanning bid markdown."
+            }
+        }
+
+    evidence = read_json(evidence_path)
+    # Build set of all evidence-endorsed version strings (major + full)
+    evidence_versions = set()
+    for c in evidence.get("components", []):
+        v = str(c.get("recommended_version", ""))
+        _m = _re.match(r"(\d+(?:\.\d+)?)", v)
+        if _m:
+            evidence_versions.add(_m.group(1))
+            evidence_versions.add(_m.group(1).split(".")[0])
+        # Also accept versions cited in migration plan summaries (planned future upgrades)
+        for _vm in _re.finditer(r"\b(\d+(?:\.\d+)?)\b", c.get("migration_plan_summary") or ""):
+            evidence_versions.add(_vm.group(1))
+            evidence_versions.add(_vm.group(1).split(".")[0])
+
+    # Regex: extract version numbers from common technology patterns
+    VERSION_PATTERN = _re.compile(
+        r"\.NET\s+(\d+)|"
+        r"Node(?:\.js)?\s+(\d+)|"
+        r"React\s+(\d+(?:\.\d+)?)|"
+        r"PostgreSQL\s+(\d+)|"
+        r"SQL\s+Server\s+(\d{4})|"
+        r"Java\s+(\d+)|"
+        r"Python\s+(\d+\.\d+)|"
+        r"Kubernetes\s+(\d+\.\d+)",
+        _re.IGNORECASE
+    )
+
+    # Negative-citation filter: lines containing these patterns are NOT recommendations
+    # They document competitor risk, rejected alternatives, or compliance warnings.
+    # Rule: if ANY of these tokens appears on the line, skip ALL version matches on that line.
+    # Patterns cover:
+    #   - "NOT an LTS release", "is STS", "are STS", "Standard Term Support"
+    #   - "rejected", "forbids", "forbidden", "disqualifying", "unsupported"
+    #   - "EOL is approximately", "EOL <Month> <Year>"
+    #   - "bidders proposing", "Selecting .NET N would"
+    #   - Lifecycle education prose: "odd-numbered ... are STS", "are LTS"
+    NEGATIVE_CITATION = _re.compile(
+        r"\b(not\s+\.NET|neither\s+\.NET|rejected|reaches\s+EOL|reaches\s+end\s+of\s+life|"
+        r"\bis\s+STS\b|\bare\s+STS\b|is\s+not\s+LTS|NOT\s+(?:an?\s+)?LTS|"
+        r"Standard\s+Term\s+Support|STS\s+\(|\bSTS\b|forbids|forbidden|disqualifying|preview|post-GA|"
+        r"end\s+of\s+life\s+within|unsupported|bidders\s+propos|propos(?:ing|ed)\s+\.NET\s+\d+\s+would|"
+        r"Selecting\s+\.NET\s+\d+\s+would|avoid\s+\.NET|risk\s+of\s+propos|competitor|"
+        r"EOL\s+is\s+approximately|"
+        r"EOL\s+(?:May|November|October|June|July|August|"
+        r"September|January|February|March|April|December)\s+\d{4})",
+        _re.IGNORECASE
+    )
+
+    # Scan bid markdown files — outputs/*.md and outputs/bid-sections/*.md
+    scan_patterns = [
+        f"{folder}/outputs/bid-sections/*.md",
+        f"{folder}/outputs/*.md",
+    ]
+    cited_unverified = []  # {file, line_no, version, match_text}
+    files_scanned = 0
+
+    for pattern in scan_patterns:
+        for fpath in _glob.glob(pattern):
+            files_scanned += 1
+            try:
+                with open(fpath, "r", encoding="utf-8") as _fh:
+                    lines = _fh.readlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            fname = os.path.basename(fpath)
+            for line_no, line in enumerate(lines, 1):
+                # Skip negative-citation lines (competitor warnings, rejected-alt rationale)
+                if NEGATIVE_CITATION.search(line):
+                    continue
+                for _m in VERSION_PATTERN.finditer(line):
+                    # Extract whichever capture group matched
+                    version = next((g for g in _m.groups() if g), None)
+                    if not version:
+                        continue
+                    # Check against evidence-endorsed versions
+                    major = version.split(".")[0]
+                    if version not in evidence_versions and major not in evidence_versions:
+                        cited_unverified.append({
+                            "file": fname,
+                            "line_no": line_no,
+                            "version": version,
+                            "match_text": _m.group(0).strip(),
+                            "line_preview": line.strip()[:120]
+                        })
+
+    passed = len(cited_unverified) == 0
+    score = 100.0 if passed else max(0.0, 100.0 - len(cited_unverified) * 5)
+
+    return {
+        "rule_id": "SVA3-TECH-STACK-VERSION-CONSISTENCY",
+        "rule_name": "Tech Stack Version Consistency (Bid Markdown)",
+        "category": "Tech Stack Governance",
+        "severity": "CRITICAL",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 100.0,
+        "details": {
+            "files_scanned": files_scanned,
+            "evidence_endorsed_versions": sorted(evidence_versions),
+            "cited_unverified_count": len(cited_unverified),
+            "cited_unverified": cited_unverified[:20]
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8",
+            "auto_correctable": True,
+            "instruction": (
+                f"{len(cited_unverified)} bid markdown lines cite technology versions not in "
+                f"tech-lifecycle-evidence.json. Endorsed versions: {sorted(evidence_versions)}. "
+                "Re-run Phase 8 bid authoring with updated tech context, or manually correct stale version strings."
+            )
+        }
+    }
+
+findings.append(check_tech_stack_version_consistency(folder))
+```
+
 ### Step 4: Rule SVA3-SPEC-DOMAIN-ALIGNMENT (HIGH)
 
 Specifications should reference domain-appropriate standards and compliance frameworks identified during intake.
@@ -1116,8 +1276,9 @@ def extract_keywords(text, min_words=2, max_phrases=5):
 ## Quality Checklist
 
 - [ ] `sva3-spec.json` created in `shared/validation/`
-- [ ] All 6 rules executed with scores
+- [ ] All 7 rules executed with scores (includes SVA3-TECH-STACK-VERSION-CONSISTENCY added 2026-05-19)
 - [ ] Disposition correctly computed (PASS / ADVISORY / BLOCK)
 - [ ] Corrective actions populated for failed rules
 - [ ] Report conforms to sva-report.schema.json
 - [ ] No CRITICAL failures left unaddressed in corrective_actions
+- [ ] SVA3-TECH-STACK-VERSION-CONSISTENCY checked bid-sections/*.md AND outputs/*.md for stale version strings

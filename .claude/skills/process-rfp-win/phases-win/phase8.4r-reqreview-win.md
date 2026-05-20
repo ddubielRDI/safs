@@ -6,6 +6,17 @@ domain-expertise: Requirements response formatting, compliance matrix completion
 
 # Phase 8.4r: Requirements Review Response
 
+## ⛔ NO-TRUNCATION DISCIPLINE (READ FIRST — BLOCKING)
+
+**Render ALL CRITICAL/HIGH requirements (and ideally all 2,167 if size allows). Render FULL text per row.** Per SAFS memory (`feedback_screen_encoding_truncation.md`), the win pipeline regressed 2026-05-19 producing `_Showing 200 of 762_` row caps and mid-word `[:200]...` truncation in this very file's output. The rule:
+
+- **NEVER `[:N]` slice requirement text, response prose, or any deliverable-content string.** Render every character of every requirement.
+- **NEVER cap rows.** No `high_critical[:200]`, no `priority_filter` artificial limits. If 762 reqs are CRITICAL/HIGH, render 762 rows. The table will be long. That's correct.
+- **NEVER emit "_Showing N of M_" notices.** Show everything.
+- **`linked_spec_ids` and `bid_section_ids`** in any displayed cell render ALL entries (or join with commas) — not `[:3]` or `[:2]` head slices.
+
+Pipelines produce FULL DATA. The PDF renderer handles pagination. Humans decide what to trim.
+
 ## Expert Role
 
 You are a **Requirements Analyst** with expertise in:
@@ -84,9 +95,11 @@ for req in all_reqs:
     compliance_status = "COMPLIANT" if has_specs else "PARTIAL"
 
     # Build response text
+    # 2026-05-19 NO-TRUNCATION FIX: removed linked_spec_ids[:3] cap. Render ALL
+    # linked specs for the requirement.
     if rtm_req and rtm_req.get("linked_spec_ids"):
         spec_names = []
-        for sid in rtm_req["linked_spec_ids"][:3]:
+        for sid in rtm_req["linked_spec_ids"]:
             for s in rtm_specs:
                 if s.get("spec_id") == sid:
                     spec_names.append(s.get("title", sid))
@@ -96,9 +109,10 @@ for req in all_reqs:
         response = "Addressed in Technical Approach"
 
     # Build bid reference
+    # 2026-05-19 NO-TRUNCATION FIX: removed bid_section_ids[:2] cap.
     bid_ref = ""
     if rtm_req and rtm_req.get("bid_section_ids"):
-        bid_ref = ", ".join(rtm_req["bid_section_ids"][:2])
+        bid_ref = ", ".join(rtm_req["bid_section_ids"])
 
     response_rows.append({
         "req_id": req_id,
@@ -163,11 +177,35 @@ Output: outputs/bid-sections/04_REQUIREMENTS_REVIEW.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `04_REQUIREMENTS_REVIEW.md` created (>8KB)
-- [ ] Every requirement has a response row
-- [ ] Compliance status determined for each requirement
-- [ ] Bid section references populated from RTM where available
-- [ ] Summary statistics accurate
-- [ ] Category breakdown included
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **04_REQUIREMENTS_REVIEW.md** exists at `{folder}/outputs/bid-sections/04_REQUIREMENTS_REVIEW.md` — evidence: `ls -la` showing size > 8,192 bytes
+
+### Schema fidelity
+2. **No `_Showing N of M_` row-cap notices** — evidence: grep "_Showing" in 04_REQUIREMENTS_REVIEW.md returned 0 matches
+3. **No mid-word truncations** in requirement text cells — evidence: spot-check 5 random rows; confirm text is not cut off mid-word (no trailing `...` from a `[:200]` slice)
+4. **`linked_spec_ids` and `bid_section_ids` cells render ALL entries** — no `[:3]` or `[:2]` head slices — evidence: confirm these fields were rendered in full per 2026-05-19 fix
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Every requirement has a response row** — `len(response_rows)` equals `len(all_reqs)` — evidence: print both counts
+7. **Compliance status determined for each requirement** — every row has one of COMPLIANT / PARTIAL / ALTERNATE / NON-COMPLIANT — evidence: count rows with null/missing status (must be 0)
+8. **Summary statistics accurate** — `compliant_count + partial_count + non_compliant_count` equals total row count — evidence: print all three counts and their sum vs total
+9. **Category breakdown included** — grep "Category" or "## Category" in document returned >= 1 hit — evidence: grep result
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No empty `|  |` cells in requirement/response table** — evidence: grep for empty cells adjacent to requirement text returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "NEVER cap rows with high_critical[:200] — rendered ALL CRITICAL/HIGH requirements per 2026-05-19 fix")

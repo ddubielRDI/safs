@@ -198,11 +198,14 @@ def generate_risks_md(requirements, heat_map, domain):
 
 """
 
-    for req in high_risk[:15]:
+    # 2026-05-19 NO-TRUNCATION FIX: removed high_risk[:15] cap and [:200] text truncation
+    # per feedback_screen_encoding_truncation.md regression discipline. Pipelines produce
+    # full data; humans decide what to trim.
+    for req in high_risk:
         risk = req.get("risk_assessment", {})
         doc += f"""### {req.get('canonical_id', 'N/A')} - {risk.get('category_name')}
 
-**Requirement:** {req.get('text', '')[:200]}...
+**Requirement:** {req.get('text', '')}
 
 **Risk Score:** {risk.get('risk_score')}/5 ({risk.get('risk_level')})
 
@@ -224,10 +227,11 @@ def generate_risks_md(requirements, heat_map, domain):
 |--------|----------|-------|-----------------|
 """
 
-    for req in medium_risk[:20]:
+    # 2026-05-19 NO-TRUNCATION FIX: removed medium_risk[:20] cap and key_factor[:40] truncation
+    for req in medium_risk:
         risk = req.get("risk_assessment", {})
         key_factor = risk.get("risk_factors", ["None"])[0] if risk.get("risk_factors") else "Standard complexity"
-        doc += f"| {req.get('canonical_id', 'N/A')} | {risk.get('category')} | {risk.get('risk_score')}/5 | {key_factor[:40]} |\n"
+        doc += f"| {req.get('canonical_id', 'N/A')} | {risk.get('category')} | {risk.get('risk_score')}/5 | {key_factor} |\n"
 
     doc += """
 
@@ -275,7 +279,8 @@ def generate_risks_md(requirements, heat_map, domain):
     for req in requirements:
         risk = req.get("risk_assessment", {})
         factor = risk.get("risk_factors", ["N/A"])[0] if risk.get("risk_factors") else "N/A"
-        doc += f"| {req.get('canonical_id', 'N/A')} | {risk.get('category', 'N/A')} | {risk.get('risk_level', 'N/A')} | {risk.get('risk_score', 0)}/5 | {factor[:30]} |\n"
+        # 2026-05-19 NO-TRUNCATION FIX: removed factor[:30] truncation
+        doc += f"| {req.get('canonical_id', 'N/A')} | {risk.get('category', 'N/A')} | {risk.get('risk_level', 'N/A')} | {risk.get('risk_score', 0)}/5 | {factor} |\n"
 
     return doc
 
@@ -314,9 +319,13 @@ for req in all_reqs:
                 "evidence_ids": []
             })
 
+        # 2026-05-19 NO-TRUNCATION FIX: removed [:80] cap on risk titles.
+        # This was the ROOT CAUSE of mid-word truncation in Stage 7 bid docs
+        # (e.g., "with a repor" → should be "with a reporting year"; "entit" → "entities").
+        # Per feedback_screen_encoding_truncation.md: pipelines produce full data.
         risks_for_rtm.append({
             "risk_id": risk_id,
-            "title": f"{risk.get('category_name', 'Risk')}: {req.get('text', '')[:80]}",
+            "title": f"{risk.get('category_name', 'Risk')}: {req.get('text', '')}",
             "category": risk.get("category", "SOFTWARE"),
             "likelihood": min(5, risk.get("risk_score", 1)),
             "impact": min(5, max(1, risk.get("risk_score", 1) + 1)),  # Impact slightly higher than likelihood
@@ -337,6 +346,48 @@ def infer_owner_role(category):
     }
     return role_map.get(category, "Program Manager")
 ```
+
+### Step 5c: Structural / Programmatic Risks (RFP-specific, MANDATORY)
+
+Pipelines that produce a 5-year-or-longer engagement with technology-stack
+choices MUST also emit a structural-risk register alongside the requirement-
+derived risks. These are the bid-execution risks that cannot be extracted from
+a single requirement -- runtime LTS coverage, mandatory-partner dependencies,
+peak-season capacity, legacy-system migration cutover, statutory compliance
+deadlines, identity-realm isolation, tenant-isolation correctness.
+
+**Discipline rule (added 2026-05-19 after MARS regression):** Structural risk
+descriptions and mitigations MUST be **derived from authoritative pipeline
+artifacts** -- not hardcoded from the agent's memory of older tech-stack
+choices. Specifically:
+
+1. **Read `shared/tech-lifecycle-evidence.json`** (Phase 3a tech-stack output)
+   for the actual runtime versions chosen, their GA dates, their Microsoft /
+   vendor EOL dates, and any documented in-contract migration plan.
+2. **Read `outputs/ARCHITECTURE.md`** for the Architecture Decision Records
+   (ADRs) -- in particular ADR-005 (or equivalent) for the runtime LTS
+   selection and the documented migration ladder.
+3. **Cross-check** that the structural risk's framework version, EOL date,
+   and mitigation strategy match what the architecture actually proposes.
+
+If the architecture says ".NET 10 LTS at go-live with documented ladder to
+.NET 12 LTS year 3 and .NET 14 LTS year 5," the risk register says exactly
+that -- not ".NET 8 LTS EOL" (a stale prior-cycle baseline) and not ".NET 9
+LTS" (a STS release wrongly labelled LTS). **Never hardcode framework
+version numbers in this phase file or in stage3g_risks.py.** Read the
+chosen runtime from the architecture artifacts and propagate it.
+
+Failure mode being prevented: SVA-4 auto-corrected the architecture to a
+new runtime baseline, but stage3g_risks.py was re-run with stale hardcoded
+structural-risk text that mentioned the old runtime. The result was a bid
+PDF whose Risk Register contradicted its own Architecture spec -- a fatal
+evaluator-visible inconsistency.
+
+**Verification:** before stage3g writes RISKS.json, assert that for any
+structural risk whose title or description mentions a framework version
+(`.NET N`, `Java N`, `Node N`, etc.), that version appears in
+`tech-lifecycle-evidence.json` as a current or planned baseline. If it
+does not, raise a clear error and fail the phase.
 
 ### Step 6: Write JSON Output
 
@@ -367,11 +418,35 @@ risks_json = {
 write_json(f"{folder}/shared/REQUIREMENT_RISKS.json", risks_json)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `REQUIREMENT_RISKS.md` created in `outputs/`
-- [ ] `REQUIREMENT_RISKS.json` created in `shared/`
-- [ ] 70%+ requirements have risk assessments
-- [ ] Heat map generated
-- [ ] High-risk items have mitigation strategies
-- [ ] Risk categories properly assigned
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **REQUIREMENT_RISKS.md** exists at `{folder}/outputs/REQUIREMENT_RISKS.md` — evidence: `ls -la` size > 1,024 bytes
+2. **REQUIREMENT_RISKS.json** exists at `{folder}/shared/REQUIREMENT_RISKS.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+3. **REQUIREMENT_RISKS.json top-level keys** include `assessed_at`, `summary`, `heat_map`, `requirements`, `rtm_risks` — evidence: list actual top-level keys found
+4. **Every rtm_risks entry** has `risk_id`, `title`, `category`, `likelihood`, `impact`, `risk_level`, `linked_requirement_ids`, `mitigation_strategies` — evidence: print key set of rtm_risks[0]
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits; confirm NO `risks[:15]`, `high_risk[:15]`, `factor[:30]` slicing anywhere (confirmed removed per 2026-05-19 fix)
+
+### Cross-stage consistency
+6. **Risk register row count matches `RISKS.json` count ±5%** — evidence: print `summary.total_risks_tracked` vs `len(rtm_risks)` (must match); also confirm REQUIREMENT_RISKS.md row count approximately equals rtm_risks count
+7. **Every risk row's Mitigation cell traces to source `mitigation_strategy` (singular) OR `mitigation_strategies` (array)** — evidence: count rtm_risks entries with empty mitigation_strategies array (must be 0 for HIGH/CRITICAL risks)
+8. **Framework version in structural risks matches tech-lifecycle-evidence.json** — any structural risk mentioning a framework version (`.NET N`, `Java N`) must reference the same version as tech-lifecycle-evidence.json — evidence: grep structural risk titles for version patterns and confirm match
+9. **No `_Showing N of M_` notices** in REQUIREMENT_RISKS.md — evidence: grep "_Showing" in file returned 0 matches
+10. **No empty Mitigation cells** in tables — evidence: grep `\|[[:space:]]*\|` in HIGH/CRITICAL severity rows returned 0 matches
+
+### Anti-regression rules (universal)
+11. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+12. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "structural risks sourced from tech-lifecycle-evidence.json — never hardcoded runtime versions")

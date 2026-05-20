@@ -528,29 +528,37 @@ Output: outputs/bid-sections/03_TECHNICAL.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `03_TECHNICAL.md` created in `outputs/bid-sections/` (>15KB)
-- [ ] ALL Stage 3 specs synthesized (architecture, interop, security, UI/UX, entities)
-- [ ] Content ordered by evaluation criteria weight
-- [ ] Win themes threaded with CVD triplets in every major section (>= 2 per section)
-- [ ] Risk management presented as confidence builder
-- [ ] Compliance cross-references in callout boxes
-- [ ] Technology choices justified by requirements
-- [ ] **EVERY technology version has verified EOL date via web search**
-- [ ] **NO proposed technology reaches EOL within 3 years of proposal date**
-- [ ] **EOL Date column included in technology stack table**
-- [ ] **LTS lifecycle covers full contract period + 2 years maintenance**
-- [ ] KPIs and quality metrics defined with measurable targets
-- [ ] No orphaned sections without evaluation factor alignment
-- [ ] Proven Capability callout boxes inserted after Architecture, Integration, Security, Quality, UX sections
-- [ ] Each callout cites a different project (no duplicate projects)
-- [ ] Callout data pulled from Past_Projects.md (not placeholder text)
-- [ ] No `[CASE STUDY PLACEHOLDER]` markers remain
-- [ ] Evaluation factor callout box at every major section header (Sections 1-10)
-- [ ] `section_theme_mandates` checked — all mandated themes present in required sections
-- [ ] `evaluator_messages` integrated per section: TECHNICAL (S2-4,6), RISK (S5,7), OPERATIONAL (S9), EXECUTIVE (S1,10)
-- [ ] `content_priority_guide` used to prioritize highest composite-score requirements first
-- [ ] `theme_eval_mapping` used to connect theme references to evaluation factors
-- [ ] Every win theme appears >= 3 times across the entire document
-- [ ] At least one ghost phrase per major win theme woven into differentiator sections
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **03_TECHNICAL.md** exists at `{folder}/outputs/bid-sections/03_TECHNICAL.md` — evidence: `ls -la` showing size > 15,360 bytes
+
+### Schema fidelity
+2. **No `[CASE STUDY PLACEHOLDER]` markers remain** — evidence: grep "[CASE STUDY PLACEHOLDER]" returned 0 matches
+3. **Evaluation factor callout box at every major section header** — grep "**Evaluation Factor:**" returned >= 10 hits (Sections 1-10) — evidence: grep count
+4. **EOL Date column included in technology stack table** — grep "EOL" in technology stack table context returned >= 1 hit — evidence: grep result
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **EVERY technology version has verified EOL date** — every technology in the stack table has an EOL Date cell that is not empty or "TBD" — evidence: scan technology table rows for empty EOL cells (must be 0)
+7. **NO proposed technology reaches EOL within 3 years of proposal date** — evidence: for each technology with EOL date, confirm EOL >= (today + 3 years); list any that fail
+8. **LTS lifecycle covers full contract period + 2 years maintenance** — evidence: confirm versions match tech-lifecycle-evidence.json `passes_contract_lifecycle: true` entries
+9. **Every win theme appears >= 3 times** across the entire document — evidence: for each theme name, grep count in 03_TECHNICAL.md >= 3
+10. **Proven Capability callouts cite different projects** — evidence: list project names used in callouts; confirm no repeats
+
+### Anti-regression rules (universal)
+11. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+12. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+13. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+14. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+15. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+16. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., ".NET 8.0 LTS EOL Nov 2026 — rejected; current LTS from tech-lifecycle-evidence.json used")

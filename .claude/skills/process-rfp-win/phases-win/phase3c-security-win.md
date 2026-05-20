@@ -414,12 +414,35 @@ security_md = generate_security_md(security_reqs, compliance, domain)
 write_file(f"{folder}/outputs/SECURITY_REQUIREMENTS.md", security_md)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `SECURITY_REQUIREMENTS.md` created in `outputs/`
-- [ ] File size > 8KB
-- [ ] Domain-specific compliance addressed (FERPA/HIPAA)
-- [ ] Authentication architecture defined
-- [ ] Authorization model documented
-- [ ] OWASP Top 10 mitigations included
-- [ ] Encryption standards specified
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **SECURITY_REQUIREMENTS.md** exists at `{folder}/outputs/SECURITY_REQUIREMENTS.md` — evidence: `ls -la` showing size > 8,192 bytes (8 KB)
+
+### Schema fidelity
+2. **Authentication Architecture section present** — grep "Authentication" returned >= 1 hit in a `##` or `###` context — evidence: grep result
+3. **Authorization Model section present** — grep "Authorization" or "Role-Based Access Control" returned >= 1 hit — evidence: grep result
+4. **OWASP Top 10 mitigations present** — grep "OWASP Top 10" or "A01:" returned >= 1 hit — evidence: grep result
+5. **Encryption Standards section present** — grep "Encryption Standards" or "AES-256" returned >= 1 hit — evidence: grep result
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **Domain-specific compliance addressed** — for "education" domain, grep "FERPA" returns >= 1 hit; for "healthcare", grep "HIPAA" returns >= 1 hit; for "government", grep "FedRAMP" or "FISMA" returns >= 1 hit (if detected in domain_context) — evidence: grep result per domain
+8. **CIS Controls version cited with source URL and verification date** — grep "CIS Controls v8.1" and source URL present in document — evidence: grep result
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

@@ -827,12 +827,35 @@ Files Updated:
   ✅ outputs/RTM_REPORT.md (verification report)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] All 14 verification queries executed
-- [ ] `RTM_REPORT.md` created in `outputs/`
-- [ ] `UNIFIED_RTM.json` updated with `verification{}` section
-- [ ] Failed queries have specific recommendations
-- [ ] Chain gap analysis identifies most common missing links
-- [ ] Overall disposition calculated (PASS/ADVISORY/FAIL)
-- [ ] Chain version incremented
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **RTM_REPORT.md** exists at `{folder}/outputs/RTM_REPORT.md` — evidence: `ls -la` size > 1,024 bytes
+2. **UNIFIED_RTM.json** updated with `verification{}` section — evidence: `python -c "import json; d=json.load(open('{folder}/shared/UNIFIED_RTM.json')); print(list(d['verification'].keys()))"` confirms presence of `last_run`, `forward_coverage`, `backward_coverage`, `chain_completeness`, `query_results`
+
+### Schema fidelity
+3. **All 14 verification queries executed** — evidence: print `len(verification["query_results"])`; must equal 14
+4. **query_results** contains entries for F1, F2, F3, F4, F5, B1, B2, B3, B4, C1, C2, C3, C4, C5 — evidence: print `[q["query_id"] for q in query_results]`
+5. **Overall disposition calculated** (PASS/ADVISORY/FAIL) and present in RTM_REPORT.md — evidence: grep "PASS\|ADVISORY\|FAIL" in RTM_REPORT.md first 20 lines returned >= 1 hit
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **Failed queries have specific recommendations** — evidence: count failed queries in query_results; for each, confirm RTM_REPORT.md contains a "Recommended Action" block — print failed query IDs and confirm coverage
+8. **Chain gap analysis identifies most common missing links** — evidence: confirm verification["chain_completeness"] is populated with complete/partial/broken counts and at least one missing_link pattern is surfaced in RTM_REPORT.md
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

@@ -318,11 +318,34 @@ Unique Actors: {len(unique_actors)}
 Actor Data Flows: {len(actor_flows)} identified
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `workflow-extracted-reqs.json` created in `shared/`
-- [ ] Workflows extracted from both tables and narrative text
-- [ ] Requirement candidates generated with categories
-- [ ] Actors identified for each workflow step
-- [ ] Data elements extracted
-- [ ] Actor-to-actor flows mapped
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **workflow-extracted-reqs.json** exists at `{folder}/shared/workflow-extracted-reqs.json` — evidence: `ls -la` size > 100 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **workflow-extracted-reqs.json top-level keys** include `extracted_at`, `summary`, `workflows`, `requirement_candidates`, `actor_data_flows`, `category_distribution` — evidence: list actual top-level keys found
+3. **summary** contains `total_workflows`, `requirement_candidates`, `unique_actors`, `unique_data_elements` — evidence: print summary block
+4. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+5. **Workflows extracted from both tables and narrative** — evidence: print `summary.table_workflows` and `summary.narrative_workflows` (both should be >= 0; if both are 0 and requirement_candidates is 0 this may indicate a zero-input structural warning)
+6. **Every requirement_candidate has a category** — evidence: count entries with missing/null category (must be 0)
+7. **Actor_data_flows populated** when multiple workflow candidates exist — evidence: print `len(actor_data_flows)` vs `len(requirement_candidates) - 1` (should be approximately equal when candidates > 1)
+
+### Anti-regression rules (universal)
+8. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+9. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+10. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+11. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+12. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+13. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

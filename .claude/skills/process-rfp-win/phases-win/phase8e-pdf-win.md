@@ -734,20 +734,150 @@ hr { height: 0; margin: 4px 0 12px 0; color: #ffffff; background-color: #ffffff;
 """
 ```
 
+## ⛔ Wide-table HEAD-repeat Discipline (BLOCKING — added 2026-05-19)
+
+**Problem:** fitz.Story (PyMuPDF 1.26.x) does NOT implement
+`display: table-header-group` for repeated column headers on page breaks
+(confirmed empirically). A 10-column risk register or 7-column requirements
+review rendered as a single markdown table has headers ONLY on page 1.
+An evaluator on page 30 cannot tell which column is which — an immediate
+quality defect.
+
+**Rule:** For ANY section whose markdown contains a table with >=7 columns,
+convert the wide table to CHUNKED HTML (multiple mini-tables each with its
+own `<thead>`) BEFORE passing to fitz.Story. This is the ONLY reliable
+mechanism.
+
+**Calibration (risk register, landscape Letter-L, 7.5pt font):**
+- `rows_per_chunk=3` → headers on 45/48 pages (94% data-page coverage)
+- `rows_per_chunk=12` → headers on only 23/52 pages (chunks span 2+ pages, FAIL)
+- **Use `rows_per_chunk=3` for 10-column tables, `rows_per_chunk=4` for 7-column tables**
+
+**Implementation pattern (add to `clean_markdown_wide_tables()`):**
+
+```python
+def _build_chunked_html(headers, rows, rows_per_chunk=3):
+    """Convert parsed table into chunked HTML with repeated <thead> per chunk."""
+    header_html = "".join(f"<th>{h}</th>" for h in headers)
+    chunks = []
+    for start in range(0, len(rows), rows_per_chunk):
+        chunk = rows[start:start + rows_per_chunk]
+        html = f"<table>\n<thead><tr>{header_html}</tr></thead>\n<tbody>\n"
+        for row in chunk:
+            html += "<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>\n"
+        html += "</tbody></table>\n"
+        chunks.append(html)
+    return "".join(chunks)
+
+def convert_wide_tables_to_chunked_html(content, min_cols=7, rows_per_chunk=3):
+    """Replace wide markdown tables (>=min_cols) with chunked HTML (thead per chunk)."""
+    lines = content.split("\n")
+    output = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if (stripped.startswith("|")
+                and stripped.count("|") >= (min_cols + 1)
+                and not re.match(r"^\s*\|[\s\-:|]+\|", line)
+                and i + 1 < len(lines)
+                and re.match(r"^\s*\|[\s\-:|]+\|", lines[i + 1])):
+            headers, rows, end_idx = _parse_md_table(lines, i)
+            if headers and rows and len(headers) >= min_cols:
+                output.append(_build_chunked_html(headers, rows, rows_per_chunk))
+                i = end_idx
+                continue
+        output.append(line)
+        i += 1
+    return "\n".join(output)
+```
+
+**Apply to these sections:**
+- `04_RISK_REGISTER.md` (10 cols) — use `rows_per_chunk=3`, `paper_size="Letter-L"`
+- `04_REQUIREMENTS_REVIEW.md` (7 cols) — use `rows_per_chunk=3`
+
+**Cross-reference:** phase8.4k-riskreg-win.md contains the landscape-orientation
+discipline. The thead-repeat discipline here is the complementary fix for
+the header-visibility problem.
+
+**Verification (MANDATORY):** After render, open risk register PDF via PyMuPDF.
+Check that >=90% of data pages (pages with >200 chars of text) contain ALL of:
+`{"Risk ID", "RTM Risk ID", "Description", "Severity", "Likelihood", "Impact",
+"Mitigation", "Owner", "Verification", "Status"}` — normalize ligatures
+(ﬁ→fi, ﬂ→fl) before string matching. If fewer than 90% of data pages pass,
+reduce `rows_per_chunk` and re-render.
+
+## ⛔ PDF Size Discipline (BLOCKING — added 2026-05-19)
+
+**Problem:** fitz.Story embeds PNG images as UNCOMPRESSED raw raster bitmaps.
+A mermaid PNG rendered at `--scale 2 -w 1920` produces ~3000px wide images
+which expand to 15-27 MB each UNCOMPRESSED in the PDF. A 6-diagram bid
+produces a 90 MB Draft_Bid.pdf — exceeding procurement portal upload limits
+(typically 10-25 MB).
+
+**Fix (two-part, both MANDATORY):**
+
+1. **Pass `optimize=True` to ALL `MarkdownPdf()` constructors.** This calls
+   `doc.ez_save()` instead of `doc.save()`, enabling deflate compression on
+   image streams. Brings 41 MB TECHNICAL.pdf → 0.20 MB (200x compression).
+   ```python
+   pdf = MarkdownPdf(toc_level=2, optimize=True)  # MANDATORY
+   ```
+
+2. **Prefer SVG over PNG for mermaid embeds.** mmdc supports SVG output via
+   `-o foo.svg`. SVGs are vector (10-250 KB each), render crisp at page DPI
+   when fitz rasterises them, and compress to ~30 KB in the final PDF.
+   - Render both: `mmdc -i foo.mmd -o foo.svg` AND `mmdc -i foo.mmd -o foo.png`
+   - Reference SVG in markdown: `![alt](../bid/foo.svg)` instead of `.png`
+   - Keep PNG on disk as fallback if SVG embed fails
+   - See phase8d-diagrams-win.md for SVG rendering guidance
+
+**Size targets (MANDATORY):**
+- `Draft_Bid.pdf`: < 25 MB (portal limit)
+- Individual volume PDFs: < 15 MB each
+- Risk register and appendix PDFs: < 15 MB each
+
+**Verification (MANDATORY):** After render, `os.path.getsize(pdf_path)` all
+PDFs in `outputs/bid/`. Any file >15 MB is a blocker. `Draft_Bid.pdf` >25 MB
+is a blocker.
+
 ## ⚠️ Quality Checklist (ALL MANDATORY — pipeline fails if ANY unchecked)
 
-- [ ] **Draft_Bid.pdf** exists in `outputs/bid/` (consolidated single PDF with cover page + all volumes)
-- [ ] **6+ individual volume PDFs** exist in `outputs/bid/` (one per bid section)
-- [ ] **EXECUTIVE_SUMMARY.pdf** exists in `outputs/bid/`
-- [ ] All PDFs are > 10KB (not empty/corrupt)
-- [ ] **QA Validation passed** (Step 6b) — no BLOCKER issues (CORRUPT, EMPTY, TOO_SMALL)
-- [ ] **No ghost fills** — CSS has zero `background-color` on block elements (th, td, blockquote, pre, code)
-- [ ] **No blank pages** — every page has meaningful content
-- [ ] **Content validation passed** — zero editorial artifacts ([USER INPUT REQUIRED], **[Theme]**, **WIN THEME**, **REVIEW REQUIRED**, TODO/TBD/PLACEHOLDER)
-- [ ] Page limits checked against SUBMISSION_STRUCTURE (if applicable)
-- [ ] Submission checklist generated
-- [ ] User input markers reported
-- [ ] Assembly report written (`assembly-report.json`)
+## Quality Checklist (MANDATORY — report each by name with evidence)
+
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **Draft_Bid.pdf** exists in `outputs/bid/` — evidence: `ls -la {folder}/outputs/bid/Draft_Bid.pdf` showing size > 10,240 bytes
+2. **6+ individual volume PDFs** exist in `outputs/bid/` (one per bid section) — evidence: `ls {folder}/outputs/bid/*.pdf | wc -l` >= 7 (including Draft_Bid.pdf)
+3. **EXECUTIVE_SUMMARY.pdf** exists in `outputs/bid/` — evidence: `ls -la` showing size > 10,240 bytes
+
+### Schema fidelity
+4. **All PDFs are > 10KB (not empty/corrupt)** — evidence: for each PDF in outputs/bid/, print name and size; flag any < 10,240 bytes as FAIL
+5. **Every PDF in `outputs/bid/` < 25 MB** (procurement portal cap) — evidence: `ls -la outputs/bid/*.pdf` showing no file exceeds 26,214,400 bytes
+6. **Assembly report written (`assembly-report.json`)** — evidence: `ls -la {folder}/outputs/bid/assembly-report.json` size > 100 bytes
+7. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+8. **Risk register PDF orientation = landscape** — evidence: open 04_RISK_REGISTER PDF with PyMuPDF: `assert page.rect.width > page.rect.height` for every page; also confirm "Owner", "Verification", "Status" strings all appear in rendered text
+9. **Every PDF's image count matches figure-registry expected count** — evidence: for each volume PDF, use PyMuPDF to count embedded images vs figure-registry.json figure count for that section; report any mismatch
+10. **QA Validation passed (Step 6b)** — no BLOCKER issues (CORRUPT, EMPTY, TOO_SMALL) — evidence: print qa_issues list; must be empty for BLOCKER-severity items
+11. **Content validation passed** — zero editorial artifacts ([USER INPUT REQUIRED], **[Theme]**, **WIN THEME**, **REVIEW REQUIRED**, TODO/TBD/PLACEHOLDER) in deliverable content — evidence: grep each pattern across all bid-section .md files; report any found
+
+### Anti-regression rules (universal)
+12. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+13. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+14. **No ghost fills** — CSS has zero `background-color` on block elements (th, td, blockquote, pre, code) — evidence: grep `background-color` in PROFESSIONAL_CSS applied to this phase's fitz.Story sections returned 0 matches
+15. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches across all bid-section input files
+16. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+17. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "fitz.Story CSS — NEVER background-color on blocks, NEVER em dashes — applied; landscape for Risk Register — applied")
 
 **⚠️ THIS PHASE IS NON-NEGOTIABLE. The entire pipeline exists to produce PDF deliverables for humans.**
 **If this phase fails or is skipped, the pipeline output is INCOMPLETE and UNUSABLE.**

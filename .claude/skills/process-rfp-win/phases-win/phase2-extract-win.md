@@ -809,13 +809,36 @@ Type Distribution:
 {type_table}
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `requirements-raw.json` created in `shared/`
-- [ ] Target of 247+ requirements achieved
-- [ ] Sub-items extracted and promoted
-- [ ] Workflow requirements merged
-- [ ] All requirements categorized (APP, ENR, BUD, etc.)
-- [ ] All requirements type-classified (FUNCTIONAL, NON_FUNCTIONAL, INTERFACE, SECURITY, COMPLIANCE, CONSTRAINT, DATA)
-- [ ] Type classification confidence distribution logged
-- [ ] Source type distribution logged
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **requirements-raw.json** exists at `{folder}/shared/requirements-raw.json` — evidence: `ls -la` size > 1,024 bytes and parses as valid JSON
+2. **sample-data-analysis.json** exists at `{folder}/shared/sample-data-analysis.json` — evidence: `ls -la` size > 100 bytes and parses as valid JSON (merged from former Phase 2.5)
+
+### Schema fidelity
+3. **requirements-raw.json top-level keys** include `extracted_at`, `summary`, `requirements`, `rtm_rfp_sources` — evidence: list actual top-level keys found
+4. **Total requirements >= 247** (target) — evidence: print `summary.total_requirements`; FAIL if below target (log as warning, not hard block, but MUST report)
+5. **Every requirement has `source_ids[]`** populated (not empty list) — evidence: count requirements with empty source_ids (must be 0 for pattern_extraction requirements; sub_item_promotion may inherit)
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **All requirements type-classified** — every requirement has `requirement_type` key set to one of the 7 valid types — evidence: count requirements with null/missing requirement_type (must be 0)
+8. **Workflow requirements merged** — count from workflow_extraction source > 0 OR log reason if workflow phase produced 0 candidates — evidence: print `summary.from_workflow_extraction`
+9. **Sub-item promotion** occurred for at least some requirements — evidence: print `summary.from_sub_item_promotion` (may be 0 for simple RFPs, but must be explicitly reported)
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "Phase 2 does NOT dedup — Phase 2b owns the single authoritative dedup pass — applied correctly")

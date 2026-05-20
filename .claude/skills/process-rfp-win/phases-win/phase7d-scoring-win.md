@@ -376,10 +376,35 @@ Disqualifiers: {len(disqualifiers)}
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `WIN_SCORECARD.json` created in `shared/`
-- [ ] All 5 scoring areas assessed
-- [ ] Disqualifiers identified
-- [ ] Win probability calculated
-- [ ] Recommendations generated
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **WIN_SCORECARD.json** exists at `{folder}/shared/WIN_SCORECARD.json` — evidence: `ls -la` size > 200 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **WIN_SCORECARD.json top-level keys** include `calculated_at`, `win_probability`, `win_probability_detail`, `scores`, `disqualifiers`, `scoring_model`, `recommendations` — evidence: list actual top-level keys found
+3. **win_probability** is a scalar number (not a dict) — evidence: confirm `type(win_scorecard["win_probability"])` is int or float (V5-F5 fix); print actual value
+4. **All 5 scoring areas present** in `scores`: alignment, value, risk_mitigation, compliance, presentation — evidence: print `list(scores.keys())`
+5. **Every score entry** has a `score` key (float 0-100) — evidence: print `{k: v.get("score") for k, v in scores.items()}`
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **Disqualifiers identified** — evidence: print `len(disqualifiers)` and any CRITICAL disqualifier names (zero is acceptable if none apply)
+8. **Recommendations generated** — evidence: print `len(recommendations)` and confirm entries for any score < 80
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "win_probability is a scalar not dict — V5-F5 fix applied; win_probability_detail preserves full dict")

@@ -7,6 +7,17 @@ model: opus
 
 # Phase 8.4: Business Solution (Per Work Section)
 
+## ⛔ NO-TRUNCATION DISCIPLINE (READ FIRST — BLOCKING)
+
+**Render ALL rows in every requirement and risk table. Render FULL text.** Per SAFS memory (`feedback_screen_encoding_truncation.md`), the win pipeline regressed 2026-05-19 producing mid-word truncation in solution-section risk and requirement tables ("would manifes" / "halt payments and cre" / "in ma..."). The rule:
+
+- **NEVER `[:N]` slice description, text, mitigation, or any deliverable-content string.** Full text always.
+- **NEVER cap rows** with `cat_risks[:5]`, `sorted_reqs[:30]`, `mandatory_in_cat[:10]`, or any per-category limit. Render ALL.
+- **NEVER emit "_Showing N of M_" notices.** Hide nothing.
+- **Mitigation cells** in any embedded risk table MUST be populated from BOTH `mitigation_strategies` (array, structural risks) AND `mitigation_strategy` (singular string, req-level risks). Use `[MITIGATION TBD]` only when source data is genuinely empty — never leave the cell empty `|  |`.
+
+Pipelines produce FULL DATA. Humans decide what to trim. Not the agent.
+
 ## Expert Role
 
 You are a **Business Solution Architect** with expertise in:
@@ -146,13 +157,33 @@ Output: outputs/bid-sections/04_*.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] Solution content created (>12KB total)
-- [ ] Each work section covers its requirements with solution approach
-- [ ] Requirements ordered by composite_priority_score
-- [ ] Data flow described per section
-- [ ] Compliance mapping per section
-- [ ] Section-specific risks with mitigations
-- [ ] Win themes threaded per section
-- [ ] Architecture and integration specs referenced
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **Solution content** exists at `{folder}/outputs/bid-sections/04_SOLUTION.md` (single file) OR at `{folder}/outputs/bid-sections/04[a-f]_*.md` (multiple files) — evidence: `ls -la outputs/bid-sections/04*.md` showing total size > 12,288 bytes
+
+### Schema fidelity
+2. **Each work section covers its requirements with solution approach** — grep "### Requirements Coverage" or equivalent per-section table returned >= 1 hit per major category — evidence: count matches
+3. **No `_Showing N of M_` row-cap notices** in any work section — evidence: grep "_Showing" in 04*.md returned 0 matches
+4. **No empty Mitigation cells** in any embedded risk table — evidence: grep `\|[[:space:]]*\|` in HIGH/CRITICAL rows returned 0 matches
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits; confirm NO `cat_risks[:5]`, `sorted_reqs[:30]`, `mandatory_in_cat[:10]` patterns
+
+### Cross-stage consistency
+6. **Requirements ordered by composite_priority_score** within each section — evidence: confirm the requirements table in at least one section lists higher-score items before lower-score items (spot-check)
+7. **Section-specific risks with mitigations present** — every embedded risk table has its Mitigation column populated from `mitigation_strategies` array OR `mitigation_strategy` singular — evidence: count empty mitigation cells (must be 0)
+8. **Win themes threaded per section** — at least 1 explicit theme reference per major work section — evidence: spot-check 2 sections for theme callout
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+12. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "NEVER `[:N]` slice deliverable strings — rendered ALL rows and FULL text per 2026-05-19 discipline")

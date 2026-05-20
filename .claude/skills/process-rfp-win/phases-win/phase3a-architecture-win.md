@@ -497,12 +497,34 @@ Technology Stack Summary:
   Database: {tech_stack["database"]}
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `ARCHITECTURE.md` created in `outputs/`
-- [ ] File size > 15KB
-- [ ] All architecture layers documented
-- [ ] Technology stack justified
-- [ ] Security section included
-- [ ] Scalability considerations documented
-- [ ] ADRs included
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **ARCHITECTURE.md** exists at `{folder}/outputs/ARCHITECTURE.md` — evidence: `ls -la` showing size > 15,360 bytes (15 KB)
+
+### Schema fidelity
+2. **All architecture layers documented** — grep for each layer heading ("Presentation Layer", "API Gateway Layer", "Business Logic Layer", "Data Access Layer", "Integration Layer", "Infrastructure Layer") each returned >= 1 hit — evidence: grep result per layer
+3. **ADRs section present** — grep "Architecture Decision Records" or "ADR-" returned >= 1 hit — evidence: grep result
+4. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+5. **Every tech version cited in ARCHITECTURE.md prose matches an entry in `tech-lifecycle-evidence.json`** — grep ARCHITECTURE.md for version patterns (e.g., `.NET \d+`, `Node \d+`) and confirm each appears in tech-lifecycle-evidence.json components — evidence: list any version string in prose that lacks a matching evidence entry (must be 0)
+6. **Every ADR has Decision / Alternatives Considered / Consequences sections** — evidence: grep ADR blocks for "Decision:", "Alternatives considered:", "Consequences:" — count ADRs missing any of these (must be 0)
+7. **tech-lifecycle-evidence.json was read** (not WebFetch issued from this phase) — evidence: confirm no WebFetch/WebSearch calls in this phase's execution; all versions sourced from the evidence file
+
+### Anti-regression rules (universal)
+8. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+9. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+10. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+11. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+12. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+13. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "NO hardcoded versions — all sourced from tech-lifecycle-evidence.json; .NET 8 and .NET 9 rejection rules applied")

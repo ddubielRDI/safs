@@ -313,11 +313,34 @@ interop_md = generate_interop_md(integration_reqs, external_systems, domain)
 write_file(f"{folder}/outputs/INTEROPERABILITY.md", interop_md)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `INTEROPERABILITY.md` created in `outputs/`
-- [ ] File size > 5KB
-- [ ] External systems documented
-- [ ] API specifications included
-- [ ] Error handling defined
-- [ ] Security considerations addressed
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **INTEROPERABILITY.md** exists at `{folder}/outputs/INTEROPERABILITY.md` — evidence: `ls -la` showing size > 5,120 bytes (5 KB)
+
+### Schema fidelity
+2. **External Systems Inventory table present** — grep "External System Inventory" returned >= 1 hit — evidence: grep result
+3. **API Specifications section present** — grep "API Specifications" or "Inbound APIs" returned >= 1 hit — evidence: grep result
+4. **Error Handling section present** — grep "Error Handling" or "Retry Strategy" returned >= 1 hit — evidence: grep result
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Protocol versions match RFP-detected versions** — any protocol version detected from RFP requirements (e.g., HL7 FHIR R4/R5, NCPDP SCRIPT version) appears in INTEROPERABILITY.md and matches `protocol_detected_from_rfp` override — evidence: confirm override was applied when detected_versions dict was non-empty
+7. **At least 1 external system per domain type** — the domain-appropriate external systems list (education: CEDARS; healthcare: EHR; default: ERP) appears in the document — evidence: grep for domain-specific system names returned >= 1 hit
+
+### Anti-regression rules (universal)
+8. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+9. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+10. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+11. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+12. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+13. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

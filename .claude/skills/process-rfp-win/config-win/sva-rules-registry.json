@@ -1,13 +1,11 @@
 {
   "version": "1.0.0",
   "description": "Extensible rule definitions for all 7 Stage Validation Agents. Users can add custom rules to the custom_rules array.",
-
   "disposition_rules": {
     "BLOCK": "Any CRITICAL finding that fails triggers BLOCK disposition",
     "ADVISORY": "Any HIGH finding that fails triggers ADVISORY (unless already BLOCK)",
     "PASS": "All findings pass, or only MEDIUM/LOW failures"
   },
-
   "svas": {
     "SVA-1": {
       "name": "Intake Validator",
@@ -95,7 +93,6 @@
         }
       ]
     },
-
     "SVA-2": {
       "name": "Pink Team Review",
       "stage_after": 2,
@@ -117,8 +114,8 @@
           "category": "Consistency",
           "enabled": true,
           "description": "Reduction ratio (raw to normalized) between 10-40%. Below 10% = duplicates remain. Above 40% = over-merged.",
-          "threshold_min": 0.10,
-          "threshold_max": 0.40
+          "threshold_min": 0.1,
+          "threshold_max": 0.4
         },
         {
           "id": "SVA2-REQ-PRIORITY-DIST",
@@ -168,10 +165,20 @@
           "category": "Content",
           "enabled": true,
           "description": "Minimum: 50+ requirements, 3+ categories, evaluation criteria extracted, compliance gate passed."
+        },
+        {
+          "id": "SVA2-DELIVERABLE-NO-ROW-CAPS",
+          "name": "Deliverable Table Row Cap Check",
+          "severity": "HIGH",
+          "category": "Content Quality",
+          "enabled": true,
+          "description": "No _Showing N of M_ row-cap notice appears in any outputs/*.md file. No empty mitigation cell (|  |) appears in a risk-priority row. Catches row-cap truncation and empty-mitigation bugs visible in evaluator PDFs.",
+          "threshold": 0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: _Showing 15 of 281 risks_ and _Showing 200 of 762_ visible in PDFs; empty | | mitigation column in every risk row"
         }
       ]
     },
-
     "SVA-3": {
       "name": "Specification Validator",
       "stage_after": 3,
@@ -241,10 +248,20 @@
           "category": "Content",
           "enabled": true,
           "description": "Spec size per requirement addressed is proportional. Minimum 200 bytes per requirement."
+        },
+        {
+          "id": "SVA3-TECH-STACK-VERSION-CONSISTENCY",
+          "name": "Tech Stack Version Consistency (Bid Markdown)",
+          "severity": "CRITICAL",
+          "category": "Tech Stack Governance",
+          "enabled": true,
+          "description": "Every technology version cited in outputs/*.md and outputs/bid-sections/*.md must match shared/tech-lifecycle-evidence.json recommended_version. Catches stale .NET 8 / .NET 9 text after a .NET 10 migration. Exempt: text inside negative-citation or ADR-alternatives context (competitor warnings, rejected-version rationale).",
+          "threshold": 1.0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: .NET 8 LTS / .NET 9 LTS stale text found in 03_TECHNICAL.md and RISK_REGISTER.md while SVAs reported PASS 94.2/100"
         }
       ]
     },
-
     "SVA-4": {
       "name": "Red Team Review",
       "stage_after": 4,
@@ -308,7 +325,6 @@
         }
       ]
     },
-
     "SVA-5": {
       "name": "Documentation Validator",
       "stage_after": 5,
@@ -349,7 +365,6 @@
         }
       ]
     },
-
     "SVA-6": {
       "name": "Pre-Bid Gate (Red Team Final)",
       "stage_after": 6,
@@ -408,7 +423,6 @@
         }
       ]
     },
-
     "SVA-7": {
       "name": "Gold Team Review",
       "stage_after": 7,
@@ -478,10 +492,77 @@
           "category": "Content",
           "enabled": true,
           "description": "Solution includes competitive contrast. Incumbent weaknesses from CLIENT_INTELLIGENCE.json referenced."
+        },
+        {
+          "id": "SVA7-DIAGRAM-LEGIBILITY",
+          "name": "Diagram Legibility",
+          "category": "Visual Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "Every rendered diagram PNG in outputs/bid/ meets font-size threshold (>=14pt at print scale) OR its mermaid source declares fontSize >= 14px in the theme init directive."
+        },
+        {
+          "id": "SVA7-DIAGRAM-CONTRAST",
+          "name": "Diagram Color Contrast (WCAG AA)",
+          "category": "Visual Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "Every classDef color pair declared in mermaid blueprints (fill vs color) meets WCAG 2.2 AA contrast ratio (>= 4.5:1 for text)."
+        },
+        {
+          "id": "SVA7-DIAGRAM-LABELING",
+          "name": "Diagram Labeling Completeness",
+          "category": "Visual Quality",
+          "severity": "MEDIUM",
+          "enabled": true,
+          "description": "Every diagram node has a label > 2 chars. Sequence-diagram messages are labeled. Flowchart decision diamonds have explicit yes/no (or equivalent) branch labels."
+        },
+        {
+          "id": "SVA7-DIAGRAM-EMBED-COMPLETE",
+          "name": "Diagram Embed Completeness",
+          "category": "Visual Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "Every rendered PNG/SVG in outputs/bid/ has at least one ![]() reference in outputs/bid-sections/*.md. Catches 'PNGs rendered but never embedded' bug where diagrams are absent from evaluator PDFs despite existing on disk.",
+          "threshold": 1.0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: 6 PNG diagrams rendered but ZERO ![]() references in bid markdown; images absent from all PDFs"
+        },
+        {
+          "id": "SVA7-PDF-PAGE-FIT",
+          "name": "PDF Column Fit and Orientation Check",
+          "category": "Visual Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "Uses PyMuPDF to check every bid PDF: (1) rightmost text column must not clip within 50pt of page edge, (2) text must not end mid-word at column boundary, (3) orientation must match declared intent (risk register = landscape). Catches 10-column tables on Letter portrait.",
+          "threshold": 0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: 10-column risk register PDF on Letter portrait; Owner/Verification/Status columns clipped at right edge"
+        },
+        {
+          "id": "SVA7-DELIVERABLE-NO-ROW-CAPS",
+          "name": "Deliverable Table Row Cap Check",
+          "category": "Content Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "No _Showing N of M_ row-cap notice in outputs/bid-sections/*.md. No empty mitigation cell (|  |) in risk-priority rows. Same rule as SVA2-DELIVERABLE-NO-ROW-CAPS applied to final bid sections at Gold Team gate.",
+          "threshold": 0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: same row-cap and empty-mitigation bugs present in bid-sections that should have been caught earlier at SVA-2"
+        },
+        {
+          "id": "SVA7-DELIVERABLE-NO-MIDWORD-BREAKS",
+          "name": "Deliverable Table Mid-Word Truncation Check",
+          "category": "Content Quality",
+          "severity": "HIGH",
+          "enabled": true,
+          "description": "No table cell in outputs/bid-sections/*.md ends with a hyphenated fragment (e.g., 'tamper-') or with a substring match for known truncation signatures ('would manife', 'for entit'). Catches mid-word truncation from upstream extraction artifacts.",
+          "threshold": 0,
+          "auto_correctable": false,
+          "incident": "2026-05-18: 'would manife', 'associating those invoices with a repor', 'tamper-' visible in evaluator PDFs"
         }
       ]
     }
   },
-
   "custom_rules": []
 }

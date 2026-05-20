@@ -256,11 +256,35 @@ entities_md = generate_entities_md(entities, domain)
 write_file(f"{folder}/outputs/ENTITY_DEFINITIONS.md", entities_md)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `ENTITY_DEFINITIONS.md` created in `outputs/`
-- [ ] 40+ entities documented
-- [ ] Attributes listed for each entity
-- [ ] Relationships inferred
-- [ ] Data dictionary included
-- [ ] ERD diagram (conceptual) included
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **ENTITY_DEFINITIONS.md** exists at `{folder}/outputs/ENTITY_DEFINITIONS.md` — evidence: `ls -la` size > 1,024 bytes
+
+### Schema fidelity
+2. **Entity Catalog section present** — grep "Entity Catalog" or "###" (entity name headings) returned >= 1 hit — evidence: grep result
+3. **Data Dictionary Summary table present** — grep "Data Dictionary" or "| Entity | Attributes" returned >= 1 hit — evidence: grep result
+4. **ERD diagram section present** — grep "Entity Relationship Diagram" or ERD-style notation returned >= 1 hit — evidence: grep result
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **40+ entities documented** — evidence: count `###` entity headings in ENTITY_DEFINITIONS.md; warn if < 40 (RFPs with few entities may score < 40 legitimately, report actual count)
+7. **Attributes listed for each entity** — every entity section has an "Attributes" table — evidence: count entity sections without an attributes table (must be 0)
+8. **Relationships inferred** for entities with foreign keys — evidence: count entity sections with "Relationships" subsection >= 1
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches in cells with HIGH/MEDIUM/CRITICAL severity rows
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

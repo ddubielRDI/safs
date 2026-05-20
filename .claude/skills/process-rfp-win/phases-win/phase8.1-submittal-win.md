@@ -261,22 +261,35 @@ Output: outputs/bid-sections/01_SUBMITTAL.md
 """)
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `01_SUBMITTAL.md` created in `outputs/bid-sections/` (>5KB)
-- [ ] NOSE formula applied (Needs, Outcomes, Solution, Evidence)
-- [ ] Client name and RFP number correctly referenced
-- [ ] Company profile data populated from company-profile.json
-- [ ] Required certifications/attestations included from compliance matrix
-- [ ] Win themes threaded in opening and solution sections (>= 3 themes referenced)
-- [ ] `[USER INPUT REQUIRED]` markers for: signatory, contact info only (NOT past performance)
-- [ ] NOSE Evidence section cites real projects from matched_projects[] (not generic stats)
-- [ ] Condensed case study embedded in "Why Resource Data" section (from #1 ranked match)
-- [ ] No `[CASE STUDY PLACEHOLDER]` markers remain
-- [ ] Authorized representative table populated
-- [ ] Evaluation factor callout box at top of letter previewing top factors by weight
-- [ ] Needs section frames around highest-weighted evaluation factors
-- [ ] Outcomes section invokes >= 2 win themes with explicit **[Theme Name]** format
-- [ ] EXECUTIVE evaluator message headline/proof points integrated into Solution section
-- [ ] section_theme_mandates checked for submittal-specific theme requirements
-- [ ] At least one ghost phrase per major win theme woven into differentiator sections
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **01_SUBMITTAL.md** exists at `{folder}/outputs/bid-sections/01_SUBMITTAL.md` — evidence: `ls -la` showing size > 5,120 bytes
+
+### Schema fidelity
+2. **NOSE formula applied** — grep for "Needs" AND "Outcomes" AND "Solution" AND "Evidence" as section headings each returned >= 1 hit — evidence: grep result per keyword
+3. **No `[CASE STUDY PLACEHOLDER]` markers remain** — evidence: grep "[CASE STUDY PLACEHOLDER]" returned 0 matches
+4. **No file-name references** (.json, .md) in bid output — evidence: grep "\\.json\|Past_Projects\\.md" in 01_SUBMITTAL.md returned 0 matches
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Win themes threaded** — count explicit **[Theme Name]** format references (must be >= 3 distinct themes) — evidence: grep `\*\*\[.*\]\*\*` returned >= 3 matches with distinct theme names
+7. **EXECUTIVE evaluator message integrated** — grep "evaluator_messages" or EXECUTIVE persona headline keywords in submittal returned >= 1 hit — evidence: confirm the executive headline phrase from POSITIONING_OUTPUT.json appears
+8. **section_theme_mandates checked** — confirm any submittal-specific mandated themes appear in 01_SUBMITTAL.md — evidence: print submittal-relevant themes from mandates and confirm presence
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "no file names in bid output — used client-facing language only")

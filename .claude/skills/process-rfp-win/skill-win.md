@@ -16,10 +16,76 @@ disable-model-invocation: true
     Background body code keeps Task(...) calls — backwards compatible with Agent dispatch, scheduled for rename in Tranche D.
     Phase file fixes (Linux paths, bare open(), [:N] truncation in schema fields, traceability audit gate), CSS renderer documentation, and orphan-file decisions deferred to Tranches C-G pending user review.
     See memory/last-audit.md for full audit record.
+
+  2026-05-18 (skill-architecture refactor — same day, follow-on tranche):
+    DEPRECATED 8 orphan / superseded phase files (renamed *.md.deprecated, archival-only):
+      phase8a-title-win.md, phase8b-solution-win.md, phase8c-timeline-win.md (legacy 8a/8b/8c chain — superseded by 8.1-8.6 multi-volume),
+      phase8.0a-intel-win.md (relocated to Phase 1.95),
+      phase8-bid-author-win.md (legacy monolith — superseded by 8.1-8f),
+      phase-addendum-win.md (orphan; never wired into PHASES),
+      phase-postrun-metrics-win.md (orphan; metrics now inline via aggregate_metrics()),
+      phase2.5-sample-win.md (merged into phase2-extract-win.md Step 7c — same shared/sample-data-analysis.json output),
+      phase6b-navigation-win.md (merged into phase6-manifest-win.md — same outputs/NAVIGATION_GUIDE.md output).
+    Phase 9 (phase9-postbid-win.md) preserved — confirmed REFERENCED in PHASES list as post-pipeline optional.
+
+    NEW PHASE FILES (4):
+      phase3a-tech-stack-win.md (Stage 3, BEFORE phase3a) — split out evidence-backed LTS lookup from phase3a Step 4. Single producer of shared/tech-lifecycle-evidence.json; phase3a now consumes that file deterministically (no WebFetch/WebSearch in architecture authoring).
+      phase3h-diagrams-win.md (Stage 3, AFTER phase3g) — authors DIAGRAM_BLUEPRINTS.md and shared/diagram-blueprints.json with 6 mandatory diagrams (logical architecture, sequence/integration, ER, Gantt-with-critical-path, org chart, risk heat map). Phase 8d becomes a pure renderer of these blueprints.
+      phase1.85-questions-win.md (Stage 1, BEFORE Phase 1.9) — deadline-aware clarifying-questions list (outputs/CLARIFYING_QUESTIONS.md); honors questions-deadline status from SUBMISSION_STRUCTURE.json so an already-passed deadline becomes a documented input to the Go/No-Go calculation.
+      phase1.97-competitive-position-win.md (Stage 1, AFTER Phase 1.95) — pulls ghost strategy + pain-point map + switching-cost analysis + win conditions from Stage 7 to Stage 1. Stage 3 architects now design with competitive frame; Phase 8.0 consumes COMPETITIVE_POSITION.json instead of recomputing.
+
+    SVA-7 RULES ADDED (3, diagram quality):
+      SVA7-DIAGRAM-LEGIBILITY (HIGH) — every rendered PNG meets size threshold AND mermaid source declares fontSize >= 14px.
+      SVA7-DIAGRAM-CONTRAST (HIGH) — every classDef color pair meets WCAG 2.2 AA contrast 4.5:1.
+      SVA7-DIAGRAM-LABELING (MEDIUM) — nodes labeled >2 chars, sequence messages labeled, decision diamonds have branch labels.
+
+    PHASES list updated: added 4 new entries; removed 2.5 + 6b. STAGE_BOUNDARIES updated: Stage 1 now ["0","1","1.5","1.6","1.7","1.8","1.85","1.9","1.95","1.97"], Stage 2 ["2a","2","2b","2c","2d"] (no 2.5), Stage 3 ["3a-tech-stack","3a","3b","3c","3e","3f","3g","3h"], Stage 5 ["6","6c"] (no 6b). Sprint mode unchanged in spirit; sprint phase lists also pruned.
 -->
 
 
 # /process-rfp-win — Full RFP-to-Bid Pipeline (Mayor Orchestrator)
+
+## ⛔ Phase Verifier Dispatch Pattern (READ FIRST — BLOCKING)
+
+Five high-risk phases have dedicated content-aware verifiers that run AFTER the phase agent reports done and BEFORE the stage's SVA gate. These verifiers catch bug classes (truncation, row caps, stale versions, orphaned embeds, wrong orientation) that SVA structural checks miss.
+
+### Verifier Registry
+
+| Phase | Verifier File | SVA Gate After |
+|-------|---------------|----------------|
+| 3a-tech-stack | `phases-win/verifier-phase3a-tech-stack-win.md` | SVA-3 |
+| 4 (Traceability) | `phases-win/verifier-phase4-win.md` | SVA-4 |
+| 8.4k (Risk Register) | `phases-win/verifier-phase8.4k-riskreg-win.md` | SVA-7 |
+| 8d (Diagrams) | `phases-win/verifier-phase8d-diagrams-win.md` | phase8e |
+| 8e (PDF Assembly) | `phases-win/verifier-phase8e-pdf-win.md` | SVA-7 |
+
+### Dispatch Protocol (MANDATORY)
+
+```
+phase agent reports done
+  → Read verifier-{phase-id}-win.md in FULL
+  → Run all verifier checks
+  → If PASS: continue to next phase / SVA gate
+  → If CONCERN: log advisory, continue (do not block)
+  → If FAIL:
+      1. Format corrective instructions from verifier's "Corrective Instructions on FAIL" section
+      2. Re-dispatch original phase agent with those instructions (max 1 retry)
+      3. Re-run verifier after retry
+      4. If FAIL again: HALT and escalate to human via AskUserQuestion with full verifier report
+         Do NOT attempt a second retry or silent workaround
+```
+
+### Why these 5 phases (rationale — do not skip)
+
+| Phase | Today's bug it would have caught |
+|-------|----------------------------------|
+| 3a-tech-stack | .NET 8/9 contamination from stale training-data versions |
+| 4 (RTM) | Requirements silently dropped; risks not cross-linked |
+| 8.4k (Risk Register) | Row cap at 15/281, empty mitigations, mid-word `entit`, portrait overflow |
+| 8d (Diagrams) | Rendered PNGs with zero embed references → zero-diagram PDFs |
+| 8e (PDF Assembly) | Portrait Risk Register, missing column headers, zero embedded images |
+
+---
 
 ## ⛔ Execution Discipline (READ FIRST — BLOCKING)
 
@@ -82,13 +148,13 @@ When a user requests "Stage 5", executing BOTH Stage 5 AND Stage 6 (or any other
 
 | Stage | Phases | SVA Gate | Outputs |
 |-------|--------|----------|---------|
-| **Stage 1** | 0, 1, 1.5, 1.6, 1.7, 1.8, 1.9, 1.95 | SVA-1 (Intake) | Folder setup, flattening, domain, evaluation, compliance, submission, go/no-go, client intel |
-| **Stage 2** | 2a, 2, 2.5, 2b, 2c, 2d | SVA-2 (Pink Team) | Workflow, requirements, sample data, normalize, catalog, coverage |
-| **Stage 3** | 3a, 3b, 3c, 3e, 3f, 3g | SVA-3 (Spec Validator) | Architecture, interop, security, UI, entities, risks |
+| **Stage 1** | 0, 1, 1.5, 1.6, 1.7, 1.8, **1.85**, 1.9, 1.95, **1.97** | SVA-1 (Intake) | Folder setup, flattening, domain, evaluation, compliance, submission, clarifying questions, go/no-go, client intel, competitive position |
+| **Stage 2** | 2a, 2, 2b, 2c, 2d | SVA-2 (Pink Team) | Workflow, requirements (incl. sample data analysis as Step 7c), normalize, catalog, coverage |
+| **Stage 3** | **3a-tech-stack**, 3a, 3b, 3c, 3e, 3f, 3g, **3h** | SVA-3 (Spec Validator) | Tech-stack evidence, architecture, interop, security, UI, entities, risks, diagram blueprints |
 | **Stage 4** | 4, 5 | SVA-4 (Red Team) | Traceability + UNIFIED_RTM.json, effort estimation |
-| **Stage 5** | 6, 6b, 6c | SVA-5 (Doc Validator) | Manifest, executive summary, navigation guide, context bundle |
+| **Stage 5** | 6, 6c | SVA-5 (Doc Validator) | Manifest + executive summary + navigation guide (merged into phase 6), context bundle |
 | **Stage 6** | 7, 7c, 7d | SVA-6 (Pre-Bid Gate) | Validation + gap analysis, personas, win scorecard |
-| **Stage 7** | 8.0, 8.1-8.6, 8.4r, 8.4k, 8f, 8d, **8e** | SVA-0 (Blue Team) + SVA-7 (Gold Team) | Positioning, multi-volume bid, RTM verify, diagrams, **⚠️ MANDATORY PDFs** |
+| **Stage 7** | 8.0, 8.1-8.6, 8.4r, 8.4k, 8f, 8d, **8e** | SVA-0 (Blue Team) + SVA-7 (Gold Team, includes 3 diagram-QA rules) | Positioning, multi-volume bid, RTM verify, diagram rendering (from Stage 3 blueprints), **⚠️ MANDATORY PDFs** |
 
 ### Self-Check Before Execution
 
@@ -104,7 +170,7 @@ When a user requests "Stage 5", executing BOTH Stage 5 AND Stage 6 (or any other
 ```
 User: "lets do stage 5"
 
-✅ CORRECT: Generate ONLY Phase 6 (MANIFEST.md, EXECUTIVE_SUMMARY.md) and Phase 6b (NAVIGATION_GUIDE.md)
+✅ CORRECT: Generate ONLY Phase 6 (MANIFEST.md + EXECUTIVE_SUMMARY.md + NAVIGATION_GUIDE.md — merged 2026-05-18) and Phase 6c (context bundle)
 ❌ WRONG: Generate Stage 5 outputs AND Stage 6 outputs (validation, gap analysis, personas, scoring)
 ```
 
@@ -143,8 +209,14 @@ User: "lets do stage 5"
 | `outputs/INTEROPERABILITY.md` | 3b | 5KB |
 | `outputs/EFFORT_ESTIMATION.md` | 5 | 8KB |
 | `outputs/TRACEABILITY.md` | 4 | 10KB |
-| `outputs/NAVIGATION_GUIDE.md` | 6b | 3KB |
+| `outputs/NAVIGATION_GUIDE.md` | 6 | 3KB |
 | `outputs/MANIFEST.md` | 6 | 2KB |
+| `outputs/CLARIFYING_QUESTIONS.md` | 1.85 | 2KB |
+| `outputs/COMPETITIVE_POSITION.md` | 1.97 | 3KB |
+| `outputs/DIAGRAM_BLUEPRINTS.md` | 3h | 5KB |
+| `shared/bid/COMPETITIVE_POSITION.json` | 1.97 | 1KB |
+| `shared/diagram-blueprints.json` | 3h | 1KB |
+| `shared/tech-lifecycle-evidence.json` | 3a-tech-stack | 1KB |
 | `shared/UNIFIED_RTM.json` | 4 | 10KB |
 | `shared/SUBMISSION_STRUCTURE.json` | 1.8 | 2KB |
 | `shared/GO_NOGO_DECISION.json` | 1.9 | 1KB |
@@ -270,18 +342,24 @@ SVA-S4: Gold Team Review (SVA-7 — full rules, human gate)
 SPRINT_STAGES = {
     "S0": {
         "name": "Sprint Intake",
+        # Sprint skips Phase 1.85 (clarifying questions) and 1.97 (competitive position)
+        # by default — sprint mode assumes pre-approved bid with these analyses already done.
+        # Re-add to the list if you want them on a per-run basis.
         "phases": ["0", "1", "1.5", "1.6", "1.7", "1.8", "1.95"],
         "sva": "SVA-S1",
         "sva_rules": ["SVA-1", "SVA-2"],  # Combined rule sets
-        "notes": "Skips Phase 1.9 (Go/No-Go) — sprint assumes pre-approved bid"
+        "notes": "Skips Phase 1.9 (Go/No-Go), 1.85 (Clarifying Questions), 1.97 (Competitive Position) — sprint assumes pre-approved bid with strategy already set"
     },
     "S2": {
         "name": "Sprint Requirements",
-        "phases": ["2a", "2", "2.5", "2b", "2c", "2d"]
+        # 2.5 merged into Phase 2 Step 7c on 2026-05-18; sample-data-analysis.json still produced.
+        "phases": ["2a", "2", "2b", "2c", "2d"]
     },
     "S3": {
         "name": "Sprint Specifications",
-        "phases": ["3a", "3b", "3c", "3e", "3f", "3g"]
+        # 3a-tech-stack and 3h (diagram blueprints) added 2026-05-18; sprint may include them
+        # for full diagram quality + LTS gating. Drop them if sprint should defer to defaults.
+        "phases": ["3a-tech-stack", "3a", "3b", "3c", "3e", "3f", "3g", "3h"]
     },
     "S4": {
         "name": "Sprint Traceability",
@@ -291,7 +369,8 @@ SPRINT_STAGES = {
     },
     "S5": {
         "name": "Sprint Documentation",
-        "phases": ["6", "6b", "6c"]
+        # 6b merged into Phase 6 on 2026-05-18; NAVIGATION_GUIDE.md still produced.
+        "phases": ["6", "6c"]
     },
     "S6": {
         "name": "Sprint QA",
@@ -430,33 +509,36 @@ def write_file(path, text):
 ## Phase Execution Order
 
 ```
-STAGE 1: Document Intake (9 phases + SVA-1)
+STAGE 1: Document Intake (11 phases + SVA-1)
   Phase 0:    Folder Organization       → phase0-organize-win.md
   Phase 1:    Document Flattening       → phase1-flatten-win.md (PARALLEL)
   Phase 1.5:  Domain Detection          → phase1.5-domain-win.md
   Phase 1.6:  Evaluation Criteria       → phase1.6-evaluation-win.md
   Phase 1.7:  Compliance Gatekeeper     → phase1.7-compliance-win.md [BLOCKING GATE]
   Phase 1.8:  Submission Structure      → phase1.8-submission-win.md
+  Phase 1.85: Clarifying Questions      → phase1.85-questions-win.md [NEW 2026-05-18]
   Phase 1.9:  Go/No-Go Decision Gate    → phase1.9-gonogo-win.md [ADVISORY GATE]
   Phase 1.95: Client Intelligence       → phase1.95-intel-win.md [CONDITIONAL: GO only]
+  Phase 1.97: Competitive Position      → phase1.97-competitive-position-win.md [NEW 2026-05-18]
   [SVA-1]     Intake Validator          → sva1-intake-validator-win.md
 
-STAGE 2: Requirements Engineering (6 phases + SVA-2)
+STAGE 2: Requirements Engineering (5 phases + SVA-2)
   Phase 2a:   Workflow Extraction       → phase2a-workflow-win.md
-  Phase 2:    Requirements Extraction   → phase2-extract-win.md
-  Phase 2.5:  Sample Data Analysis      → phase2.5-sample-win.md
+  Phase 2:    Requirements Extraction   → phase2-extract-win.md (now incl. Step 7c: Sample Data Analysis — merged 2026-05-18 from former Phase 2.5)
   Phase 2b:   Normalize Requirements    → phase2b-normalize-win.md
   Phase 2c:   Requirements Catalog      → phase2c-catalog-win.md
   Phase 2d:   Coverage Validation       → phase2d-coverage-win.md [BLOCKING GATE]
   [SVA-2]     PINK TEAM REVIEW          → sva2-pink-team-win.md
 
-STAGE 3: Specifications (6 phases + SVA-3)
-  Phase 3a:   Architecture Specs        → phase3a-architecture-win.md  (parallel)
+STAGE 3: Specifications (8 phases + SVA-3)
+  Phase 3a-tech-stack: Tech Stack LTS Lookup → phase3a-tech-stack-win.md [NEW 2026-05-18: produces shared/tech-lifecycle-evidence.json]
+  Phase 3a:   Architecture Specs        → phase3a-architecture-win.md  (parallel — now CONSUMES tech-lifecycle-evidence.json instead of producing it)
   Phase 3b:   Interoperability Specs    → phase3b-interop-win.md       (parallel)
   Phase 3c:   Security Specs            → phase3c-security-win.md      (parallel)
   Phase 3e:   UI/UX Specs               → phase3e-ui-win.md            (parallel)
   Phase 3f:   Entity Definitions        → phase3f-entities-win.md      (parallel)
   Phase 3g:   Risk Assessment           → phase3g-risks-win.md         (sequential after 3a-3f)
+  Phase 3h:   Diagram Blueprints        → phase3h-diagrams-win.md      [NEW 2026-05-18: blueprints consumed by Phase 8d]
   [SVA-3]     Specification Validator   → sva3-spec-validator-win.md
 
 STAGE 4: Traceability & Estimation (2 phases + SVA-4)
@@ -464,9 +546,8 @@ STAGE 4: Traceability & Estimation (2 phases + SVA-4)
   Phase 5:    Effort Estimation         → phase5-estimation-win.md
   [SVA-4]     RED TEAM REVIEW           → sva4-red-team-win.md
 
-STAGE 5: Documentation (3 phases + SVA-5)
-  Phase 6:    Manifest Generation       → phase6-manifest-win.md
-  Phase 6b:   Navigation Guide          → phase6b-navigation-win.md
+STAGE 5: Documentation (2 phases + SVA-5)
+  Phase 6:    Manifest + Exec Summary + Navigation Guide → phase6-manifest-win.md (NAVIGATION_GUIDE.md merged 2026-05-18 from former Phase 6b)
   Phase 6c:   Context Bundle            → phase6c-context-bundle-win.md (enhanced: RTM scores + full eval mapping + theme mandates)
   [SVA-5]     Documentation Validator   → sva5-doc-validator-win.md
 
@@ -488,12 +569,12 @@ STAGE 7: Bid Generation (12 phases + SVA-0 + SVA-7)
   Phase 8.5:  Financial Proposal        → phase8.5-financial-win.md [ENHANCED: market rate fallback]
   Phase 8.6:  Technical Integration     → phase8.6-integration-win.md [NEW]
   Phase 8f:   RTM Verification          → phase8f-rtm-verify-win.md [NEW]
-  [SVA-7]     GOLD TEAM REVIEW          → sva7-gold-team-win.md
-  Phase 8d:   Diagram Rendering         → phase8d-diagrams-win.md
+  [SVA-7]     GOLD TEAM REVIEW          → sva7-gold-team-win.md (now incl. 3 diagram-QA rules: LEGIBILITY, CONTRAST, LABELING — added 2026-05-18)
+  Phase 8d:   Diagram Rendering         → phase8d-diagrams-win.md (renders blueprints from Phase 3h)
   Phase 8e:   Multi-File PDF Assembly   → phase8e-pdf-win.md [RESTRUCTURED]
 ```
 
-**Total: 38 phases + 8 SVAs = 46 execution units (full mode)**
+**Total: 41 phases + 8 SVAs = 49 execution units (full mode, post-2026-05-18 refactor — net +3 over the prior 38 + 8 = 46)**
 **Sprint: ~14 execution units (see Sprint Mode below)**
 
 ---
@@ -541,7 +622,7 @@ else:
 STAGE_BOUNDARIES = {
     1: {
         "name": "Document Intake",
-        "phases": ["0", "1", "1.5", "1.6", "1.7", "1.8", "1.9", "1.95"],
+        "phases": ["0", "1", "1.5", "1.6", "1.7", "1.8", "1.85", "1.9", "1.95", "1.97"],
         "sva": "SVA-1",
         "sva_subskill": "sva1-intake-validator-win.md",
         "sva_report": "sva1-intake.json",
@@ -549,7 +630,7 @@ STAGE_BOUNDARIES = {
     },
     2: {
         "name": "Requirements Engineering",
-        "phases": ["2a", "2", "2.5", "2b", "2c", "2d"],
+        "phases": ["2a", "2", "2b", "2c", "2d"],   # 2.5 merged into 2 (Step 7c) on 2026-05-18
         "sva": "SVA-2",
         "sva_subskill": "sva2-pink-team-win.md",
         "sva_report": "sva2-pink-team.json",
@@ -557,7 +638,7 @@ STAGE_BOUNDARIES = {
     },
     3: {
         "name": "Specifications",
-        "phases": ["3a", "3b", "3c", "3e", "3f", "3g"],
+        "phases": ["3a-tech-stack", "3a", "3b", "3c", "3e", "3f", "3g", "3h"],
         "sva": "SVA-3",
         "sva_subskill": "sva3-spec-validator-win.md",
         "sva_report": "sva3-spec.json",
@@ -573,7 +654,7 @@ STAGE_BOUNDARIES = {
     },
     5: {
         "name": "Documentation",
-        "phases": ["6", "6b", "6c"],
+        "phases": ["6", "6c"],   # 6b merged into 6 on 2026-05-18 (NAVIGATION_GUIDE.md now produced by Phase 6)
         "sva": "SVA-5",
         "sva_subskill": "sva5-doc-validator-win.md",
         "sva_report": "sva5-doc.json",
@@ -680,6 +761,21 @@ PHASES = [
         "required_outputs": ["{folder}/shared/SUBMISSION_STRUCTURE.json"]
     },
     {
+        "id": "1.85",
+        "name": "Clarifying Questions",
+        "stage": 1,
+        "subskill": "phase1.85-questions-win.md",
+        "expert_role": "Procurement Strategist",
+        "domain_expertise": "RFP ambiguity resolution, government procurement Q&A protocols",
+        "skill": "procurement-analyst",
+        "required_outputs": [
+            "{folder}/outputs/CLARIFYING_QUESTIONS.md",
+            "{folder}/shared/clarifying-questions-summary.json"
+        ],
+        "min_size_kb": 2,
+        "notes": "Runs BEFORE Phase 1.9 so an already-passed RFP questions deadline becomes a documented input to the Go/No-Go calc. Honors SUBMISSION_STRUCTURE.json deadline status."
+    },
+    {
         "id": "1.9",
         "name": "Go/No-Go Decision Gate",
         "stage": 1,
@@ -704,7 +800,25 @@ PHASES = [
         "required_outputs": ["{folder}/shared/bid/CLIENT_INTELLIGENCE.json"],
         "conditional": True,
         "condition": "Only runs if GO_NOGO_DECISION.json recommends GO or user overrides",
-        "notes": "Relocated from Phase 8.0a (Stage 7) to Stage 1 for earlier competitive intelligence. Consumed by phases 2a, 3a, 3f (optional) and 8.0 (required)."
+        "notes": "Relocated from Phase 8.0a (Stage 7) to Stage 1 for earlier competitive intelligence. Consumed by phases 2a, 3a, 3f (optional), 1.97, and 8.0 (required)."
+    },
+    {
+        "id": "1.97",
+        "name": "Competitive Position",
+        "stage": 1,
+        "subskill": "phase1.97-competitive-position-win.md",
+        "expert_role": "Competitive Strategist",
+        "domain_expertise": "Win/loss analysis, ghost strategy, incumbent vs challenger positioning",
+        "skill": "capture-strategist",
+        "sub_skill": "competitive-positioning",
+        "required_outputs": [
+            "{folder}/outputs/COMPETITIVE_POSITION.md",
+            "{folder}/shared/bid/COMPETITIVE_POSITION.json"
+        ],
+        "min_size_kb": 3,
+        "conditional": True,
+        "condition": "Only runs if GO_NOGO_DECISION.json recommends GO or user overrides",
+        "notes": "NEW 2026-05-18. Pulls ghost strategy + pain-point map + switching-cost analysis + win conditions from Stage 7 (phase8.0) into Stage 1, giving Stage 3 architects a competitive frame BEFORE design. Consumed by phases 3a-3g and 8.0."
     },
 
     # ---- STAGE 2: Requirements Engineering ----
@@ -726,15 +840,8 @@ PHASES = [
         "domain_expertise": "Requirements elicitation, traceability",
         "required_outputs": ["{folder}/shared/requirements-raw.json"]
     },
-    {
-        "id": "2.5",
-        "name": "Sample Data Analysis",
-        "stage": 2,
-        "subskill": "phase2.5-sample-win.md",
-        "expert_role": "Data Analyst",
-        "domain_expertise": "Data profiling, sample data analysis",
-        "required_outputs": ["{folder}/shared/sample-data-analysis.json"]
-    },
+    # Phase 2.5 was merged into Phase 2 Step 7c on 2026-05-18; sample-data-analysis.json
+    # is now produced inline by phase2-extract-win.md at the same path. No separate phase.
     {
         "id": "2b",
         "name": "Normalize Requirements",
@@ -770,6 +877,17 @@ PHASES = [
 
     # ---- STAGE 3: Specifications ----
     {
+        "id": "3a-tech-stack",
+        "name": "Tech Stack Lifecycle Lookup",
+        "stage": 3,
+        "subskill": "phase3a-tech-stack-win.md",
+        "expert_role": "Technology Strategist",
+        "domain_expertise": "Technology lifecycle, LTS scheduling, vendor support matrices, evidence-backed version selection",
+        "required_outputs": ["{folder}/shared/tech-lifecycle-evidence.json"],
+        "min_size_kb": 1,
+        "notes": "NEW 2026-05-18. Sole producer of shared/tech-lifecycle-evidence.json (consumed by phase3a + SVA-3 rule SVA3-TECH-STACK-LTS-VERIFIED). Must run BEFORE phase3a so architecture authoring is deterministic (no WebFetch/WebSearch in phase3a)."
+    },
+    {
         "id": "3a",
         "name": "Architecture Specs",
         "stage": 3,
@@ -778,7 +896,9 @@ PHASES = [
         "domain_expertise": "System design, cloud architecture, scalability",
         "required_outputs": ["{folder}/outputs/ARCHITECTURE.md"],
         "min_size_kb": 15,
-        "parallel_group": "phase3"
+        "parallel_group": "phase3",
+        "depends_on": ["3a-tech-stack"],
+        "notes": "Now CONSUMES shared/tech-lifecycle-evidence.json (produced by phase3a-tech-stack-win) instead of producing it. HALTS if the evidence file is missing — does not issue WebFetch/WebSearch itself."
     },
     {
         "id": "3b",
@@ -835,6 +955,21 @@ PHASES = [
             "{folder}/shared/REQUIREMENT_RISKS.json"
         ]
     },
+    {
+        "id": "3h",
+        "name": "Diagram Blueprints",
+        "stage": 3,
+        "subskill": "phase3h-diagrams-win.md",
+        "expert_role": "Visual Design Architect",
+        "domain_expertise": "Mermaid diagrams, information design, accessibility-aware visualization",
+        "required_outputs": [
+            "{folder}/outputs/DIAGRAM_BLUEPRINTS.md",
+            "{folder}/shared/diagram-blueprints.json"
+        ],
+        "min_size_kb": 5,
+        "depends_on": ["3a", "3b", "3c", "3f", "3g"],
+        "notes": "NEW 2026-05-18. Authors 6 mandatory diagrams (logical architecture, sequence/integration, ER, Gantt-with-critical-path, org chart, risk heat map) as BLUEPRINTS BEFORE Stage 8 rendering. Phase 8d consumes shared/diagram-blueprints.json as a pure renderer. Quality criteria (font 14pt, WCAG-AA contrast, Okabe-Ito palette, descriptive titles, source citation) gated by SVA-7 diagram-QA rules."
+    },
 
     # ---- STAGE 4: Traceability & Estimation ----
     {
@@ -865,25 +1000,20 @@ PHASES = [
     # ---- STAGE 5: Documentation ----
     {
         "id": "6",
-        "name": "Manifest Generation",
+        "name": "Manifest + Executive Summary + Navigation Guide",
         "stage": 5,
         "subskill": "phase6-manifest-win.md",
         "expert_role": "Technical Writer",
         "domain_expertise": "Documentation, audit trails",
         "required_outputs": [
             "{folder}/outputs/MANIFEST.md",
-            "{folder}/outputs/EXECUTIVE_SUMMARY.md"
-        ]
+            "{folder}/outputs/EXECUTIVE_SUMMARY.md",
+            "{folder}/outputs/NAVIGATION_GUIDE.md"
+        ],
+        "notes": "Phase 6b (Navigation Guide) merged into this phase 2026-05-18. NAVIGATION_GUIDE.md now produced inline at the same path. SVA-5 rule SVA5-NAV-GUIDE-LINKS still validates the file."
     },
-    {
-        "id": "6b",
-        "name": "Navigation Guide",
-        "stage": 5,
-        "subskill": "phase6b-navigation-win.md",
-        "expert_role": "Technical Writer",
-        "domain_expertise": "User guides, navigation aids",
-        "required_outputs": ["{folder}/outputs/NAVIGATION_GUIDE.md"]
-    },
+    # Phase 6b was merged into Phase 6 on 2026-05-18; NAVIGATION_GUIDE.md is now produced
+    # by phase6-manifest-win.md alongside MANIFEST.md and EXECUTIVE_SUMMARY.md.
     {
         "id": "6c",
         "name": "Context Bundle",

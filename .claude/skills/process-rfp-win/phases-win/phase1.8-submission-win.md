@@ -294,11 +294,35 @@ Naming: {naming_convention["pattern"]}
 Output: shared/SUBMISSION_STRUCTURE.json
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `SUBMISSION_STRUCTURE.json` written (>2KB)
-- [ ] At least 3 volumes identified
-- [ ] Page limits extracted where specified
-- [ ] Format requirements captured
-- [ ] Naming convention detected or defaulted
-- [ ] Each volume mapped to a pipeline phase where possible
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **SUBMISSION_STRUCTURE.json** exists at `{folder}/shared/SUBMISSION_STRUCTURE.json` — evidence: `ls -la` showing size > 2,048 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **SUBMISSION_STRUCTURE.json top-level keys** include `detected_at`, `detection_confidence`, `volumes`, `format_requirements`, `naming_convention`, `assembly_instructions` — evidence: list actual top-level keys found
+3. **volumes array** contains >= 3 entries — evidence: print `len(structure["volumes"])`
+4. **Every volume** has at minimum `title` and `order` keys — evidence: print keys of volumes[0]
+5. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+6. **Page limits extracted** where specified in RFP — evidence: print `overall_page_limit` value (may be null if not specified; null is acceptable, but absence of key is not)
+7. **Every volume mapped to a pipeline phase** via `mapped_phase` key where content type was recognized — evidence: count volumes with mapped_phase populated vs total volumes
+8. **Naming convention** has `pattern` key (may be default template value) — evidence: print `naming_convention.pattern`
+
+### Anti-regression rules (universal)
+9. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+10. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+11. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+12. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches in cells with HIGH/MEDIUM/CRITICAL severity rows
+13. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+14. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable

@@ -1107,17 +1107,37 @@ NOTE: bid_sections[] and evidence[] are empty stubs.
       Phase 8f (RTM verification) will run the 14 verification queries.
 ```
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `UNIFIED_RTM.json` created in `shared/` (conforms to `schemas/unified-rtm.schema.json`)
-- [ ] `TRACEABILITY.md` created in `outputs/` (>15KB)
-- [ ] `traceability-links.json` created in `shared/` (backward-compatible)
-- [ ] All 8 entity arrays populated: rfp_sources, mandatory_items, requirements, specifications, risks, bid_sections (stub), evidence (stub), evaluation_criteria
-- [ ] Mandatory items linked to requirements (text similarity >= 0.35)
-- [ ] Requirements linked to spec sections (section-level, not file-level)
-- [ ] Evaluation weight inheritance computed (composite_priority_score)
-- [ ] chain_links[] materialized for every requirement with completeness_score
-- [ ] Verification metrics computed (forward coverage, chain completeness)
-- [ ] Integrity hash computed for change detection
-- [ ] Broken chains identified and reported
-- [ ] Top requirements by composite score highlighted in TRACEABILITY.md
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **UNIFIED_RTM.json** exists at `{folder}/shared/UNIFIED_RTM.json` — evidence: `ls -la` size > 10,240 bytes and parses as valid JSON
+2. **TRACEABILITY.md** exists at `{folder}/outputs/TRACEABILITY.md` — evidence: `ls -la` showing size > 15,360 bytes (15 KB)
+3. **traceability-links.json** exists at `{folder}/shared/traceability-links.json` — evidence: `ls -la` size > 500 bytes and parses as valid JSON
+
+### Schema fidelity
+4. **UNIFIED_RTM.json entities array contains all 8 entity types** — `rfp_sources`, `mandatory_items`, `requirements`, `specifications`, `risks`, `bid_sections` (stub), `evidence` (stub), `evaluation_criteria` — evidence: print `list(rtm["entities"].keys())`
+5. **Every requirement in entities.requirements** has `req_id`, `composite_priority_score`, `evaluation_factor`, `source_ids`, `mandatory_item_ids` — evidence: print key set of entities.requirements[0]
+6. **integrity_hash** field present and non-empty — evidence: print first 16 chars of hash
+7. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits; confirm requirement_text in forward_links is FULL text (removed [:200] per 2026-05-18 fix)
+
+### Cross-stage consistency
+8. **Forward coverage >= 95%** — evidence: print `verification.forward_coverage.spec_coverage_pct`; FAIL if < 95%
+9. **Backward coverage >= 90% (excluding `intentionally_unlinked`)** — evidence: print chain statistics complete/partial/broken counts
+10. **Every WAIVED mandatory has `unlinked_reason`** — evidence: count mandatory_items with coverage_status="WAIVED" AND empty unlinked_reason (must be 0)
+
+### Anti-regression rules (universal)
+11. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+12. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+13. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches in TRACEABILITY.md
+14. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+15. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+16. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "integrity hash uses FULL requirement text — no [:100] slice per HUNT-A-0005 fix")

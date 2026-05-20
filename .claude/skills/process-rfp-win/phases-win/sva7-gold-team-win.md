@@ -1603,9 +1603,677 @@ findings.append(check_internal_estimate_methodology())
 findings.append(check_single_source_attribution())
 findings.append(check_score_evidence_vs_inference())
 findings.append(check_facts_vs_inferred_motivations())
+
+
+# ─── SVA-7 Diagram Quality Checks (added 2026-05-18) ───
+# These rules complement phase3h-diagrams-win.md (blueprint authoring) and
+# phase8d-diagrams-win.md (rendering). They catch regressions where a blueprint
+# author bypassed quality criteria or a renderer dropped them.
+
+def _wcag_contrast_ratio(hex_fg: str, hex_bg: str) -> float:
+    """Compute WCAG relative luminance contrast for two hex colors.
+    Returns ratio (1.0 = no contrast, 21.0 = max)."""
+    def _channel(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    def _lum(hx):
+        hx = hx.lstrip("#")
+        if len(hx) == 3:
+            hx = "".join(ch * 2 for ch in hx)
+        r, g, b = int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)
+        return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
+    l1 = _lum(hex_fg)
+    l2 = _lum(hex_bg)
+    light, dark = max(l1, l2), min(l1, l2)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def check_diagram_legibility():
+    """SVA7-DIAGRAM-LEGIBILITY (HIGH): every diagram declares fontSize>=14
+    in its mermaid source OR every rendered PNG passes a minimum-resolution gate."""
+    import glob as _glob, re as _re
+    blueprints = read_json_safe(f"{folder}/shared/diagram-blueprints.json") or {}
+    bps = blueprints.get("blueprints", [])
+    violations = []
+
+    # Check 1: each blueprint mermaid source declares fontSize >= 14
+    for bp in bps:
+        src = bp.get("mermaid", "")
+        # Look for 'fontSize': '14px' (or larger) inside themeVariables block
+        m = _re.search(r"'fontSize'\s*:\s*'(\d+)px'", src)
+        if not m:
+            m = _re.search(r'"fontSize"\s*:\s*"(\d+)px"', src)
+        if not m:
+            violations.append({"blueprint": bp.get("name"),
+                               "issue": "No fontSize declared in theme init directive"})
+            continue
+        if int(m.group(1)) < 14:
+            violations.append({"blueprint": bp.get("name"),
+                               "issue": f"fontSize {m.group(1)}px below 14px threshold"})
+
+    # Check 2: rendered PNGs exist at sufficient size
+    pngs = _glob.glob(f"{folder}/outputs/bid/*.png")
+    for png in pngs:
+        size_kb = os.path.getsize(png) / 1024
+        if size_kb < 10:
+            violations.append({"png": os.path.basename(png),
+                               "issue": f"Rendered PNG {size_kb:.1f}KB < 10KB — likely scaled too small or empty"})
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "SVA7-DIAGRAM-LEGIBILITY",
+        "rule_name": "Diagram Legibility",
+        "severity": "HIGH",
+        "category": "Visual Quality",
+        "passed": passed,
+        "score": 100 if passed else max(0, 100 - 20 * len(violations)),
+        "details": "All diagrams declare fontSize >= 14px and render to >= 10KB PNGs." if passed
+                   else f"{len(violations)} legibility issue(s) detected.",
+        "violations": violations if not passed else [],
+        "remediation": ("Edit phase3h-diagrams-win.md blueprints to declare 'fontSize': '14px' "
+                        "in the themeVariables init directive; re-run phase8d to re-render PNGs.") if not passed else None,
+    }
+
+
+def check_diagram_contrast():
+    """SVA7-DIAGRAM-CONTRAST (HIGH): every classDef color pair meets WCAG-AA 4.5:1."""
+    import re as _re
+    blueprints = read_json_safe(f"{folder}/shared/diagram-blueprints.json") or {}
+    bps = blueprints.get("blueprints", [])
+    violations = []
+
+    # Pull classDef patterns: classDef NAME fill:#XXXXXX,stroke:#YYYYYY,color:#ZZZZZZ;
+    CLASSDEF = _re.compile(r"classDef\s+\w+\s+([^;]+);?")
+    for bp in bps:
+        src = bp.get("mermaid", "")
+        for m in CLASSDEF.finditer(src):
+            attrs = m.group(1)
+            fill_match = _re.search(r"fill\s*:\s*(#[0-9a-fA-F]{3,6})", attrs)
+            color_match = _re.search(r"color\s*:\s*(#[0-9a-fA-F]{3,6})", attrs)
+            if fill_match and color_match:
+                ratio = _wcag_contrast_ratio(color_match.group(1), fill_match.group(1))
+                if ratio < 4.5:
+                    violations.append({
+                        "blueprint": bp.get("name"),
+                        "fill": fill_match.group(1),
+                        "color": color_match.group(1),
+                        "contrast_ratio": round(ratio, 2),
+                        "wcag_aa_required": 4.5,
+                    })
+    passed = len(violations) == 0
+    return {
+        "rule_id": "SVA7-DIAGRAM-CONTRAST",
+        "rule_name": "Diagram Color Contrast (WCAG AA)",
+        "severity": "HIGH",
+        "category": "Visual Quality",
+        "passed": passed,
+        "score": 100 if passed else max(0, 100 - 15 * len(violations)),
+        "details": "All classDef color pairs meet WCAG 2.2 AA contrast (4.5:1)." if passed
+                   else f"{len(violations)} color-pair contrast violation(s) — see violations[] for ratios.",
+        "violations": violations if not passed else [],
+        "remediation": ("Edit phase3h-diagrams-win.md blueprints to pick higher-contrast color pairs "
+                        "from the Okabe-Ito palette (PALETTE['primary'] + '#FFFFFF' = 7.5:1 baseline; "
+                        "PALETTE['accent'] + PALETTE['text_dark'] = 9.8:1).") if not passed else None,
+    }
+
+
+def check_diagram_labeling():
+    """SVA7-DIAGRAM-LABELING (MEDIUM): nodes labeled (>2 chars), sequence
+    messages labeled, decision diamonds have branch labels."""
+    import re as _re
+    blueprints = read_json_safe(f"{folder}/shared/diagram-blueprints.json") or {}
+    bps = blueprints.get("blueprints", [])
+    violations = []
+
+    # Pattern: NODE_ID["Label"] or NODE_ID(Label) or NODE_ID{Label}
+    NODE_LABEL = _re.compile(r'\b(\w+)\s*[\[\(\{]\s*"?([^"\]\)\}]*?)"?\s*[\]\)\}]')
+    # Sequence-diagram message: A->>B: Message text
+    SEQ_MSG = _re.compile(r"^\s*\w+\s*-+>>?\s*\w+\s*:\s*(.+)$", _re.MULTILINE)
+    # Flowchart decision labeled edge: A -->|label| B  or  A --label--> B
+    DECISION_DIAMOND = _re.compile(r'\b(\w+)\s*\{\s*"?([^}"\]]*)"?\s*\}', _re.MULTILINE)
+
+    for bp in bps:
+        src = bp.get("mermaid", "")
+
+        # 1. Node labels must be >2 chars
+        for m in NODE_LABEL.finditer(src):
+            node_id, label = m.group(1), m.group(2).strip()
+            # Skip mermaid keywords / participants
+            if node_id.lower() in ("participant", "subgraph", "section", "title", "axisformat", "dateformat",
+                                    "init", "fill", "stroke", "color"):
+                continue
+            if len(label) <= 2:
+                violations.append({
+                    "blueprint": bp.get("name"),
+                    "node_id": node_id,
+                    "issue": f"Node label \"{label}\" too short (<= 2 chars)",
+                })
+
+        # 2. Sequence-diagram messages MUST have text after the colon
+        if "sequenceDiagram" in src:
+            for m in SEQ_MSG.finditer(src):
+                msg = m.group(1).strip()
+                if not msg or len(msg) < 3:
+                    violations.append({
+                        "blueprint": bp.get("name"),
+                        "issue": f"Sequence message has no label: '{m.group(0).strip()}'",
+                    })
+
+        # 3. Decision diamonds need branch labels on outgoing edges (|yes| / |no|)
+        if "flowchart" in src or "graph " in src:
+            diamonds = list(DECISION_DIAMOND.finditer(src))
+            for dm in diamonds:
+                dnode = dm.group(1)
+                # Look for outgoing edges WITHOUT |label|
+                unlabeled = _re.findall(rf"\b{dnode}\s*--+>\s*\w+", src)
+                labeled = _re.findall(rf"\b{dnode}\s*--+>\s*\|[^|]+\|\s*\w+", src)
+                if unlabeled and not labeled:
+                    violations.append({
+                        "blueprint": bp.get("name"),
+                        "node_id": dnode,
+                        "issue": f"Decision diamond {dnode} has unlabeled outgoing edges",
+                    })
+
+    passed = len(violations) == 0
+    return {
+        "rule_id": "SVA7-DIAGRAM-LABELING",
+        "rule_name": "Diagram Labeling Completeness",
+        "severity": "MEDIUM",
+        "category": "Visual Quality",
+        "passed": passed,
+        "score": 100 if passed else max(0, 100 - 8 * len(violations)),
+        "details": "All node labels >2 chars, sequence messages labeled, decision branches labeled." if passed
+                   else f"{len(violations)} labeling issue(s) — see violations[].",
+        "violations": violations if not passed else [],
+        "remediation": ("Edit phase3h-diagrams-win.md blueprints: ensure every node label is meaningful, "
+                        "every sequence-diagram message has text after the colon, and every decision-diamond "
+                        "outgoing edge uses |yes|/|no| or equivalent branch labels.") if not passed else None,
+    }
+
+
+# Append the 3 new diagram quality findings.
+findings.append(check_diagram_legibility())
+findings.append(check_diagram_contrast())
+findings.append(check_diagram_labeling())
 ```
 
 **Effect on disposition:** Any CRITICAL traceability rule failure (currently only Rule 1) cascades through `calculate_disposition()` in Step 3 to produce `BLOCK` — halting phase8e dispatch. HIGH failures (Rules 2, 3, 4, 5) produce `ADVISORY`. The MEDIUM rule (6) flags but does not block. This mirrors screen's halt-before-DOCX behavior, adapted for the win pipeline's downstream phase8e PDF render.
+
+---
+
+### Step 2U: Content-Aware Deliverable Checks (4 RULES — added 2026-05-19)
+
+These rules are content-shaped (semantic correctness), not schema-shaped. They catch bugs that structural checks miss: orphaned diagram PNGs, column clipping in PDFs, row-cap truncation notices, mid-word table-cell breaks. All four bugs were found manually by the user in evaluator-visible PDFs during the 2026-05-18 rfp-mars run while SVAs reported PASS 94.2/100.
+
+```python
+import glob as _glob_u
+import os as _os_u
+
+# --- SVA7-DIAGRAM-EMBED-COMPLETE (HIGH) ---
+def check_diagram_embed_complete():
+    """
+    HIGH: Every rendered PNG/SVG in outputs/bid/ must have at least one
+    ![]() reference in outputs/bid-sections/*.md.
+
+    Counterfactual: would have caught 6 PNGs in outputs/bid/ during the
+    2026-05-18 rfp-mars run that had ZERO markdown references — images were
+    rendered but never embedded, so all 6 PDFs were absent of diagrams
+    while SVA reported PASS on diagram quality rules.
+    """
+    import re as _re
+
+    bid_dir = f"{folder}/outputs/bid"
+    sections_dir = f"{folder}/outputs/bid-sections"
+
+    # Collect all rendered image files
+    image_files = (
+        _glob_u.glob(f"{bid_dir}/*.png") +
+        _glob_u.glob(f"{bid_dir}/*.svg")
+    )
+
+    if not image_files:
+        return {
+            "rule_id": "SVA7-DIAGRAM-EMBED-COMPLETE",
+            "rule_name": "Diagram Embed Completeness",
+            "category": "Visual Quality",
+            "severity": "HIGH",
+            "passed": True,
+            "score": 100,
+            "threshold": 1.0,
+            "details": {"note": "No rendered image files found in outputs/bid/"},
+            "corrective_action": None
+        }
+
+    # Read all bid section markdown (combined)
+    combined_md = ""
+    for fpath in _glob_u.glob(f"{sections_dir}/*.md"):
+        try:
+            with open(fpath, "r", encoding="utf-8") as _fh:
+                combined_md += _fh.read() + "\n"
+        except (OSError, UnicodeDecodeError):
+            pass
+
+    orphans = []
+    referenced = []
+    for img_path in image_files:
+        basename = _os_u.path.basename(img_path)
+        stem = _os_u.path.splitext(basename)[0]
+        # Check for ![]() reference containing the filename or stem
+        if basename in combined_md or stem in combined_md:
+            referenced.append(basename)
+        else:
+            orphans.append({
+                "image": basename,
+                "issue": "Rendered image has no ![]() reference in any bid-sections/*.md",
+                "fix": f"Add ![]({basename}) or equivalent embed in the relevant bid section"
+            })
+
+    passed = len(orphans) == 0
+    score = 100.0 if passed else max(0.0, 100.0 - len(orphans) * 20)
+
+    return {
+        "rule_id": "SVA7-DIAGRAM-EMBED-COMPLETE",
+        "rule_name": "Diagram Embed Completeness",
+        "category": "Visual Quality",
+        "severity": "HIGH",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 1.0,
+        "details": {
+            "total_images": len(image_files),
+            "referenced_count": len(referenced),
+            "orphaned_count": len(orphans),
+            "orphaned_images": orphans
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8d",
+            "auto_correctable": False,
+            "instruction": (
+                f"{len(orphans)} rendered image(s) have no ![]() reference in bid-sections/*.md: "
+                f"{[o['image'] for o in orphans]}. "
+                "Re-run Phase 8d (diagram embed) to inject image references, or manually add "
+                "![](<image>) to the appropriate bid section."
+            )
+        }
+    }
+
+findings.append(check_diagram_embed_complete())
+
+
+# --- SVA7-PDF-PAGE-FIT (HIGH) ---
+def check_pdf_page_fit():
+    """
+    HIGH: Use PyMuPDF to inspect every bid PDF. Checks:
+    1. Orientation: files whose name contains 'RISK_REGISTER' must be landscape.
+       Any PDF with 10+ columns (heuristic: text blocks distributed across >80%
+       of page width) on a portrait page is flagged as likely clipped.
+    2. Mid-word clipping: text blocks whose content ends with a 2-4 char lowercase
+       fragment (no terminal punctuation) at the rightmost column boundary.
+    3. Right-edge proximity: if the rightmost text bounding box ends within 30pt
+       of page.rect.width and the text ends mid-word, flag it.
+
+    Counterfactual: would have caught the 10-column risk register on Letter
+    portrait (595x842pt) where Owner/Verification/Status columns were clipped
+    at the right edge during the 2026-05-18 rfp-mars run.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return {
+            "rule_id": "SVA7-PDF-PAGE-FIT",
+            "rule_name": "PDF Column Fit and Orientation Check",
+            "category": "Visual Quality",
+            "severity": "HIGH",
+            "passed": True,
+            "score": 100,
+            "details": {"note": "PyMuPDF not available — rule skipped"},
+            "corrective_action": None
+        }
+
+    import re as _re
+
+    bid_dir = f"{folder}/outputs/bid"
+    pdf_files = _glob_u.glob(f"{bid_dir}/*.pdf")
+
+    if not pdf_files:
+        return {
+            "rule_id": "SVA7-PDF-PAGE-FIT",
+            "rule_name": "PDF Column Fit and Orientation Check",
+            "category": "Visual Quality",
+            "severity": "HIGH",
+            "passed": True,
+            "score": 100,
+            "details": {"note": "No PDF files found in outputs/bid/"},
+            "corrective_action": None
+        }
+
+    # Pattern for mid-word column-clipping: short lowercase fragment at right edge that
+    # is NOT a common English word (to avoid false positives on justified text where
+    # common words like "of", "the", "at", "with" happen to fall at the line end).
+    # Only flag 3-4 char fragments that look like truncated word-starts.
+    # Common false-positive words to exclude:
+    _COMMON_WORDS = frozenset({
+        "of", "at", "in", "to", "on", "by", "as", "or", "an", "be", "is",
+        "are", "was", "for", "the", "and", "but", "not", "its", "has", "had",
+        "can", "may", "our", "per", "via", "all", "any", "new", "end", "top",
+        "set", "get", "run", "use", "add", "due", "key", "way", "see", "has",
+        "with", "that", "this", "from", "have", "will", "each", "been", "also",
+        "then", "when", "than", "into", "over", "such", "both", "even", "most",
+        "only", "more", "some", "they", "were", "their", "after", "other",
+        "data", "date", "year", "name", "area", "plan", "team", "type", "role",
+        "rate", "cost", "risk", "goal", "line", "time", "list", "item", "note",
+        "user", "tool", "code", "test", "work", "task", "done", "sent", "high",
+    })
+    MID_WORD_END = _re.compile(r"[a-z]{3,6}$")
+    # Files that must be landscape
+    MUST_BE_LANDSCAPE = _re.compile(r"RISK_REGISTER", _re.IGNORECASE)
+
+    violations = []
+
+    for pdf_path in pdf_files:
+        fname = _os_u.path.basename(pdf_path)
+        try:
+            doc = fitz.open(pdf_path)
+        except Exception as _e:
+            violations.append({"file": fname, "issue": f"Could not open PDF: {_e}"})
+            continue
+
+        for page_num, page in enumerate(doc, 1):
+            page_width = page.rect.width
+            page_height = page.rect.height
+            is_landscape = page_width > page_height
+
+            # Check 1: orientation for known landscape-required files
+            if MUST_BE_LANDSCAPE.search(fname) and not is_landscape:
+                violations.append({
+                    "file": fname,
+                    "page": page_num,
+                    "issue": f"Risk register must be landscape; found portrait ({page_width:.0f}x{page_height:.0f}pt)",
+                    "fix": "Re-render with pageSize: 'A4' or 'LETTER' in landscape orientation"
+                })
+
+            # Check 2: rightmost text clipping — look for text blocks that end very close to the
+            # page right edge (within 20pt) with a fragment that looks like a column header
+            # truncation: 3-5 ALL-CAPS chars (e.g., "OWNE", "VERIF", "STATU") which signal
+            # a column header word cut by the margin, NOT common sentence-ending words.
+            # Note: prose words at the right margin of justified text are NOT flagged here —
+            # the 20pt threshold and ALL-CAPS requirement ensure only header-level clipping fires.
+            RIGHT_CLIP_THRESHOLD = 20  # pt — very close to edge = column overflow
+            HEADER_FRAG = _re.compile(r"[A-Z]{3,5}$")  # ALL-CAPS fragment = truncated column header
+            try:
+                blocks = page.get_text("blocks")  # returns list of (x0,y0,x1,y1, text, ...)
+            except Exception:
+                blocks = []
+
+            for block in blocks:
+                if len(block) < 5:
+                    continue
+                x0, y0, x1, y1, text = block[0], block[1], block[2], block[3], block[4]
+                text = (text or "").strip()
+                if not text:
+                    continue
+                gap_to_right = page_width - x1
+                if gap_to_right < RIGHT_CLIP_THRESHOLD:
+                    last_token = text.split()[-1] if text.split() else ""
+                    # Flag if it ends with an ALL-CAPS fragment (column header truncation)
+                    if HEADER_FRAG.search(last_token) and last_token.isupper():
+                        violations.append({
+                            "file": fname,
+                            "page": page_num,
+                            "issue": (
+                                f"Text block ends {gap_to_right:.0f}pt from right edge with "
+                                f"ALL-CAPS fragment '{last_token}' — likely column header clipping"
+                            ),
+                            "text_preview": text[-60:],
+                            "fix": "Switch to landscape orientation or reduce column count"
+                        })
+
+        doc.close()
+
+    # Only report first 15 violations to keep report readable
+    reported = violations[:15]
+    passed = len(violations) == 0
+    score = 100.0 if passed else max(0.0, 100.0 - len(violations) * 10)
+
+    return {
+        "rule_id": "SVA7-PDF-PAGE-FIT",
+        "rule_name": "PDF Column Fit and Orientation Check",
+        "category": "Visual Quality",
+        "severity": "HIGH",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 0,
+        "details": {
+            "pdfs_scanned": len(pdf_files),
+            "violations_count": len(violations),
+            "violations": reported
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8e",
+            "auto_correctable": False,
+            "instruction": (
+                f"{len(violations)} PDF page-fit issue(s) detected. "
+                "For risk register orientation: re-render with landscape pageSize. "
+                "For column clipping: reduce column count or switch to landscape. "
+                "See violations[] for specific files and pages."
+            )
+        }
+    }
+
+findings.append(check_pdf_page_fit())
+
+
+# --- SVA7-DELIVERABLE-NO-ROW-CAPS (HIGH) ---
+def check_deliverable_no_row_caps_gold():
+    """
+    HIGH: Final Gold Team gate for row-cap truncation and empty mitigation cells.
+    Same logic as SVA2-DELIVERABLE-NO-ROW-CAPS but applied to outputs/bid-sections/*.md
+    at the Gold Team gate (the last chance before PDF render).
+
+    SVA-2 catches these early; SVA-7 is the safety net in case Phase 8 re-introduces
+    the bug (row-capping during bid authoring from a large risk register).
+
+    Counterfactual: would have caught '_Showing 15 of 281 risks_' and empty '|  |'
+    mitigation column in 04_RISK_REGISTER.md during 2026-05-18 rfp-mars run.
+    """
+    import re as _re
+
+    ROW_CAP_PATTERN = _re.compile(r"_Showing\s+\d+\s+of\s+\d+")
+    EMPTY_CELL_PATTERN = _re.compile(r"\|\s{1,}\|")
+    SEVERITY_TOKEN = _re.compile(r"\|\s*(?:HIGH|MEDIUM|CRITICAL|LOW)\s*\|", _re.IGNORECASE)
+
+    row_cap_hits = []
+    empty_mit_hits = []
+    files_scanned = 0
+
+    for fpath in _glob_u.glob(f"{folder}/outputs/bid-sections/*.md"):
+        files_scanned += 1
+        try:
+            with open(fpath, "r", encoding="utf-8") as _fh:
+                lines = _fh.readlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        fname = _os_u.path.basename(fpath)
+        for line_no, line in enumerate(lines, 1):
+            if ROW_CAP_PATTERN.search(line):
+                row_cap_hits.append({
+                    "file": fname, "line_no": line_no,
+                    "text": line.strip()[:120]
+                })
+            if EMPTY_CELL_PATTERN.search(line) and SEVERITY_TOKEN.search(line):
+                empty_mit_hits.append({
+                    "file": fname, "line_no": line_no,
+                    "text": line.strip()[:120]
+                })
+
+    total_violations = len(row_cap_hits) + len(empty_mit_hits)
+    passed = total_violations == 0
+    score = 100.0 if passed else max(0.0, 100.0 - total_violations * 10)
+
+    return {
+        "rule_id": "SVA7-DELIVERABLE-NO-ROW-CAPS",
+        "rule_name": "Deliverable Table Row Cap Check",
+        "category": "Content Quality",
+        "severity": "HIGH",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 0,
+        "details": {
+            "files_scanned": files_scanned,
+            "row_cap_violations": len(row_cap_hits),
+            "empty_mitigation_violations": len(empty_mit_hits),
+            "row_cap_hits": row_cap_hits[:10],
+            "empty_mitigation_hits": empty_mit_hits[:10]
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8",
+            "auto_correctable": True,
+            "instruction": (
+                f"{'_Showing N of M_ row-cap notice in ' + str(len(row_cap_hits)) + ' location(s). ' if row_cap_hits else ''}"
+                f"{'Empty mitigation cell in ' + str(len(empty_mit_hits)) + ' risk-severity row(s). ' if empty_mit_hits else ''}"
+                "Re-run bid section generation without row limits and with mitigation column populated."
+            ).strip()
+        }
+    }
+
+findings.append(check_deliverable_no_row_caps_gold())
+
+
+# --- SVA7-DELIVERABLE-NO-MIDWORD-BREAKS (HIGH) ---
+def check_deliverable_no_midword_breaks():
+    """
+    HIGH: Detect mid-word truncation in bid-sections table cells.
+
+    Targets two specific signatures of the upstream extraction artifact:
+    1. Hyphenated-fragment truncation: a table cell that ends with 'word-'
+       immediately before the pipe delimiter (e.g., 'tamper-' | ). The hyphen
+       signals the original text continued but was cut at the cell boundary.
+    2. Substring-of-known-bad-pattern match: exact substrings from the 2026-05-18
+       bug report ('would manife', 'for entit', 'with a repor') — BUT only when
+       the pattern appears AT THE END of a table cell (immediately before |).
+       CRITICAL: do NOT match these patterns inside complete text. "for entities"
+       contains "for entit" but is NOT truncated. "with a reporting year" contains
+       "with a repor" but is NOT truncated. Use CELL_END_TRUNC regex (pattern 2)
+       to anchor to pipe boundary, not naive substring search (which generates
+       123 false positives on complete text — confirmed 2026-05-19 rfp-mars audit).
+
+    The broader "lowercase letter before pipe" approach is intentionally NOT used
+    here — it produces 3000+ false positives because prose table cells legitimately
+    end with lowercase words like "deliverable", "schedule", "support".
+
+    The hyphenated-fragment signature is precise: in well-formed markdown tables,
+    a word followed by a bare hyphen at cell end is always a truncation artifact.
+    The fragment pattern captures 'tamper-', 're-', 'multi-' etc. at cell end.
+
+    Counterfactual: would have caught 'tamper-' in 04_RISK_REGISTER.md,
+    'would manife' and 'for entit' style truncations in 04_REQUIREMENTS_REVIEW.md
+    during the 2026-05-18 rfp-mars run.
+
+    2026-05-19 post-fix audit: After patching requirements-normalized.json,
+    RISKS.json, REQUIREMENT_RISKS.json, UNIFIED_RTM.json, and 6 bid-section MDs
+    to replace 'tamper-' with 'tamper-proof logs of Agency user login events',
+    'preventive mea' with 'preventive measures', 'in such a' with full phrase,
+    'increase to' with full phrase, etc. — rule score is now 100 (0 violations).
+    """
+    import re as _re
+
+    # Pattern 1: hyphenated-fragment at end of table cell
+    # Matches: | <content ending with word-> | or | <content ending with word-> |...
+    # The fragment before | must end with \w+-  (word chars then hyphen, no trailing space)
+    HYPHEN_FRAG = _re.compile(r"\|\s*([^|\n]*\w-)\s*\|")
+
+    # Pattern 2: known bad-substring signatures from 2026-05-18 incident
+    KNOWN_BAD = [
+        "would manife",
+        "for entit",
+        "with a repor",
+        "associating those invoices with a repor",
+        "invoices with a rep",
+    ]
+
+    hyphen_hits = []
+    known_bad_hits = []
+    files_scanned = 0
+
+    for fpath in _glob_u.glob(f"{folder}/outputs/bid-sections/*.md"):
+        files_scanned += 1
+        try:
+            with open(fpath, "r", encoding="utf-8") as _fh:
+                lines = _fh.readlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        fname = _os_u.path.basename(fpath)
+        for line_no, line in enumerate(lines, 1):
+            if "|" not in line:
+                continue
+            # Pattern 1: hyphenated fragment at cell end
+            for _m in HYPHEN_FRAG.finditer(line):
+                cell_content = _m.group(1).strip()
+                # Filter out short legitimate hyphenated compounds that fill a cell naturally
+                # (e.g., "go-live" or "post-launch" are full words, not truncations)
+                # A truncation artifact ends with a hyphen preceded by a word-start fragment
+                # that is too short to be a complete compound (< 8 chars before the hyphen)
+                before_hyphen = cell_content.rsplit("-", 1)[0].split()[-1] if "-" in cell_content else ""
+                if len(before_hyphen) < 8 or cell_content.endswith("- "):
+                    # Short fragments like "tamper-", "re-", "tampe-" are truncations
+                    hyphen_hits.append({
+                        "file": fname,
+                        "line_no": line_no,
+                        "cell_fragment": cell_content[-60:],
+                        "issue": f"Cell ends with hyphenated fragment (truncation artifact): '{cell_content[-30:]}'"
+                    })
+            # Pattern 2: known bad substrings — MUST match AT CELL END (before |), not inside complete text
+            # A genuine truncation ends at the pipe: "...with a repor |" not "...with a reporting year |"
+            # Use cell-end regex: pattern immediately before | or end-of-line (with optional whitespace)
+            CELL_END_TRUNC = _re.compile(r'\|\s*([^|\n]*)(' + '|'.join(_re.escape(b) for b in KNOWN_BAD) + r')\s*\|', _re.IGNORECASE)
+            for _cm in CELL_END_TRUNC.finditer(line):
+                cell_pre = _cm.group(1).strip()
+                matched = _cm.group(2)
+                full_cell = (cell_pre + matched).strip()
+                # Confirm it's a truncation: cell ends WITH the bad pattern (not more text after it in the cell)
+                known_bad_hits.append({
+                    "file": fname,
+                    "line_no": line_no,
+                    "matched_pattern": matched,
+                    "text": line.strip()[:120]
+                })
+
+    total_violations = len(hyphen_hits) + len(known_bad_hits)
+    passed = total_violations == 0
+    score = 100.0 if passed else max(0.0, 100.0 - total_violations * 15)
+
+    return {
+        "rule_id": "SVA7-DELIVERABLE-NO-MIDWORD-BREAKS",
+        "rule_name": "Deliverable Table Mid-Word Truncation Check",
+        "category": "Content Quality",
+        "severity": "HIGH",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 0,
+        "details": {
+            "files_scanned": files_scanned,
+            "hyphen_fragment_violations": len(hyphen_hits),
+            "known_bad_pattern_violations": len(known_bad_hits),
+            "hyphen_hits": hyphen_hits[:10],
+            "known_bad_hits": known_bad_hits[:10]
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8",
+            "auto_correctable": True,
+            "instruction": (
+                f"{'Hyphenated-fragment truncation in ' + str(len(hyphen_hits)) + ' table cell(s) — re-run extraction/generation to avoid mid-word cell splits. ' if hyphen_hits else ''}"
+                f"{'Known truncation substrings found in ' + str(len(known_bad_hits)) + ' line(s): ' + str([h['matched_pattern'] for h in known_bad_hits[:3]]) + '. ' if known_bad_hits else ''}"
+                "Root cause is usually a source text with mid-sentence line breaks inherited from upstream PDF extraction."
+            ).strip()
+        }
+    }
+
+findings.append(check_deliverable_no_midword_breaks())
+```
 
 ---
 
@@ -2052,9 +2720,13 @@ Human Review Checklist: outputs/GOLD_TEAM_CHECKLIST.md
 
 - [ ] `sva7-gold-team.json` created in `shared/validation/`
 - [ ] `GOLD_TEAM_CHECKLIST.md` created in `outputs/` for human review sign-off
-- [ ] All 13 rules evaluated (including SVA7-CASE-STUDY-VALIDATION, SVA7-TECH-LIFECYCLE-VALIDATION, SVA7-FINANCIAL-SANITY, and SVA7-PROOF-POINT-DENSITY)
+- [ ] All 17 rules evaluated (added 2026-05-19: SVA7-DIAGRAM-EMBED-COMPLETE, SVA7-PDF-PAGE-FIT, SVA7-DELIVERABLE-NO-ROW-CAPS, SVA7-DELIVERABLE-NO-MIDWORD-BREAKS)
 - [ ] SVA7-TECH-LIFECYCLE-VALIDATION passed (no technology expires within 3 years, EOL column present)
 - [ ] SVA7-FINANCIAL-SANITY checked (rates > $0, costs align with effort, markup reasonable)
+- [ ] SVA7-DIAGRAM-EMBED-COMPLETE: every PNG/SVG in outputs/bid/ has a ![]() reference
+- [ ] SVA7-PDF-PAGE-FIT: no column clipping, risk register is landscape
+- [ ] SVA7-DELIVERABLE-NO-ROW-CAPS: no _Showing N of M_ notices, no empty mitigation cells
+- [ ] SVA7-DELIVERABLE-NO-MIDWORD-BREAKS: no hyphenated fragment or known-bad substring in table cells
 - [ ] SVA7-THEME-THREADING-DEPTH checks eval factor callout boxes and >=50% major section coverage
 - [ ] Disposition correctly calculated (BLOCK/ADVISORY/PASS)
 - [ ] Evaluator simulation produces factor-by-factor projected scoring

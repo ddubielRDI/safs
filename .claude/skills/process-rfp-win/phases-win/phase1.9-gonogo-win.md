@@ -467,14 +467,36 @@ Output: shared/GO_NOGO_DECISION.json
 
 ---
 
-## Quality Checklist
+## Quality Checklist (MANDATORY — report each by name with evidence)
 
-- [ ] `GO_NOGO_DECISION.json` written (>1KB)
-- [ ] All 7 assessment areas scored with rationale, evidence, risks, mitigations
-- [ ] Company profile loaded and services compared against RFP requirements
-- [ ] Every rationale cites specific evidence from inputs
-- [ ] No unsupported claims or assumptions
-- [ ] overall_score = sum(score * weight) for all 7 areas, rounded
-- [ ] Recommendation follows threshold rules (GO >= 50, CONDITIONAL 40-49, NO-GO < 40)
-- [ ] User decision solicited for CONDITIONAL and NO-GO recommendations
-- [ ] Output field is "recommendation" (not "decision")
+The phase agent MUST verify each of the following BEFORE reporting completion. The agent's completion report MUST include a checklist-results block with:
+- Item name (verbatim from below)
+- PASS / FAIL / SKIPPED-WITH-REASON
+- Evidence (file:line citation, grep result, file size, assertion that ran, etc.)
+
+"All checks passed" without per-item evidence is NOT acceptable.
+
+### Required output files
+1. **GO_NOGO_DECISION.json** exists at `{folder}/shared/GO_NOGO_DECISION.json` — evidence: `ls -la` showing size > 1,024 bytes and parses as valid JSON
+
+### Schema fidelity
+2. **GO_NOGO_DECISION.json top-level keys** include `recommendation`, `overall_score`, `assessment_areas`, `overall_risks`, `overall_mitigations`, `threshold` — evidence: list actual top-level keys found
+3. **Output field is `recommendation` (NOT `decision`)** — evidence: grep for `"decision"` as a top-level key returns 0 hits; `"recommendation"` present
+4. **All 7 assessment areas present** with exact names: "Strategic Fit", "Technical Capability", "Competitive Position", "Resource Availability", "Financial Viability", "Risk Assessment", "Win Probability" — evidence: print list of area names from assessment_areas
+5. **overall_score** equals `round(sum(area["score"] * area["weight"]))` for all 7 areas — evidence: recompute and confirm match
+6. No `[:N]` slicing applied to deliverable content strings — evidence: grep for `\[:[0-9]+\]` in production code paths returned 0 hits
+
+### Cross-stage consistency
+7. **Every rationale cites specific evidence** — no area rationale contains generic phrases like "well-positioned" without cited specifics — evidence: spot-check 2-3 rationale fields and confirm each cites a concrete input value
+8. **Recommendation follows threshold rules** — GO if overall_score >= 50, CONDITIONAL if 40-49, NO-GO if < 40 — evidence: print overall_score and recommendation, confirm match
+9. **Services loaded as DICT** (not list) — evidence: confirm `type(company["services"])` is dict; confirm flatten pattern was used
+
+### Anti-regression rules (universal)
+10. **UTF-8 encoding** on every `open()` call — evidence: search this phase's emitted scripts/code for `encoding='utf-8'` in every file-open
+11. **ensure_ascii=False** on every `json.dump` call — evidence: same grep
+12. **No `_Showing N of M_` row-cap notices** in any deliverable markdown — evidence: grep returned 0 matches
+13. **No empty `|  |` mitigation/cell patterns** in any deliverable table — evidence: grep returned 0 matches
+14. **No mid-word table-cell truncations** — evidence: line-by-line cell-end check returned 0 hits
+
+### Memory discipline
+15. **Relevant SAFS memory entries reviewed and applied** — evidence: list which memory files were read and which rules were applicable (e.g., "output field is `recommendation` not `decision` — verified"; "services is a DICT — flattened with list comprehension")

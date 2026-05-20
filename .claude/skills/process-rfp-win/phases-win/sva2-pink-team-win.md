@@ -462,6 +462,98 @@ def check_sample_data():
 findings.append(check_sample_data())
 
 
+# --- SVA2-DELIVERABLE-NO-ROW-CAPS (HIGH) ---
+def check_deliverable_no_row_caps():
+    """
+    HIGH: Catch _Showing N of M_ row-cap notices and empty mitigation cells (|  |)
+    in outputs/*.md files before the bid enters specification phase.
+
+    Two patterns are fatal at the evaluator-PDF level:
+    1. _Showing N of M_ — a table renderer pagination notice exposed as prose,
+       e.g., '_Showing 15 of 281 risks_'. Signals the table generator capped rows
+       before writing all content.
+    2. Empty mitigation cell: a pipe-delimited row containing a risk-severity label
+       (HIGH/MEDIUM/CRITICAL/LOW) and a cell that is entirely whitespace between
+       pipes. In a risk register, this exposes an unfilled Mitigation column.
+
+    Counterfactual: would have caught '_Showing 15 of 281 risks_' and '_Showing 200
+    of 762_' visible in evaluator PDFs during the 2026-05-18 rfp-mars run, and the
+    empty '|  |' mitigation column for every risk row in 04_RISK_REGISTER.md.
+    """
+    import re as _re
+    import glob as _glob
+
+    ROW_CAP_PATTERN = _re.compile(r"_Showing\s+\d+\s+of\s+\d+")
+    # Empty cell = two or more spaces (or just a single space) between two pipes,
+    # on a line that also contains a risk-severity token.
+    EMPTY_CELL_PATTERN = _re.compile(r"\|\s{1,}\|")
+    SEVERITY_TOKEN = _re.compile(r"\|\s*(?:HIGH|MEDIUM|CRITICAL|LOW)\s*\|", _re.IGNORECASE)
+
+    row_cap_hits = []
+    empty_mit_hits = []
+
+    scan_dirs = [
+        f"{folder}/outputs/bid-sections",
+        f"{folder}/outputs",
+    ]
+    files_scanned = 0
+
+    for scan_dir in scan_dirs:
+        for fpath in _glob.glob(f"{scan_dir}/*.md"):
+            files_scanned += 1
+            try:
+                with open(fpath, "r", encoding="utf-8") as _fh:
+                    lines = _fh.readlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            fname = os.path.basename(fpath)
+            for line_no, line in enumerate(lines, 1):
+                if ROW_CAP_PATTERN.search(line):
+                    row_cap_hits.append({
+                        "file": fname,
+                        "line_no": line_no,
+                        "text": line.strip()[:120]
+                    })
+                if EMPTY_CELL_PATTERN.search(line) and SEVERITY_TOKEN.search(line):
+                    empty_mit_hits.append({
+                        "file": fname,
+                        "line_no": line_no,
+                        "text": line.strip()[:120]
+                    })
+
+    total_violations = len(row_cap_hits) + len(empty_mit_hits)
+    passed = total_violations == 0
+    score = 100.0 if passed else max(0.0, 100.0 - total_violations * 10)
+
+    return {
+        "rule_id": "SVA2-DELIVERABLE-NO-ROW-CAPS",
+        "rule_name": "Deliverable Table Row Cap Check",
+        "category": "Content Quality",
+        "severity": "HIGH",
+        "passed": passed,
+        "score": round(score, 1),
+        "threshold": 0,
+        "details": {
+            "files_scanned": files_scanned,
+            "row_cap_violations": len(row_cap_hits),
+            "empty_mitigation_violations": len(empty_mit_hits),
+            "row_cap_hits": row_cap_hits[:10],
+            "empty_mitigation_hits": empty_mit_hits[:10]
+        },
+        "corrective_action": None if passed else {
+            "type": "retry_phase",
+            "target_phase": "8",
+            "auto_correctable": True,
+            "instruction": (
+                f"{'_Showing N of M_ row-cap notice in ' + str(len(row_cap_hits)) + ' location(s) — re-run table generation without row limits. ' if row_cap_hits else ''}"
+                f"{'Empty mitigation cell (|  |) in ' + str(len(empty_mit_hits)) + ' risk-severity row(s) — re-run risk register generation to populate Mitigation column. ' if empty_mit_hits else ''}"
+            ).strip()
+        }
+    }
+
+findings.append(check_deliverable_no_row_caps())
+
+
 # --- SVA2-STRATEGY-READINESS (HIGH) ---
 def check_strategy_readiness():
     """Minimum: 50+ reqs, 3+ categories, eval criteria, compliance gate passed."""
@@ -587,8 +679,9 @@ Output: shared/validation/sva2-pink-team.json
 ## Quality Checklist
 
 - [ ] `sva2-pink-team.json` created in `shared/validation/`
-- [ ] All 8 rules evaluated
+- [ ] All 9 rules evaluated (includes SVA2-DELIVERABLE-NO-ROW-CAPS added 2026-05-19)
 - [ ] Disposition correctly calculated (BLOCK/ADVISORY/PASS)
 - [ ] Pink Team report includes storyboard assessment
 - [ ] Compliance-to-requirement mapping verified
 - [ ] Corrective actions specified for failed rules
+- [ ] SVA2-DELIVERABLE-NO-ROW-CAPS checked for _Showing N of M_ and empty |  | mitigation cells
