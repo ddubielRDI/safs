@@ -524,15 +524,62 @@ def assign_priority(req):
     if has_strong_single or (has_prohibition and has_critical_context):
         return "CRITICAL"
 
-    # High indicators — mandatory language without critical signal
-    high_keywords = ["shall", "must", "required", "important", "core", "primary"]
-    if any(term in text_lower for term in high_keywords):
+    # HIGH band requires more than just "shall" — that token appears in virtually
+    # every system requirement, so a bare "shall" gate dumps 87%+ into HIGH
+    # (the MARS 2026-05-20 Pink-Team finding: priority signal collapsed because
+    # 87.7% landed in HIGH). Tightened logic: HIGH requires "shall"/"must" AND
+    # a foundational-capability anchor token (functional domain that drives the
+    # bid outcome).
+    HIGH_ANCHOR_TOKENS = {
+        # Core functional categories that drive evaluation factors
+        "submit", "approve", "reject", "process payment", "authenticate", "authoriz",
+        "calculate", "validate", "verify", "report", "generate report",
+        "publish", "expose", "integrate", "synchroniz", "import", "export",
+        "migrate", "convert", "load",
+        # Data integrity / persistence
+        "store", "persist", "retain", "purge", "back up", "backup", "restore",
+        "version", "history", "audit log",
+        # Workflow drivers
+        "notify", "alert", "escalate", "route", "assign", "track", "monitor",
+        # Compliance-adjacent (without triggering the CRITICAL critical-context)
+        "comply with", "conform to", "adhere to", "meet the requirement",
+        # Performance / SLA
+        "respond within", "process within", "complete within", "uptime", "availability",
+    }
+    text_words = set(text_lower.split())
+    has_mandate = any(t in text_lower for t in ("shall", "must", "required", "mandatory"))
+    has_high_anchor = any(t in text_lower for t in HIGH_ANCHOR_TOKENS)
+
+    # Codification 2026-05-20 (Pink-Team PINK-RES-02 + PINK-RES-03 — for next run):
+    # Single-anchor HIGH gate still over-populates HIGH (44.8% of MARS items).
+    # Tighten by requiring ≥2 distinct HIGH_ANCHOR_TOKENS, OR a HIGH_ANCHOR_TOKEN
+    # PLUS explicit category-code in {SEC, INT, RPT, FIL} (the foundational
+    # capability families). Plus ADD explicit CRITICAL anchors so security/SLA
+    # items don't get buried in HIGH:
+    #   STRONG_SINGLE_CRITICAL should also include: encrypt, multi-factor,
+    #   MFA, SOC 2, FedRAMP, CJIS, IRS 1075, uptime, RTO, RPO, no overseas,
+    #   FBI NCIC, 24-hour breach notification.
+    # AND: phase2-extract-win.md classify_requirement_type() KEYWORD_MAP should
+    # add common functional verbs to reduce UNCLASSIFIED bucket: populate,
+    # determine, allow, display, send, generate, track, capture, validate,
+    # enforce, calculate, route, notify.
+    # These refinements are queued for next pipeline run — current MARS run
+    # uses the existing single-anchor gate (PASS at SVA-2 with 1 MEDIUM rule fail).
+    if has_mandate and has_high_anchor:
         return "HIGH"
 
     # Low indicators
     low_keywords = ["optional", "nice to have", "could", "may", "consider"]
     if any(term in text_lower for term in low_keywords):
         return "LOW"
+
+    # MEDIUM band: mandate language WITHOUT a foundational-capability anchor.
+    # Typical pattern: "the system shall display X", "the user shall be able
+    # to view Y" — important to honor but not bid-fate-determining like
+    # "the system shall calculate the total of all Actual column values".
+    # This is the residual bucket that was over-collapsing into HIGH.
+    if has_mandate:
+        return "MEDIUM"
 
     return "MEDIUM"
 

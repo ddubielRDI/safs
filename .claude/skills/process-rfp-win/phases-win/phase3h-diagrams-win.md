@@ -97,18 +97,46 @@ domain_context = read_json_safe(f"{folder}/shared/domain-context.json") or {}
 
 ```python
 # Okabe-Ito palette — colorblind-safe, WCAG-AA contrast on white background.
+#
+# ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident): when a palette color
+# is used as a FILL with white (`#FFFFFF`) text on top via `classDef`, the
+# raw Okabe-Ito light shades fail WCAG-AA contrast (≥ 4.5:1 for normal text):
+#   #009E73 + #FFFFFF = 3.42:1  FAIL
+#   #CC79A7 + #FFFFFF = 3.06:1  FAIL
+#   #999999 + #FFFFFF = 2.85:1  FAIL
+#   #D55E00 + #FFFFFF = 3.87:1  FAIL
+# Use the DARKENED variants below for white-text fills. Reserve the raw
+# Okabe-Ito shades for non-text usage (lineColor, secondary background panels
+# without overlaid text) or pair with black/dark-gray text.
 PALETTE = {
-    "primary":   "#0072B2",  # blue
-    "accent":    "#E69F00",  # orange
-    "success":   "#009E73",  # green
-    "warning":   "#F0E442",  # yellow (use for text on dark fill only)
-    "danger":    "#D55E00",  # vermillion
-    "info":      "#56B4E9",  # sky blue
-    "neutral":   "#999999",  # gray
-    "critical":  "#CC79A7",  # reddish purple — risk heat-map "Critical"
+    "primary":   "#0072B2",  # blue — 4.83:1 with #FFFFFF (PASS)
+    "accent":    "#E69F00",  # orange — pair with #1A1A1A text (8.39:1)
+    "success":   "#006B4F",  # darkened green — 6.53:1 with #FFFFFF (was #009E73 = 3.42:1 FAIL)
+    "warning":   "#F0E442",  # yellow — pair with #1A1A1A text (15.8:1)
+    "danger":    "#A84500",  # darkened vermillion — 5.97:1 with #FFFFFF (was #D55E00 = 3.87:1 FAIL)
+    "info":      "#0E5C8A",  # darkened sky-blue — 6.81:1 with #FFFFFF (was #56B4E9 = 2.55:1)
+    "neutral":   "#595959",  # darkened gray — 7.00:1 with #FFFFFF (was #999999 = 2.85:1 FAIL)
+    "critical":  "#A5527F",  # darkened reddish-purple — 5.11:1 with #FFFFFF (was #CC79A7 = 3.06:1 FAIL)
     "text_dark": "#1A1A1A",
     "bg_light":  "#FFFFFF",
 }
+
+# Verification self-check — DO NOT remove. Recompute on every palette edit.
+# If any text-on-fill pair drops below 4.5:1, halt and surface the failing pair
+# rather than ship inaccessible diagrams.
+def _contrast_ratio(fg_hex, bg_hex):
+    def _lum(h):
+        rgb = [int(h[i:i+2], 16) / 255 for i in (1, 3, 5)]
+        rgb = [(c / 12.92) if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+        return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    l1, l2 = sorted([_lum(fg_hex), _lum(bg_hex)], reverse=True)
+    return (l1 + 0.05) / (l2 + 0.05)
+
+# Every fill that is paired with white text MUST be in this safe set.
+_WHITE_TEXT_FILLS = ["primary", "success", "danger", "info", "neutral", "critical"]
+for key in _WHITE_TEXT_FILLS:
+    ratio = _contrast_ratio(PALETTE[key], "#FFFFFF")
+    assert ratio >= 4.5, f"WCAG-AA fail: PALETTE['{key}']={PALETTE[key]} vs #FFFFFF = {ratio:.2f}:1 (need >= 4.5)"
 
 THEME_INIT = (
     "%%{init: {'theme': 'base', 'themeVariables': "

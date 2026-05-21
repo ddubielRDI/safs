@@ -83,7 +83,11 @@ After phase8e-pdf-win reports done, BEFORE SVA-7 (Gold Team gate). This is the f
 
 **Anti-false-positive rule:** Do NOT check for body-content word matches. The search is for the column-header TOKEN SET as a cluster on each page, NOT for the words "risk", "description", etc. appearing in body cells. Specifically: verify that the extracted text from a block near the TOP of the data area (y-coordinate in top 15% of page height) contains at least 6 of the 10 header tokens. This distinguishes header-row repetition from body-content coincidence.
 
-**Pass:** On >= 90% of data pages (pages with > 200 chars), the top-15%-height block contains >= 6 of the 10 column header tokens.
+**⛔ Layout-mode fallback (codified 2026-05-21 — MARS Phase 8e incident):** when the producer applied the **vertical-mini-table transform** (per phase8e-pdf-win.md HARD RULE for cells > 1,500 chars or tables ≥ 10 columns), labels appear as a repeated LEFT column per card ("Risk ID", "Title", "Mitigation", ...) — NOT in a horizontal header row at the top of the page. The top-15%-only filter returns a misleading 0% on this layout.
+
+**Fix:** if Check 5 returns < 30% on the top-15% block AND the PDF appears to use vertical-mini-table layout (heuristic: page is landscape AND text contains repeated label tokens at left-column x-coordinates), fall back to a full-page-body search for ≥ 6 of the 10 label tokens anywhere in extracted text. The vertical layout passes Check 5 when ≥ 90% of pages contain the label token set anywhere in body text. The producer's vertical transform is correct for risk-register-shape data; the verifier must accommodate it.
+
+**Pass:** EITHER (top-15%-height block contains >= 6 of 10 header tokens on >= 90% of data pages) OR (full-page-body contains >= 6 of 10 label tokens on >= 90% of data pages AND vertical-mini-table heuristic detected).
 
 **Concern:** 80–89% of data pages have headers. Log advisory.
 

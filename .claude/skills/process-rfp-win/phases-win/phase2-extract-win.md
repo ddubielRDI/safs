@@ -636,11 +636,20 @@ def classify_requirement_type(req):
         scores[req_type] = score
 
     # Determine primary type
+    # ⛔ UNCLASSIFIED FALLBACK (codified 2026-05-20 — MARS Pink-Team finding):
+    # The previous default-to-FUNCTIONAL behavior produced 228 requirements
+    # with all-zero type_scores that were silently tagged FUNCTIONAL. This
+    # over-inflates the FUNCTIONAL bucket and lets downstream Stage 3 specs
+    # build against the wrong type assumption. The honest default is
+    # UNCLASSIFIED — surfacing the gap so Phase 2b normalization (or the
+    # SVA-2 Pink Team) can decide whether to escalate for manual review.
     if not scores or max(scores.values()) == 0:
         return {
-            "primary_type": "FUNCTIONAL",  # Default
+            "primary_type": "UNCLASSIFIED",  # NOT FUNCTIONAL — honest fallback
+            "secondary_type": None,
             "confidence": "low",
-            "scores": scores
+            "scores": scores,
+            "fallback_reason": "all_type_scores_zero (no keywords or patterns matched)"
         }
 
     max_score = max(scores.values())

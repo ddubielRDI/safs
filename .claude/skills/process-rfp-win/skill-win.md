@@ -728,6 +728,34 @@ def scrub_mojibake(text, source_hint=None):
     replacements += n
     text = new_text
 
+    # Pass 6 (codified 2026-05-20 — MARS Phase 2c incident): ASCII `?`-bullet
+    # residue. When upstream flatteners use `errors='replace'` against cp1252
+    # source (Windows default) instead of UTF-8, lost glyphs emit as literal
+    # ASCII `?` instead of U+FFFD. Patterns that look like bullets in this
+    # encoding: ` ? ` between words on its own line, leading `? ` indenting an
+    # otherwise-clean line, sequences like `???` or `?\t`. These won't be caught
+    # by Pass 4 (which scans U+FFFD) but are the same visual artifact.
+    # Conservative — only target patterns that are unambiguously bullet residue,
+    # NOT legitimate sentence-final or mid-sentence question marks.
+    _ASCII_BULLET_RUN = _re_scrub.compile(r"(?:^|\n)\s*\?(?:\s+\?)+\s*", _re_scrub.M)
+    new_text, n = _ASCII_BULLET_RUN.subn(" ", text)
+    replacements += n
+    text = new_text
+    # Leading `? ` at start of line followed by content — treat as bullet marker,
+    # strip the `?` only (preserve content).
+    _ASCII_BULLET_LEAD = _re_scrub.compile(r"(?:^|\n)\?\s+([A-Za-z])", _re_scrub.M)
+    new_text, n = _ASCII_BULLET_LEAD.subn(r"\1", text)
+    replacements += n
+    text = new_text
+    # Standalone `?` between two whitespace-bounded tokens with no sentence
+    # context (i.e., not at end of clause) — also bullet residue.
+    _ASCII_BULLET_INLINE = _re_scrub.compile(r"(\s)\?(\s+[A-Za-z])")
+    new_text, n = _ASCII_BULLET_INLINE.subn(r"\1\2", text)
+    replacements += n
+    text = new_text
+    # Collapse repeated whitespace from the strip
+    text = _re_scrub.sub(r"  +", " ", text)
+
     # Find any residual U+FFFD or mid-word `?` the heuristics didn't catch.
     unrepairable = []
     for i, ch in enumerate(text):

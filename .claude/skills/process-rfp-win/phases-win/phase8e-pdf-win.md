@@ -852,6 +852,38 @@ mechanism.
 - `rows_per_chunk=12` → headers on only 23/52 pages (chunks span 2+ pages, FAIL)
 - **Use `rows_per_chunk=3` for 10-column tables, `rows_per_chunk=4` for 7-column tables**
 
+## ⛔ HARD RULE — VERTICAL MINI-TABLE FALLBACK (codified 2026-05-21 — MARS Phase 8e incident)
+
+The `convert_wide_tables_to_chunked_html(rows_per_chunk=3)` strategy above works for risk-register-shape tables (≤500 chars per cell). But when individual cells exceed ~1500 chars (e.g., MARS risk register with multi-mitigation-strategy text per Mitigation cell), fitz.Story **STILL silently crashes** even with chunked-rows-per-chunk=3. The MARS 2026-05-21 run had cells averaging 2,400 chars in the Mitigation column.
+
+**Fallback transform — vertical mini-tables per row.** For tables where ANY cell exceeds 1,500 chars OR the table has ≥10 columns, replace each ROW with its own 2-column mini-table (label/value pairs, one row per source column). This trades horizontal density for vertical safety.
+
+```python
+def transform_wide_tables_vertical(content, char_cell_threshold=1500, col_threshold=10):
+    """Replace wide markdown tables with per-row vertical 2-column mini-tables.
+
+    Triggers when:
+      - any cell > char_cell_threshold chars, OR
+      - column count >= col_threshold
+
+    Each source row becomes its own mini-table:
+        | Field         | Value                               |
+        | :------------ | :---------------------------------- |
+        | Risk ID       | RISK-STRUCT-001                     |
+        | Title         | Tyler Technologies CCP Partnership  |
+        | Mitigation    | (a) ... (b) ... (c) ... (d) ...     |
+        | ...           | ...                                 |
+
+    Result is unambiguously fitz.Story-safe: every cell is narrow, headers
+    repeat naturally, content survives wraps at sub-1000-char widths.
+    """
+    # implementation in shared/_phase8e_pdf.py (MARS retry-codified)
+```
+
+**Selection logic:** the `clean_markdown_wide_tables()` function calls vertical-transform first (if triggered), else chunked-html (if ≥7 cols), else passes through. This is the correct fallback chain.
+
+**MARS Phase 8e proof:** with vertical-mini-table transform applied to `04_RISK_REGISTER.md` (10 cols, 73 rows, mitigation cells ~2,400 chars), the rendered `ResourceData_A_RISK_REGISTER.pdf` produced 73 pages in landscape Letter-L with zero data loss and zero fitz.Story crashes. Chunked-html alone would have silently failed.
+
 **Implementation pattern (add to `clean_markdown_wide_tables()`):**
 
 ```python

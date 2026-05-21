@@ -41,6 +41,70 @@ The MARS run on 2026-05-20 produced a COMPLIANCE_MATRIX.json with **1,789 U+FFFD
 
 **Defense-in-source:** Phase 0 flatten (`phase1-flatten-win.md`) is the proper fix point — it must use `errors='strict'` on every decode so encoding bugs fail loudly upstream. The Phase 1.7 scrub is defense-in-depth, not a substitute.
 
+## ⛔ LINKED_REQUIREMENT_IDS BACKFILL (codified 2026-05-20 — MARS Pink-Team finding)
+
+**The Pink-Team finding:** all 1,319 mandatory_items in COMPLIANCE_MATRIX.json shipped with empty `linked_requirement_ids[]` arrays — the field was schema-honored but never populated. SVA-2 caught this as a HIGH CONCERN because SVA-4 forward-trace will fail at the first hop without these links.
+
+**Root cause:** Phase 1.7 uses SRC-#### source_ids in the `SRC-001..SRC-1319` namespace; Phase 2/2b normalized requirements use SRC-1320+ namespace. The two namespaces are disjoint — Phase 1.7 cannot pre-populate linked_requirement_ids because at the time it runs, the normalized requirements don't exist yet. The linkage is a *bridge build* that must happen AFTER Phase 2b completes.
+
+**Discipline:** if Phase 1.7 is re-run AFTER Phase 2b has produced `requirements-normalized.json`, it MUST backfill `linked_requirement_ids[]` on every mandatory_item using a text-similarity bridge (Jaccard pre-filter ≥ 0.2 + SequenceMatcher ratio ≥ 0.6 against requirement canonical_ids). The bridge is symmetric — also backfill `linked_mandatory_items[]` on requirements-normalized.json (writing back to the upstream artifact is permitted ONLY for this specific cross-reference field; do not touch other Phase 2b output fields).
+
+```python
+def backfill_linked_ids(compliance_matrix, normalized_requirements):
+    """Bridge the SRC-#### namespace disjoint via text similarity.
+
+    For each mandatory_item, find all normalized requirements whose text matches
+    the mandatory_item's text with SequenceMatcher ratio >= 0.6 AND Jaccard
+    token overlap >= 0.2. Populate compliance_matrix.mandatory_items[i].linked_requirement_ids[]
+    with those canonical_ids. Symmetric update: also populate
+    requirements-normalized.requirements[j].linked_mandatory_items[].
+    """
+    from difflib import SequenceMatcher
+    JACCARD_MIN = 0.2
+    SIM_MIN = 0.6
+
+    def tokens(s):
+        return {t.lower() for t in re.findall(r"\w+", s) if len(t) >= 3}
+
+    def jaccard(a, b):
+        ta, tb = tokens(a), tokens(b)
+        if not ta or not tb:
+            return 0.0
+        return len(ta & tb) / max(len(ta | tb), 1)
+
+    # Index normalized requirements by token set for cheap pre-filter
+    norm_index = [(r["canonical_id"], r["text"], tokens(r["text"]))
+                  for r in normalized_requirements["requirements"]]
+
+    backfill_audit = {"matches_found": 0, "items_with_links": 0, "items_without_links": []}
+    for item in compliance_matrix["mandatory_items"]:
+        item_text = item.get("text", "")
+        item_tokens = tokens(item_text)
+        if not item_tokens:
+            continue
+        linked = []
+        for cid, rtext, rtokens in norm_index:
+            j = len(item_tokens & rtokens) / max(len(item_tokens | rtokens), 1)
+            if j < JACCARD_MIN:
+                continue
+            s = SequenceMatcher(None, item_text.lower(), rtext.lower()).ratio()
+            if s >= SIM_MIN:
+                linked.append({"canonical_id": cid, "similarity": round(s, 3)})
+        # Top 5 only — keep the linkage payload tractable
+        linked.sort(key=lambda x: x["similarity"], reverse=True)
+        item["linked_requirement_ids"] = [x["canonical_id"] for x in linked[:5]]
+        backfill_audit["matches_found"] += len(linked[:5])
+        if linked:
+            backfill_audit["items_with_links"] += 1
+        else:
+            backfill_audit["items_without_links"].append(item["mandatory_id"])
+
+    compliance_matrix["pipeline_metadata"]["linked_ids_backfill"] = backfill_audit
+    return compliance_matrix
+```
+
+When this step runs, log the backfill_audit summary (matches_found, items_with_links, items_without_links count) so SVA-4 can verify trace coverage. Items without links must have a documented reason or be flagged for manual review.
+
 ## ⛔ RETRY_HISTORY DISCIPLINE (codified 2026-05-20 — duplicate-append bug)
 
 Each retry of Phase 1.7 MUST write **exactly one** record to `pipeline_metadata.retry_history[]` per retry, with this **canonical schema** (no field-name variants):

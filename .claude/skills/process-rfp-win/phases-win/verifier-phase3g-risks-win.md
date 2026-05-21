@@ -38,7 +38,16 @@ After phase3g-risks-win reports done, BEFORE SVA-3 (Spec Validator gate). Risks 
 
 ### Check 2 — rtm_risks schema fidelity (every entry has required fields)
 
-**Criterion:** For each entry in `REQUIREMENT_RISKS.json:rtm_risks`, verify all of these keys are present AND non-null: `risk_id`, `title`, `category`, `likelihood`, `impact`, `risk_level`, `linked_requirement_ids`, `mitigation_strategies`. Furthermore: `likelihood` and `impact` must be integers 1–5; `risk_level` must be one of `HIGH`, `MEDIUM`, `LOW`, `CRITICAL`; `linked_requirement_ids` must be a non-empty array; `mitigation_strategies` must be a non-empty array.
+**Criterion:** For each entry in `REQUIREMENT_RISKS.json:rtm_risks`, verify all of these keys are present AND non-null: `risk_id`, `title`, `category`, `likelihood`, `impact`, `risk_level`, `mitigation_strategies`. Furthermore: `likelihood` and `impact` must be integers 1–5; `risk_level` must be one of `HIGH`, `MEDIUM`, `LOW`, `CRITICAL`; `mitigation_strategies` must be a non-empty array.
+
+**Traceback flexibility (codified 2026-05-20 — MARS Phase 3g incident):**
+
+Phase 3g produces TWO classes of risks with different traceback shapes:
+
+- **Requirement-derived risks** (`RISK-REQ-*` IDs) — MUST have `linked_requirement_ids` non-empty. Each ID must resolve to a real canonical_id in requirements-normalized.json.
+- **Structural risks** (`RISK-STRUCT-*` IDs) — arise from architecture / non-negotiable / clarifying-question / ADR anchors, NOT from individual requirements. Their `linked_requirement_ids` MAY be empty BUT at least one of the following MUST be non-empty: `linked_requirement_ids`, `linked_nn_ids`, `linked_question_ids`, `linked_architecture_decisions`. A structural risk with ALL FOUR traceback arrays empty is a HARD FAIL — every risk must trace to at least one source artifact.
+
+This codification was driven by the MARS 2026-05-20 Phase 3g run, where 30 structural risks shipped with empty `linked_requirement_ids` (correct per phase-file design) but 13 of those had no traceback at all (genuine defect).
 
 **Pass:** All entries pass the schema check.
 

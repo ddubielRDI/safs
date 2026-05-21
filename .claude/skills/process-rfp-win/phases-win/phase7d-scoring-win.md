@@ -12,6 +12,24 @@ sub-skill: bid-decision
 
 Calculate pre-submission win probability score and identify disqualifiers.
 
+## ⛔ HONEST-MATH DISCIPLINE (codified 2026-05-21 — MARS Phase 7d incident)
+
+The default mechanical formula in this phase file (binary spec-coverage × gate-passed × no-Critical-reqs) systematically produces **false-confidence** scores on bids with high structural risk + PLANNED-not-ADDRESSED compliance status. The MARS 2026-05-21 first pass returned 88% win_probability when the upstream Phase 1.9 Go/No-Go was 58/100 and 13 Critical/HIGH structural risks all carried IDENTIFIED-only mitigations. The honest-math corrections below MUST be applied — they are not optional polish.
+
+**Five mandatory corrections:**
+
+1. **Alignment uses `chain_completeness.avg_score`, NOT binary specifications-list presence.** From `UNIFIED_RTM.verification.chain_completeness.avg_score`. Reflects that 0 of 1116 traceability chains may be `complete` and most are only `partial` — binary presence overstates alignment.
+
+2. **Compliance distinguishes ADDRESSED vs PLANNED.** Weight `coverage_status=ADDRESSED` at 1.0 and `coverage_status=PLANNED` at 0.85. `PLANNED` means "planned response," not "proven coverage." Gate-passed compliance caps at 95% when most items are PLANNED, not 100%.
+
+3. **Risk-mitigation applies a structural-risk overlay penalty.** For each Critical or HIGH structural risk (from `REQUIREMENT_RISKS.structural_risks[]`) whose `mitigation_strategies[*].status` are ALL `IDENTIFIED` (none `IMPLEMENTED`): subtract 6 pts. For each Critical/HIGH structural risk with NO mitigations at all: subtract 10 pts. Cap at 60-pt penalty.
+
+4. **Win probability blends mechanical math with Go/No-Go anchor.** `win_probability = round(0.6 * mechanical_weighted_score + 0.4 * (0.6 * gonogo.overall_score + 0.4 * gonogo.assessment_areas.win_probability.score))`. The Go/No-Go anchor prevents the mechanical formula from drifting far above Lohfeld/Shipley assessment.
+
+5. **All-IDENTIFIED-mitigation structural risks count as UN-mitigated for the critical-disqualifier check.** If ≥10 Critical/HIGH structural risks have all-IDENTIFIED mitigations, fire the `exhibit_k_security_failure` disqualifier and CLAMP win_probability to ≤15. Paper plans are not protection.
+
+**Verification:** the next phase verifier (`verifier-phase7d-scoring-win.md`) should re-derive each factor score independently and compare against the producer's claim; if delta > 5 pts on any factor, FAIL the verifier.
+
 ## Inputs
 
 - `{folder}/shared/EVALUATION_CRITERIA.json`

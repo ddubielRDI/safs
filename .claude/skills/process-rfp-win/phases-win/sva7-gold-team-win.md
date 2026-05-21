@@ -625,15 +625,49 @@ def check_format_compliance():
     page_limit = None
     format_issues = []
 
+    # ─── ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident) ───
+    # Page-cap detection lookup chain: the prior implementation read only
+    # `volumes[].page_limit` and summed per-volume caps, MISSING the
+    # `submission_structure.overall_page_limit` field — which is where the
+    # actual 25-page cap on proposal.pdf lives in MARS-style RFPs.
+    #
+    # Correct lookup: per-volume sum → overall_page_limit → None.
+    # The first source that yields a positive integer wins; do NOT add
+    # per-volume caps to overall_page_limit (they may double-count).
+    #
+    # Counterfactual: would have caught the 2026-05-20 MARS run where
+    # proposal.pdf rendered to ~37 estimated pages against the 25-page
+    # overall_page_limit, but SVA-7 reported "within_page_limit: True"
+    # because volumes[].page_limit was unset.
     if submission_structure:
         volumes = submission_structure.get("volumes", submission_structure.get("required_files", []))
+        # Source 1: per-volume page_limit sum
         total_page_limit = 0
         for vol in volumes:
             limit = vol.get("page_limit", 0)
             if limit:
                 total_page_limit += limit
-        if total_page_limit > 0:
-            page_limit = total_page_limit
+        per_volume_limit = total_page_limit if total_page_limit > 0 else None
+
+        # Source 2: submission_structure-level overall_page_limit (fallback)
+        overall_page_limit = (
+            submission_structure.get("overall_page_limit")
+            or submission_structure.get("total_page_limit")
+            or submission_structure.get("max_pages")
+        )
+        try:
+            overall_page_limit = int(overall_page_limit) if overall_page_limit else None
+        except (TypeError, ValueError):
+            overall_page_limit = None
+
+        # Resolve via fallback chain: per-volume → overall → None
+        page_limit_source = None
+        if per_volume_limit:
+            page_limit = per_volume_limit
+            page_limit_source = "volumes[].page_limit (summed)"
+        elif overall_page_limit:
+            page_limit = overall_page_limit
+            page_limit_source = "submission_structure.overall_page_limit"
 
         # Check required file structure
         required_files = [v.get("filename", v.get("name", "")) for v in volumes if v.get("required", True)]
@@ -668,6 +702,7 @@ def check_format_compliance():
             "total_bid_chars": total_chars,
             "estimated_pages": round(estimated_pages, 0),
             "page_limit": page_limit,
+            "page_limit_source": locals().get("page_limit_source"),  # which fallback hit
             "within_page_limit": within_limit,
             "bid_section_count": len(bid_texts),
             "format_issues": format_issues,
@@ -692,8 +727,34 @@ def check_statistic_consistency():
     # Check requirement count mentions
     actual_req_count = len(rtm_reqs)
     req_count_pattern = r'(\d+)\s+(?:requirements?|reqs?)\b'
+
+    # ─── ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident) ───
+    # Category-prefix exclusion: the prior implementation flagged category
+    # subtotals like "USER_MANAGEMENT (28 reqs)" or "DATA_INGEST: 17 reqs" as
+    # inconsistent TOTAL requirement-count claims. They are NOT totals — they
+    # are category breakdowns whose individual values legitimately differ from
+    # actual_req_count.
+    #
+    # Correct behavior: if the count is preceded (within ~40 chars LEFT) by an
+    # UPPER_CASE_TOKEN (snake_case ALL-CAPS like USER_MANAGEMENT, or a label
+    # ending in colon), treat it as a category subtotal and skip the consistency
+    # check. Total claims sound like "the RFP contains 281 requirements" with no
+    # category prefix.
+    #
+    # Counterfactual: would have suppressed ~12 false positives during the
+    # 2026-05-20 MARS run where 03_TECHNICAL.md broke out requirements by
+    # functional category in a summary table.
+    CATEGORY_PREFIX = re.compile(
+        r"(?:^|[\s\|])"
+        r"(?:[A-Z][A-Z0-9_]{2,}|[A-Z][a-z]+(?:[-/&\s][A-Z][a-z]+){1,4})"  # UPPER_CASE_TOKEN or Title-Case Phrase
+        r"\s*[:\(\-—–]\s*$"  # followed by separator (colon / paren / dash)
+    )
     for match in re.finditer(req_count_pattern, combined_bid_text, re.IGNORECASE):
         cited_count = int(match.group(1))
+        # Inspect 40 chars to the LEFT of the count for a category-prefix marker
+        left_window = combined_bid_text[max(0, match.start() - 40):match.start()]
+        if CATEGORY_PREFIX.search(left_window):
+            continue  # category subtotal — not a total-requirements claim
         if cited_count > 10 and abs(cited_count - actual_req_count) > actual_req_count * 0.15:
             inconsistencies.append({
                 "type": "requirement_count",
@@ -951,8 +1012,56 @@ def check_tech_lifecycle():
     # Known problematic versions (web search these to keep current)
     short_lifecycle_flags = []
 
-    # Check for .NET versions with known short EOL
-    dotnet_matches = re.findall(r'\.NET\s+(\d+)(?:\.0)?(?:\s+LTS)?', tech_section)
+    # ─── ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident) ───
+    # Negative-citation exemption: when `.NET 8` or `.NET 9` mentions appear in
+    # REJECTED / disqualified / "selected to AVOID" context (ADR rationale,
+    # competitor warnings, migration-plan roadmap ladder, rolling-LTS future-
+    # version mentions), they are NOT current recommendations. Skip the entire
+    # line before applying lifecycle flag detection. This mirrors the same
+    # NEGATIVE_CITATION regex proven correct in SVA3-TECH-STACK-VERSION-CONSISTENCY
+    # (sva3-spec-validator-win.md line 838+) — DO NOT diverge without updating both.
+    #
+    # Counterfactual: would have prevented SVA-7 from flagging "selected to
+    # AVOID .NET 8" / "verified not .NET 9" / "EOL November 2026" rationale
+    # blocks as if they were live tech-stack proposals during the 2026-05-20
+    # MARS run.
+    NEGATIVE_CITATION = re.compile(
+        r"\b(not\s+\.NET|neither\s+\.NET|rejected|reaches\s+EOL|reaches\s+end\s+of\s+life|"
+        r"\bis\s+STS\b|\bare\s+STS\b|is\s+not\s+LTS|NOT\s+(?:an?\s+)?LTS|"
+        r"Standard\s+Term\s+Support|STS\s+\(|\bSTS\b|forbids|forbidden|disqualifying|preview|post-GA|"
+        r"end\s+of\s+life\s+within|unsupported|bidders\s+propos|propos(?:ing|ed)\s+\.NET\s+\d+\s+would|"
+        r"Selecting\s+\.NET\s+\d+\s+would|avoid\s+\.NET|risk\s+of\s+propos|competitor|"
+        r"EOL\s+is\s+approximately|"
+        # Codified 2026-05-21 — MARS SVA-3 / SVA-7 incident: additional NEGATIVE phrasings
+        r"selected\s+to\s+AVOID|to\s+AVOID\s+\.NET|frequently\s+propose|"
+        r"verified\s+not\s+\.NET|verified\s+not\s+\d+|"
+        r"explicitly\s+(?:EXCLUDED|REJECTED|DISQUALIFIED)|"
+        r"\bAVOID\b\s+\.NET\s+\d+|"
+        r"version\s+selected:\s+[^()]+\s+\(verified\s+not|"
+        # Rolling-LTS migration plan future-version mentions are NOT current
+        # recommendations — they're roadmap/ladder citations.
+        r"~Nov\s+\d{4}|~\d{4}\b|migration[- ]plan|rolling\s+LTS|"
+        r"target\s+version\s+for\s+\d{4}|"
+        r"EOL\s+(?:May|November|October|June|July|August|"
+        r"September|January|February|March|April|December)\s+\d{4})",
+        re.IGNORECASE
+    )
+
+    # Filter tech_section line-by-line: skip lines whose context is negative-citation.
+    # The flag-detection regexes below run on the resulting cleaned text only.
+    _tech_lines_kept = []
+    for _line in tech_section.split("\n"):
+        # ADR title lines (e.g., "### ADR-001: .NET 10 (not .NET 8, not .NET 9)")
+        # carry the same exemption — they're DECISION rationale, not proposals.
+        if re.match(r"^###\s+ADR-\d+", _line):
+            continue
+        if NEGATIVE_CITATION.search(_line):
+            continue
+        _tech_lines_kept.append(_line)
+    tech_section_filtered = "\n".join(_tech_lines_kept)
+
+    # Check for .NET versions with known short EOL — operate on FILTERED text
+    dotnet_matches = re.findall(r'\.NET\s+(\d+)(?:\.0)?(?:\s+LTS)?', tech_section_filtered)
     for ver in dotnet_matches:
         ver_num = int(ver)
         # .NET even numbers are LTS (3 yr), odd are STS (18 mo)
@@ -963,14 +1072,14 @@ def check_tech_lifecycle():
         elif ver_num == 6:  # .NET 6 LTS EOL Nov 2024 — already expired
             short_lifecycle_flags.append(f".NET 6.0 LTS is ALREADY END-OF-LIFE (Nov 2024)")
 
-    # Check for Node.js odd versions (non-LTS)
-    node_matches = re.findall(r'Node(?:\.js)?\s+(\d+)', tech_section)
+    # Check for Node.js odd versions (non-LTS) — operate on FILTERED text
+    node_matches = re.findall(r'Node(?:\.js)?\s+(\d+)', tech_section_filtered)
     for ver in node_matches:
         if int(ver) % 2 == 1:
             short_lifecycle_flags.append(f"Node.js {ver} is non-LTS (no long-term support)")
 
-    # Check for "ASP.NET Core 8" specifically
-    if re.search(r'ASP\.NET\s+Core\s+8', tech_section):
+    # Check for "ASP.NET Core 8" specifically — operate on FILTERED text
+    if re.search(r'ASP\.NET\s+Core\s+8', tech_section_filtered):
         if "ASP.NET Core 8" not in str(short_lifecycle_flags):
             short_lifecycle_flags.append("ASP.NET Core 8.0 LTS EOL November 2026 — too short for multi-year government contracts")
 
@@ -1385,6 +1494,64 @@ def check_internal_estimate_methodology():
     METHOD_TOKENS = ["estimate", "estimated", "methodology", "based on", "rates", "loe", "level of effort",
                      "internal estimate", "not disclosed"]
 
+    # ─── ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident) ───
+    # TRACE-3 proximity-check broadening: the prior ±80-char proximity window
+    # was too tight for multi-row financial tables — the methodology disclosure
+    # commonly sits in the SECTION HEADING ("## Cost Methodology", "## Effort
+    # Estimation") and a paragraph above, while $ figures appear in dozens of
+    # downstream table rows. The tight window produced 191 false positives
+    # during the 2026-05-20 MARS run.
+    #
+    # Correct behavior — TWO-TIER PROXIMITY:
+    #   Tier 1 (TIGHT, inline): ±80-char window contains any METHOD_TOKEN.
+    #                            If yes, accept the figure.
+    #   Tier 2 (SECTION, fallback): if Tier 1 misses, walk BACK from the figure
+    #                                position to find the closest `## Section`
+    #                                heading within ±2000 chars. If that heading
+    #                                contains one of SECTION_METHODOLOGY_HEADERS,
+    #                                accept ALL $ figures within that section's
+    #                                bounds. Treat the next `##`/`#` heading
+    #                                AFTER the figure as the section end (or
+    #                                end-of-text).
+    #
+    # Counterfactual: would have suppressed ~190 of 191 false positives in
+    # 05_FINANCIAL.md "Cost Methodology" section during 2026-05-20 MARS run.
+    SECTION_METHODOLOGY_HEADERS = (
+        "cost methodology", "effort estimation", "pricing methodology",
+        "estimation methodology", "rate methodology", "loe methodology",
+        "level of effort", "basis of estimate", "cost basis",
+        "pricing approach", "estimating approach", "estimate basis",
+    )
+    SECTION_HEADING_RE = _re.compile(r"^(#{1,3})\s+(.+?)\s*$", _re.MULTILINE)
+
+    def _section_is_methodology(text, figure_pos):
+        """Return True if the nearest `##` heading preceding figure_pos within
+        2000 chars matches any SECTION_METHODOLOGY_HEADERS AND figure_pos is
+        before the NEXT heading at the same-or-higher level."""
+        # Find all headings up to figure_pos
+        headings_before = [
+            (m.start(), len(m.group(1)), m.group(2).lower().strip())
+            for m in SECTION_HEADING_RE.finditer(text)
+            if m.start() < figure_pos
+        ]
+        if not headings_before:
+            return False
+        nearest_start, nearest_level, nearest_title = headings_before[-1]
+        # Check 2000-char proximity
+        if figure_pos - nearest_start > 2000:
+            return False
+        if not any(h in nearest_title for h in SECTION_METHODOLOGY_HEADERS):
+            return False
+        # Confirm figure_pos is still inside this section: find next heading
+        # at level <= nearest_level. If it appears before figure_pos, we've
+        # already left the methodology section.
+        for m in SECTION_HEADING_RE.finditer(text, nearest_start + 1):
+            if len(m.group(1)) <= nearest_level and m.start() < figure_pos:
+                return False
+            if m.start() >= figure_pos:
+                break
+        return True
+
     violations = []
     if not rfp_value_disclosed:
         # Find any $ figure in financial / estimation summaries
@@ -1396,13 +1563,18 @@ def check_internal_estimate_methodology():
                 snippet_start = max(0, m.start() - 80)
                 snippet_end   = min(len(text), m.end() + 80)
                 snippet       = text[snippet_start:snippet_end].lower()
-                if not any(tok in snippet for tok in METHOD_TOKENS):
-                    violations.append({
-                        "where": label,
-                        "figure": m.group(0),
-                        "snippet": text[snippet_start:snippet_end],
-                        "issue": "Monetary figure not labeled [estimate — methodology: ...] and RFP did not disclose value"
-                    })
+                # Tier 1: tight ±80-char inline window
+                if any(tok in snippet for tok in METHOD_TOKENS):
+                    continue
+                # Tier 2: section-level fallback (±2000 chars to nearest methodology heading)
+                if _section_is_methodology(text, m.start()):
+                    continue
+                violations.append({
+                    "where": label,
+                    "figure": m.group(0),
+                    "snippet": text[snippet_start:snippet_end],
+                    "issue": "Monetary figure not labeled [estimate — methodology: ...] and RFP did not disclose value (checked inline ±80 chars AND section heading within ±2000 chars)"
+                })
 
     passed = len(violations) == 0
     return {
@@ -2084,6 +2256,38 @@ def check_deliverable_no_row_caps_gold():
     EMPTY_CELL_PATTERN = _re.compile(r"\|\s{1,}\|")
     SEVERITY_TOKEN = _re.compile(r"\|\s*(?:HIGH|MEDIUM|CRITICAL|LOW)\s*\|", _re.IGNORECASE)
 
+    # ─── ⛔ HARD RULE (codified 2026-05-21 — MARS SVA-7 incident) ───
+    # Empty-cell detector column scoping: the prior implementation flagged ANY
+    # row whose line contained both a HIGH/MEDIUM token AND an empty cell.
+    # This false-positives on columns like Priority, Severity, Risk Level that
+    # legitimately hold HIGH/MEDIUM as content — the empty cell is somewhere
+    # ELSE in the row (often a deliberately-blank notes/comments column).
+    #
+    # Correct behavior: only flag when the empty cell is in a column whose
+    # HEADER contains "Mitigation" (or close equivalents). This requires
+    # tracking the header row and column positions per table.
+    #
+    # Algorithm: walk the file line-by-line, maintain current-table header
+    # cell list (refreshed on each new header). When a data row has a severity
+    # token AND an empty cell, only flag if that empty cell's COLUMN INDEX
+    # corresponds to a header containing one of the MITIGATION_HEADER_TOKENS.
+    MITIGATION_HEADER_TOKENS = ("mitigation", "mitigations", "treatment",
+                                "control", "controls", "remediation", "response")
+
+    def _split_table_row(_line):
+        """Split a markdown table row into cell contents (preserve order)."""
+        # Strip leading/trailing pipes, split, strip each
+        _stripped = _line.strip()
+        if _stripped.startswith("|"):
+            _stripped = _stripped[1:]
+        if _stripped.endswith("|"):
+            _stripped = _stripped[:-1]
+        return [c.strip() for c in _stripped.split("|")]
+
+    def _is_table_separator(_line):
+        """Match table separator rows: |---|---|---|"""
+        return bool(_re.match(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$", _line))
+
     row_cap_hits = []
     empty_mit_hits = []
     files_scanned = 0
@@ -2096,17 +2300,56 @@ def check_deliverable_no_row_caps_gold():
         except (OSError, UnicodeDecodeError):
             continue
         fname = _os_u.path.basename(fpath)
+
+        # Track current table's headers and which columns are mitigation columns
+        current_headers = []        # list of header cell strings (lowercased)
+        mitigation_col_indices = set()  # indices of columns whose header is mitigation-related
+        prev_was_potential_header = False
+        potential_header_cells = []
+
         for line_no, line in enumerate(lines, 1):
             if ROW_CAP_PATTERN.search(line):
                 row_cap_hits.append({
                     "file": fname, "line_no": line_no,
                     "text": line.strip()[:120]
                 })
-            if EMPTY_CELL_PATTERN.search(line) and SEVERITY_TOKEN.search(line):
-                empty_mit_hits.append({
-                    "file": fname, "line_no": line_no,
-                    "text": line.strip()[:120]
-                })
+
+            # Table state machine: a header is a pipe-row followed by a separator row
+            if _is_table_separator(line) and prev_was_potential_header:
+                current_headers = [h.lower() for h in potential_header_cells]
+                mitigation_col_indices = {
+                    i for i, h in enumerate(current_headers)
+                    if any(tok in h for tok in MITIGATION_HEADER_TOKENS)
+                }
+                prev_was_potential_header = False
+                potential_header_cells = []
+                continue
+
+            if "|" in line and not _is_table_separator(line):
+                cells = _split_table_row(line)
+                # A potential header row: remember it; separator on next line confirms.
+                potential_header_cells = cells
+                prev_was_potential_header = True
+
+                # If we already have a confirmed header for this table, evaluate this
+                # as a data row for empty-mitigation detection.
+                if current_headers and mitigation_col_indices and SEVERITY_TOKEN.search(line):
+                    for col_idx in mitigation_col_indices:
+                        if col_idx < len(cells) and cells[col_idx] == "":
+                            empty_mit_hits.append({
+                                "file": fname, "line_no": line_no,
+                                "column_header": current_headers[col_idx],
+                                "column_index": col_idx,
+                                "text": line.strip()[:120]
+                            })
+                            break  # one hit per row is enough
+            else:
+                # Blank line or non-table line — reset table tracking on blank line
+                if not line.strip():
+                    current_headers = []
+                    mitigation_col_indices = set()
+                prev_was_potential_header = False
+                potential_header_cells = []
 
     total_violations = len(row_cap_hits) + len(empty_mit_hits)
     passed = total_violations == 0

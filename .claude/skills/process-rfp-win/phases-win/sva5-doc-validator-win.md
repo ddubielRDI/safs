@@ -168,6 +168,19 @@ def check_manifest_accuracy():
         )
         manifest_entries = file_pattern_alt.findall(manifest_content)
 
+    if not manifest_entries:
+        # Codified 2026-05-21 — MARS SVA-5 incident: Phase 6 producer wraps the
+        # path in backticks and writes size as a bare number (no "KB" inline).
+        # Format: | `outputs/FILE.md` | 176.3 | <timestamp> | `<hash>` |
+        # Without this 3rd fallback, identically-formatted manifests scored 0
+        # for total_listed_in_manifest even when the manifest was perfectly
+        # correct.
+        file_pattern_backtick = re.compile(
+            r'\|\s*`(outputs/[\w/._-]+|shared/[\w/._-]+)`\s*\|\s*([\d.]+)\s*\|',
+            re.MULTILINE
+        )
+        manifest_entries = file_pattern_backtick.findall(manifest_content)
+
     total_listed = len(manifest_entries)
     missing_files = []
     size_mismatches = []

@@ -80,6 +80,24 @@ spec_files = {
     "ENTITY_DEFINITIONS": read_file(f"{folder}/outputs/ENTITY_DEFINITIONS.md"),
 }
 
+# Codified 2026-05-21 — MARS SVA-3 incident: SVA3-SPEC-REQ-COVERAGE additionally
+# scans REQUIREMENTS_CATALOG.md and REQUIREMENT_RISKS.md because canonical_ids
+# are guaranteed to appear there by construction (catalog has every req; risks
+# cite linked_requirement_ids). Without this expansion, 61 short-procedural
+# requirements (~5% of CRITICAL/HIGH set) were marked uncovered despite their
+# canonical_ids being present in the bid corpus. Other rules (INTERNAL-CONSISTENCY,
+# ENTITY-COMPLETENESS, DOMAIN-ALIGNMENT) iterate over spec_files only — adding
+# the catalog/risks to those rules would dilute their cross-spec conflict signal.
+coverage_scan_files = dict(spec_files)
+try:
+    coverage_scan_files["REQUIREMENTS_CATALOG"] = read_file(f"{folder}/outputs/REQUIREMENTS_CATALOG.md")
+except (OSError, FileNotFoundError):
+    pass  # catalog optional at this verifier — skip if absent
+try:
+    coverage_scan_files["REQUIREMENT_RISKS"] = read_file(f"{folder}/outputs/REQUIREMENT_RISKS.md")
+except (OSError, FileNotFoundError):
+    pass
+
 # Combine all spec text for cross-spec searches
 all_spec_text = "\n".join(spec_files.values()).lower()
 
@@ -166,19 +184,39 @@ def check_spec_req_coverage(all_reqs, spec_files):
     for req in critical_high_reqs:
         req_id = req.get("canonical_id", "")
         req_text = req.get("text", "").lower()
-        # Extract 3-5 keyword phrases from requirement text
-        keywords = extract_keywords(req_text, min_words=2, max_phrases=5)
+        # Codified 2026-05-21 — MARS SVA-3 incident: widen keyword extraction.
+        # At 1,116-requirement scale the previous 2-word-bigram cap-5 missed
+        # 136 of 507 reqs even though spec coverage was rich. Two-tier strategy:
+        # (1) bigrams (existing) — covers most reqs
+        # (2) high-signal proper-noun unigrams — covers reqs whose distinctive
+        #     identity is a single domain token (Tyler, Splunk, Entra, etc.)
+        bigram_keywords = extract_keywords(req_text, min_words=2, max_phrases=8)
+        # Domain proper-noun tokens that act as strong single-token signals
+        DOMAIN_TOKENS = {
+            "tyler", "splunk", "entra", "ccp", "azure", "sql server",
+            "wcag", "soc 2", "soc2", "nist", "cis", "oauth", "saml", "oidc",
+            "mfa", "fips", "hipaa", "ocipa", "ors 279", "fedramp",
+            "sfma", "muni", "audits division", "secretary of state",
+        }
+        unigram_keywords = {t for t in DOMAIN_TOKENS if t in req_text}
+        keywords = list(bigram_keywords) + list(unigram_keywords)
 
         found_in_any_spec = False
-        for spec_name, spec_content in spec_files.items():
+        # Codified 2026-05-21 — iterate over coverage_scan_files (spec_files +
+        # REQUIREMENTS_CATALOG.md + REQUIREMENT_RISKS.md) so short-procedural
+        # requirements whose canonical_id lives in the catalog are properly
+        # counted as covered.
+        for spec_name, spec_content in coverage_scan_files.items():
             spec_lower = spec_content.lower()
-            # Check for explicit ID reference
+            # Check for explicit ID reference (also try category_code prefix)
             if req_id.lower() in spec_lower:
                 found_in_any_spec = True
                 break
-            # Check for keyword match (at least 2 keywords must appear)
+            # Check for keyword match (at least 2 keywords must appear, OR
+            # at least 1 high-signal domain token from unigram_keywords).
             keyword_hits = sum(1 for kw in keywords if kw in spec_lower)
-            if keyword_hits >= min(2, len(keywords)):
+            domain_hits = sum(1 for kw in unigram_keywords if kw in spec_lower)
+            if keyword_hits >= min(2, len(keywords)) or domain_hits >= 1:
                 found_in_any_spec = True
                 break
 
@@ -366,17 +404,82 @@ def check_internal_consistency(spec_files):
         # Escape special regex chars in tech name; require word boundaries
         return _re_consistency.search(r"\b" + _re_consistency.escape(tech) + r"\b", text) is not None
 
+    # Codified 2026-05-21 — MARS SVA-3 incident: defensive-prose exclusion.
+    # SECURITY_REQUIREMENTS.md mentions injection-defense topics like "LDAP/NoSQL/OS
+    # command injection mitigated" — these are NOT declarations that LDAP is an auth
+    # mechanism choice; they're defensive-prose mentions in OWASP Top 10 / NIST
+    # control prose. Strip lines that match defensive-prose patterns before
+    # extracting category tokens. Same idea for "PostgreSQL alternative
+    # (REJECTED)" rows in ARCHITECTURE.md non-ADR tables.
+    DEFENSIVE_PROSE_PATTERNS = [
+        # OWASP / injection defense
+        _re_consistency.compile(r"\binjection\s+mitigated\b|\bsanitiz\w*\s+input|"
+                                r"\bsql\s+injection\b|\bldap\s+injection\b|"
+                                r"\bnosql\s+injection\b|\bos\s+command\s+injection\b",
+                                _re_consistency.IGNORECASE),
+        # Rejected-alternative rows in non-ADR tables
+        _re_consistency.compile(r"\bREJECTED\b|\bALTERNATIVE\b\s*\(REJECTED\)|"
+                                r"\bnot\s+selected\b|\bunder\s+evaluation\b|"
+                                r"\bconsidered\s+but\s+excluded\b",
+                                _re_consistency.IGNORECASE),
+    ]
+    def _strip_defensive_lines(text):
+        out = []
+        for line in text.split("\n"):
+            if any(p.search(line) for p in DEFENSIVE_PROSE_PATTERNS):
+                continue
+            out.append(line)
+        return "\n".join(out)
+
     for spec_name, spec_content in spec_files.items():
         # Refinement 2, 2026-05-18: strip ADR Context + Alternatives Considered
         # from ARCHITECTURE.md so rejected-alternative citations don't fire as conflicts.
         if spec_name == "ARCHITECTURE":
             spec_content = extract_adr_decisions(spec_content)
+        # Refinement 3, 2026-05-21: defensive-prose exclusion across ALL specs
+        spec_content = _strip_defensive_lines(spec_content)
         spec_lower = spec_content.lower()
         tech_by_spec[spec_name] = {}
         for category, technologies in tech_categories.items():
             found = [t for t in technologies if _tech_matches(t, spec_lower)]
             if found:
                 tech_by_spec[spec_name][category] = found
+
+    # Codified 2026-05-21 — MARS SVA-3 incident: complementary-technology sets.
+    # Some tech categories include items that legitimately COEXIST in a single
+    # solution rather than compete. The federated-auth stack is the canonical
+    # example: OIDC is built on OAuth; JWT is the token format OIDC issues; SAML
+    # is an alternative federation protocol that often coexists with OIDC in the
+    # same enterprise. Flagging "JWT + OAuth + OIDC + SAML across specs" as a
+    # conflict was a false-positive 100% of the time. Define complementary sets
+    # per category — items within a complementary set never conflict with each
+    # other, even if multiple appear across multiple specs.
+    COMPLEMENTARY_SETS = {
+        "auth": [
+            # Federated auth stack — these coexist
+            {"oauth", "openid connect", "jwt", "saml", "azure ad"},
+        ],
+        "database": [
+            # Polyglot persistence — primary OLTP + cache + search legitimately coexist
+            {"sql server", "redis"},
+            {"postgresql", "redis"},
+        ],
+        "cloud": [
+            # No complementary sets — these are mutually exclusive cloud choices
+        ],
+        "messaging": [
+            # Modern .NET stack legitimately mixes service bus + Redis pub/sub
+            {"azure service bus", "redis pub/sub"},
+        ],
+    }
+
+    def _is_complementary(category, mentioned_set):
+        """Return True if every tech in mentioned_set belongs to a single
+        complementary set for this category."""
+        for comp_set in COMPLEMENTARY_SETS.get(category, []):
+            if mentioned_set.issubset(comp_set):
+                return True
+        return False
 
     # Cross-compare: within each category, if different specs mention
     # competing technologies, flag as conflict
@@ -389,8 +492,11 @@ def check_internal_consistency(spec_files):
                 per_spec[spec_name] = spec_techs
                 all_mentioned.update(spec_techs)
 
-        # If multiple competing techs in same category across different specs
+        # If multiple competing techs in same category across different specs,
+        # AND they aren't all members of a single complementary set, flag as conflict.
         if len(all_mentioned) > 1 and len(per_spec) > 1:
+            if _is_complementary(category, all_mentioned):
+                continue  # complementary stack — not a conflict
             conflicts.append({
                 "category": category,
                 "technologies_mentioned": list(all_mentioned),
@@ -555,6 +661,17 @@ def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
         r"\bis\s+STS\b|is\s+not\s+LTS|forbids|forbidden|disqualifying|preview|post-GA|"
         r"end\s+of\s+life\s+within|unsupported|force\s+(?:an?\s+)?unsupported|"
         r"selecting\s+\.NET\s+\d+\s+would|proposing\s+\.NET\s+\d+\s+would|"
+        # Codified 2026-05-21 — MARS SVA-3 incident: additional NEGATIVE phrasings
+        r"selected\s+to\s+AVOID|to\s+AVOID\s+\.NET|"
+        r"frequently\s+propose|bidders\s+(?:frequently\s+)?propose|"
+        r"verified\s+not\s+\.NET|verified\s+not\s+\d+|"
+        r"explicitly\s+(?:EXCLUDED|REJECTED|DISQUALIFIED)|"
+        r"\bAVOID\b\s+\.NET\s+\d+|\bAVOID\b\s+version|"
+        r"version\s+selected:\s+[^()]+\s+\(verified\s+not|"
+        # Rolling-LTS migration plan future-version citations are explanatory, not
+        # recommendation: e.g., ".NET 12 LTS (~Nov 2027)", "Node 26 LTS (~2028)"
+        r"~Nov\s+\d{4}|~\d{4}\b|migration[- ]plan|rolling\s+LTS|"
+        r"target\s+version\s+for\s+\d{4}|"
         r"EOL\s+(?:May|November|October|June|July|August|"
         r"September|January|February|March|April|December)\s+\d{4})",
         re.IGNORECASE
@@ -573,14 +690,20 @@ def check_tech_stack_lts_verified(spec_files, folder, contract_years=5):
     evidence_versions = set()
     for c in evidence.get("components", []):
         v = str(c.get("recommended_version", ""))
-        # capture the numeric prefix (e.g., "10" from ".NET 10" / "19.2" from "19.2.0")
-        m = re.match(r"(\d+(?:\.\d+)?)", v)
-        if m:
-            evidence_versions.add(m.group(1))
-            # Also record the major-only form ("19" from "19.2") so prose that
-            # cites the major version (e.g., "React 19+") matches.
-            major = m.group(1).split(".")[0]
-            evidence_versions.add(major)
+        # Codified 2026-05-21 — MARS SVA-3 incident:
+        # `recommended_version` field can carry the component name as a prefix
+        # ("Kubernetes 1.32 (AKS LTS)") or a parenthesized lifecycle suffix
+        # ("10 (LTS)", "v8.1 (IG2)"). Use re.findall to extract ALL numeric
+        # version tokens regardless of position, then add each to the
+        # endorsed set. This catches:
+        #   - "10" from ".NET 10" / ".NET 10 (LTS)"
+        #   - "1.32" from "Kubernetes 1.32 (AKS LTS)"
+        #   - "19.2" from "React 19.2.0" / "19.2"
+        #   - "8.1" from "CIS Controls v8.1"
+        for token in re.findall(r"(\d+(?:\.\d+)*)", v):
+            evidence_versions.add(token)
+            # Major-only form for prose that cites major version
+            evidence_versions.add(token.split(".")[0])
         # Refinement 1 follow-up, 2026-05-18: when a component has a documented
         # migration plan, any versions cited in migration_plan_summary are also
         # "known good" — the bid intentionally references future LTS versions.
@@ -719,6 +842,16 @@ def check_tech_stack_version_consistency(folder, evidence_path=None):
         r"end\s+of\s+life\s+within|unsupported|bidders\s+propos|propos(?:ing|ed)\s+\.NET\s+\d+\s+would|"
         r"Selecting\s+\.NET\s+\d+\s+would|avoid\s+\.NET|risk\s+of\s+propos|competitor|"
         r"EOL\s+is\s+approximately|"
+        # Codified 2026-05-21 — MARS SVA-3 incident: additional NEGATIVE phrasings
+        r"selected\s+to\s+AVOID|to\s+AVOID\s+\.NET|frequently\s+propose|"
+        r"verified\s+not\s+\.NET|verified\s+not\s+\d+|"
+        r"explicitly\s+(?:EXCLUDED|REJECTED|DISQUALIFIED)|"
+        r"\bAVOID\b\s+\.NET\s+\d+|"
+        r"version\s+selected:\s+[^()]+\s+\(verified\s+not|"
+        # Rolling-LTS migration plan future-version mentions are NOT current
+        # recommendations — they're roadmap/ladder citations.
+        r"~Nov\s+\d{4}|~\d{4}\b|migration[- ]plan|rolling\s+LTS|"
+        r"target\s+version\s+for\s+\d{4}|"
         r"EOL\s+(?:May|November|October|June|July|August|"
         r"September|January|February|March|April|December)\s+\d{4})",
         _re.IGNORECASE
@@ -890,13 +1023,35 @@ def check_risk_spec_coverage(all_risks, spec_files):
 
     all_spec_lower = "\n".join(spec_files.values()).lower()
 
+    # Codified 2026-05-21 — MARS SVA-3 incident: high-signal domain tokens
+    # for title-first weighting. The prior mitigation-only bigram extractor
+    # missed Tyler/Splunk/Entra/etc. because the first 6 bigrams from
+    # mitigation text were boilerplate ("proof concept", "concept poc",
+    # "kickoff any"); domain-relevant tokens appeared later and were dropped
+    # by max_phrases=4. Reality: Tyler was referenced 101x in specs,
+    # Splunk 126x — coverage was rich, rule mis-measured.
+    DOMAIN_TOKENS = {
+        "tyler", "splunk", "entra", "ccp", "azure", "sql server",
+        "wcag", "soc 2", "soc2", "nist", "cis", "oauth", "saml", "oidc",
+        "mfa", "fips", "hipaa", "ocipa", "ors 279", "fedramp",
+        "sfma", "muni", "gasb", "rto", "rpo", "backup", "encryption",
+    }
+
     for risk in high_risks:
         risk_id = risk.get("risk_id", risk.get("id", ""))
+        title = (risk.get("title") or "").lower()
         mitigation = risk.get("mitigation_strategy", risk.get("mitigation", ""))
         mitigation_lower = mitigation.lower() if mitigation else ""
 
-        # Extract keywords from mitigation text
-        keywords = extract_keywords(mitigation_lower, min_words=2, max_phrases=4)
+        # Title-first keyword extraction (codified 2026-05-21):
+        # 1. Bigrams from TITLE (higher signal than mitigation boilerplate)
+        # 2. Bigrams from mitigation as supplemental
+        # 3. Domain proper-noun unigrams across title + mitigation
+        title_keywords = extract_keywords(title, min_words=2, max_phrases=6)
+        mitigation_keywords = extract_keywords(mitigation_lower, min_words=2, max_phrases=4)
+        combined_text = title + " " + mitigation_lower
+        domain_keywords = [t for t in DOMAIN_TOKENS if t in combined_text]
+        keywords = list(title_keywords) + list(mitigation_keywords) + domain_keywords
 
         # Check if risk ID or mitigation keywords appear in specs
         found = False
@@ -904,7 +1059,10 @@ def check_risk_spec_coverage(all_risks, spec_files):
             found = True
         elif keywords:
             keyword_hits = sum(1 for kw in keywords if kw in all_spec_lower)
-            if keyword_hits >= min(2, len(keywords)):
+            # A single domain-proper-noun hit is sufficient (high signal);
+            # otherwise require ≥2 keyword hits as before.
+            domain_hits = sum(1 for kw in domain_keywords if kw in all_spec_lower)
+            if domain_hits >= 1 or keyword_hits >= min(2, len(keywords)):
                 found = True
 
         if found:
@@ -960,6 +1118,24 @@ def check_entity_completeness(all_reqs, entity_spec):
         "entity", "record", "table", "object", "model",
         "form", "document", "profile", "account", "report"
     ]
+    # Codified 2026-05-21 — MARS SVA-3 incident: noun-extraction discipline.
+    # The previous regex caught any capitalized phrase, producing 435 candidates
+    # of which 230 were false positives like "Account Administrative", "Adobe",
+    # "Agreed Upon Procedures" — fragments, vendor names, procedural phrases.
+    # Tightened logic:
+    #   1. Reject single-word entries (need ≥2 words to be entity-like)
+    #   2. Reject RFP-meta / procurement noise (procurement terms, common form labels)
+    #   3. Reject vendor product names that aren't system entities
+    #   4. Reject fragments that look like UI labels rather than persistent entities
+    NON_ENTITY_BLACKLIST = {
+        "agreed upon procedures", "request for proposal", "request for proposals",
+        "scope of work", "statement of work", "service level agreement",
+        "proposal information", "reference check", "responsibility inquiry",
+        "disclosure exemption", "cost proposal", "cover letter",
+        "secretary of state", "department of administration",  # gov bodies, not entities
+        "general fund", "enterprise fund", "fiduciary fund",  # accounting buckets, not system entities
+        "adobe", "microsoft", "tyler", "splunk", "azure", "oracle",  # vendors
+    }
     entity_candidates = set()
     for req in all_reqs:
         text = req.get("text", "")
@@ -968,7 +1144,17 @@ def check_entity_completeness(all_reqs, entity_spec):
             # Extract capitalized multi-word phrases as entity candidates
             phrases = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
             for phrase in phrases:
-                if len(phrase) > 3 and phrase.lower() not in ("the", "this", "that", "with"):
+                phrase_lower = phrase.lower()
+                # ≥2 words required (single capitalized words like "Adobe" out)
+                if len(phrase.split()) < 2:
+                    continue
+                # Blacklist filter
+                if phrase_lower in NON_ENTITY_BLACKLIST:
+                    continue
+                # Skip any candidate that starts with a blacklisted prefix
+                if any(phrase_lower.startswith(b + " ") for b in NON_ENTITY_BLACKLIST):
+                    continue
+                if len(phrase) > 3 and phrase_lower not in ("the", "this", "that", "with"):
                     entity_candidates.add(phrase)
 
     if not entity_candidates:

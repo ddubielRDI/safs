@@ -6,6 +6,18 @@ domain-expertise: Requirements completeness, deduplication quality, compliance m
 
 # SVA-2: Pink Team Review
 
+## ⛔ SCHEMA-PATH CONTRACT (codified 2026-05-20 — MARS Pink-Team post-retry-3 finding)
+
+When reading `compliance_matrix.mandatory_items[].linked_requirement_ids[]` for Phase 1.7 cross-stage trace audits, the AUTHORITATIVE path is:
+
+```
+compliance_matrix["rtm_entities"]["mandatory_items"][i]["linked_requirement_ids"]
+```
+
+NOT the top-level `compliance_matrix["mandatory_items"][i]["linked_requirement_ids"]`. The top-level array uses field names per Phase 1.7 Step 7 schema (`id`, `coverage`, etc.) and does NOT carry the linked_requirement_ids field. The RTM entity (Step 6b) uses canonical RTM names and IS where Phase 1.7's `backfill_linked_ids()` step writes the linkages.
+
+SVA-2 implementations that read top-level mandatory_items will report 0% linkage even when 66%+ is populated at rtm_entities path. This is a latent SVA-2 skill bug surfaced by the MARS 2026-05-20 retry-3 cycle.
+
 ## Expert Role
 
 You are a **Pink Team Reviewer** conducting the first formal review (~25% completion). Your focus:
